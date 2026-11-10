@@ -396,7 +396,7 @@
     if (typeof Swal !== 'undefined') {
       Swal.fire({
         icon: 'success',
-        title: '¡Xprod Fit Instalada!',
+        title: '¡Atlas Fit Instalada!',
         text: 'La aplicación se instaló correctamente en tu dispositivo.',
         timer: 3000,
         showConfirmButton: false,
@@ -447,7 +447,7 @@
           badge.innerHTML = '<span class="badge-dot"></span> App Instalada';
         }
         if (title) {
-          title.textContent = 'Xprod Fit está instalada en este dispositivo';
+          title.textContent = 'Atlas Fit está instalada en este dispositivo';
         }
         if (icon) {
           icon.className = 'ti ti-device-mobile-check';
@@ -466,7 +466,7 @@
         }
         if (title) {
           if (title.textContent.includes('instalada')) {
-            title.textContent = 'Descargar Xprod Fit en este dispositivo';
+            title.textContent = 'Descargar Atlas Fit en este dispositivo';
           }
         }
         if (icon) {
@@ -499,22 +499,22 @@
   }
 
   async function desinstalarXprodApp() {
-    let osNotice = 'En tu dispositivo: mantén presionado el icono de Xprod Fit para eliminarlo o desinstalarlo.';
+    let osNotice = 'En tu dispositivo: mantén presionado el icono de Atlas Fit para eliminarlo o desinstalarlo.';
     const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
     const isAndroid = /Android/i.test(navigator.userAgent);
     const isDesktop = !(/Android|iPhone|iPad|iPod|webOS|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent));
 
     if (isIOS) {
-      osNotice = 'En iPhone / iPad: mantén presionado el icono de Xprod Fit en tu pantalla de inicio y pulsa <b>"Eliminar marcador"</b> o <b>"Eliminar de la pantalla de inicio"</b>.';
+      osNotice = 'En iPhone / iPad: mantén presionado el icono de Atlas Fit en tu pantalla de inicio y pulsa <b>"Eliminar marcador"</b> o <b>"Eliminar de la pantalla de inicio"</b>.';
     } else if (isAndroid) {
-      osNotice = 'En Android: mantén presionado el icono de Xprod Fit en tu pantalla y selecciona <b>"Desinstalar"</b> o arrástralo a la papelera.';
+      osNotice = 'En Android: mantén presionado el icono de Atlas Fit en tu pantalla y selecciona <b>"Desinstalar"</b> o arrástralo a la papelera.';
     } else if (isDesktop) {
-      osNotice = 'En Computadora: abre la app instalada, haz clic en el menú (⋮) de la ventana y selecciona <b>"Desinstalar Xprod Fit"</b> (o accede a <code>chrome://apps</code>).';
+      osNotice = 'En Computadora: abre la app instalada, haz clic en el menú (⋮) de la ventana y selecciona <b>"Desinstalar Atlas Fit"</b> (o accede a <code>chrome://apps</code>).';
     }
 
     if (typeof Swal !== 'undefined') {
       const confirmResult = await Swal.fire({
-        title: '<span style="color:#fff; font-size:1.15rem; font-weight:800;"><i class="ti ti-device-mobile-x" style="color:#ef4444;"></i> ¿Desinstalar Xprod Fit?</span>',
+        title: '<span style="color:#fff; font-size:1.15rem; font-weight:800;"><i class="ti ti-device-mobile-x" style="color:#ef4444;"></i> ¿Desinstalar Atlas Fit?</span>',
         html: `
           <div style="text-align:left; font-size:0.88rem; color:#cbd5e1; display:flex; flex-direction:column; gap:12px; margin-top:8px;">
             <p style="margin:0; line-height:1.45;">Se desvinculará la versión instalada y se liberará la caché de la aplicación en este navegador.</p>
@@ -537,7 +537,7 @@
 
       if (!confirmResult.isConfirmed) return;
     } else {
-      if (!confirm('¿Deseas desinstalar Xprod Fit y limpiar los datos sin conexión?')) return;
+      if (!confirm('¿Deseas desinstalar Atlas Fit y limpiar los datos sin conexión?')) return;
     }
 
     try {
@@ -605,7 +605,7 @@
           if (typeof Swal !== 'undefined') {
             Swal.fire({
               icon: 'success',
-              title: 'Instalando Xprod Fit...',
+              title: 'Instalando Atlas Fit...',
               text: 'Se está añadiendo el acceso directo a tu pantalla de inicio.',
               timer: 2500,
               showConfirmButton: false,
@@ -672,7 +672,7 @@
               </div>
               <div style="display:flex; align-items:flex-start; gap:10px; background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.08); padding:10px 12px; border-radius:12px;">
                 <i class="ti ti-dots-vertical" style="font-size:1.3rem; color:#c084fc; flex-shrink:0;"></i>
-                <div>O haz clic en los <b>tres puntos (⋮)</b> del navegador y selecciona <b>"Instalar Xprod Fit"</b>.</div>
+                <div>O haz clic en los <b>tres puntos (⋮)</b> del navegador y selecciona <b>"Instalar Atlas Fit"</b>.</div>
               </div>
             </div>
           `,

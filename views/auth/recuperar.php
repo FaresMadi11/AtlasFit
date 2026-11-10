@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Recuperar Contraseña | Xprod Fit</title>
+<title>Recuperar Contraseña | Atlas Fit</title>
 <!-- Tabler Icons (Local) -->
 <link rel="stylesheet" href="<?= APP_URL ?>/assets/vendor/tabler-icons/tabler-icons.min.css">
 <!-- SweetAlert2 -->

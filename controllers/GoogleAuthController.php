@@ -122,20 +122,25 @@ function googleCallback(): void {
             $cliente = $stCl->fetch(\PDO::FETCH_ASSOC);
         }
 
-        // Evaluar perfil incompleto: si no existe o falta peso_kg, altura_cm u objetivo
-        $perfilIncompleto = (!$existingUser || !$cliente || empty($cliente['peso_kg']) || empty($cliente['altura_cm']) || empty($cliente['objetivo']));
+        // Evaluar perfil incompleto: si no existe o falta peso_kg, altura_cm u objetivo (los admins y entrenadores no requieren perfil de atleta)
+        $esStaff = ($existingUser && in_array($existingUser['rol'] ?? '', ['admin', 'entrenador'], true));
+        $perfilIncompleto = !$esStaff && (!$existingUser || !$cliente || empty($cliente['peso_kg']) || empty($cliente['altura_cm']) || empty($cliente['objetivo']));
 
         if ($perfilIncompleto) {
             // Usuario Nuevo o Perfil Incompleto: asegurar registro en usuarios y clientes con estado_cuenta = 'pendiente'
             $uid = $um->createOrUpdateFromGoogle($payload);
 
-            // Asegurar asignación en clientes
+            // Asegurar asignación en clientes (respetando código de referido activo si existe)
             $stCheckCli = $db->prepare("SELECT id, cedula FROM clientes WHERE usuario_id = ? LIMIT 1");
             $stCheckCli->execute([$uid]);
             $clRow = $stCheckCli->fetch(\PDO::FETCH_ASSOC);
             if (!$clRow) {
-                $tr = $db->query("SELECT id FROM usuarios WHERE rol='entrenador' LIMIT 1")->fetchColumn();
-                if ($tr) {
+                $refCodeOAuth = (string)($_SESSION['ref_codigo'] ?? ($_COOKIE['xp_ref_code'] ?? ''));
+                $refEntOAuth  = $refCodeOAuth !== '' ? resolverEntrenadorPorCodigo($refCodeOAuth) : null;
+                $tr = $refEntOAuth
+                    ? (int)$refEntOAuth['entrenador_id']
+                    : (int)($db->query("SELECT id FROM usuarios WHERE rol='entrenador' AND activo=1 ORDER BY id LIMIT 1")->fetchColumn() ?: 0);
+                if ($tr > 0) {
                     $db->prepare("INSERT INTO clientes (usuario_id, entrenador_id) VALUES (?, ?)")
                        ->execute([$uid, (int)$tr]);
                 }
@@ -164,7 +169,7 @@ function googleCallback(): void {
         if (!$user) throw new \RuntimeException('Usuario no encontrado tras OAuth.');
 
         // Si el estado de cuenta sigue en 'pendiente', bloquear y mostrar vista Stand-by
-        if (($user['rol'] ?? '') !== 'entrenador') {
+        if (!in_array($user['rol'] ?? '', ['entrenador', 'admin'], true)) {
             if (($user['estado_cuenta'] ?? 'pendiente') === 'pendiente') {
                 unset($_SESSION['user_id'], $_SESSION['nombre'], $_SESSION['email'], $_SESSION['rol'], $_SESSION['_login_at'], $_SESSION['_via']);
                 redirect('auth/login?standby=1');
@@ -189,7 +194,9 @@ function googleCallback(): void {
         // Persistir sesión por 90 días en el teléfono
         xpSetRememberCookie($user);
 
-        $dest = $user['rol'] === 'entrenador' ? 'entrenador/dashboard' : 'cliente/dashboard';
+        $dest = $user['rol'] === 'admin'
+            ? 'admin/dashboard'
+            : ($user['rol'] === 'entrenador' ? 'entrenador/dashboard' : 'cliente/dashboard');
         redirect($dest);
         return;
 

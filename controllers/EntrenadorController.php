@@ -83,9 +83,10 @@ match($action) {
 ─────────────────────────────────────────────────────────────*/
 function entDashboard(): void {
     $db          = getDB();
-    $entId       = $_SESSION['user_id'];
+    $entId       = (int)$_SESSION['user_id'];
+    $membresiaEntrenador = obtenerEstadoMembresiaEntrenador($entId);
 
-    $stClientes  = $db->prepare("SELECT COUNT(*) FROM clientes WHERE (? IS NOT NULL)");
+    $stClientes  = $db->prepare("SELECT COUNT(*) FROM clientes WHERE entrenador_id = ?");
     $stClientes->execute([$entId]);
     $totalClientes = (int)$stClientes->fetchColumn();
 
@@ -94,7 +95,7 @@ function entDashboard(): void {
     $stVerificar = $db->prepare(
         "SELECT COUNT(DISTINCT sa.cliente_id) FROM sesiones_asistencia sa
          JOIN clientes c ON sa.cliente_id = c.id
-         WHERE (? IS NOT NULL) AND sa.estado = 'completada' 
+         WHERE c.entrenador_id = ? AND sa.estado = 'completada' 
            AND DATE(sa.fin_en) = CURDATE()
            AND (sa.verificada = 0 OR sa.verificada IS NULL)"
     );
@@ -112,7 +113,7 @@ function entDashboard(): void {
              GROUP BY cliente_id
          ) r_lat ON r_lat.cliente_id = c.id
          JOIN rutinas r ON r.id = r_lat.max_id
-         WHERE (? IS NOT NULL)
+         WHERE c.entrenador_id = ?
            AND NOT EXISTS (
                SELECT 1 FROM sesiones_asistencia sa 
                WHERE sa.cliente_id = c.id 
@@ -124,7 +125,7 @@ function entDashboard(): void {
 
     $stSinAsignar = $db->prepare(
         "SELECT COUNT(DISTINCT c.id) FROM clientes c
-         WHERE (? IS NOT NULL) 
+         WHERE c.entrenador_id = ? 
            AND NOT EXISTS (
                SELECT 1 FROM rutinas r 
                WHERE r.cliente_id = c.id 
@@ -147,7 +148,7 @@ function entDashboard(): void {
          FROM rutinas r
          JOIN clientes c ON r.cliente_id = c.id
          JOIN usuarios u ON c.usuario_id = u.id
-         WHERE (? IS NOT NULL) AND r.es_modificacion = 1 AND r.estado_modificacion = 'pendiente'
+         WHERE c.entrenador_id = ? AND r.es_modificacion = 1 AND r.estado_modificacion = 'pendiente'
          GROUP BY r.cliente_id, u.id, u.nombre"
     );
     $stModPendientes->execute([$entId]);
@@ -193,7 +194,7 @@ function entClientes(): void {
                 (SELECT peso_kg FROM peso_historial ph WHERE ph.cliente_id = c.id ORDER BY fecha ASC, id ASC LIMIT 1) AS peso_inicial
          FROM clientes c
          JOIN usuarios u ON c.usuario_id = u.id
-         WHERE (? IS NOT NULL) AND u.estado_cuenta = 'activo'
+         WHERE c.entrenador_id = ? AND u.estado_cuenta = 'activo'
          ORDER BY u.nombre"
     );
     $stmt->execute([$entId]);
@@ -203,7 +204,7 @@ function entClientes(): void {
         "SELECT u.id AS usuario_id, u.nombre, u.email, u.estado_cuenta, c.id AS cliente_id
          FROM clientes c
          JOIN usuarios u ON c.usuario_id = u.id
-         WHERE (? IS NOT NULL) AND u.estado_cuenta = 'pendiente'
+         WHERE c.entrenador_id = ? AND u.estado_cuenta = 'pendiente'
          ORDER BY u.id DESC"
     );
     $stPend->execute([$entId]);
@@ -216,7 +217,7 @@ function entClientes(): void {
          FROM rutinas r
          JOIN clientes c ON r.cliente_id = c.id
          JOIN usuarios u ON c.usuario_id = u.id
-         WHERE (? IS NOT NULL) AND r.es_modificacion = 1 AND r.estado_modificacion = 'pendiente'
+         WHERE c.entrenador_id = ? AND r.es_modificacion = 1 AND r.estado_modificacion = 'pendiente'
          ORDER BY r.creado_en ASC"
     );
     $stMod->execute([$entId]);
@@ -366,7 +367,7 @@ function entPerfilCliente(): void {
                 c.id AS cliente_id, c.peso_kg, c.altura_cm, COALESCE(c.genero, 'masculino') AS genero, c.objetivo, c.fecha_nac, c.dias_entrenamiento
          FROM clientes c
          JOIN usuarios u ON c.usuario_id = u.id
-         WHERE c.id = ? AND (? IS NOT NULL)"
+         WHERE c.id = ? AND c.entrenador_id = ?"
     );
     $stmt->execute([$clienteId, $entId]);
     $cliente = $stmt->fetch();
@@ -534,7 +535,7 @@ function entGraficaEjercicio(): void {
     $clienteId   = (int)($_GET['cliente_id'] ?? 0);
 
     // Seguridad: verificar que el cliente pertenece a este entrenador
-    $stVerif = $db->prepare("SELECT id FROM clientes WHERE id = ? AND (? IS NOT NULL)");
+    $stVerif = $db->prepare("SELECT id FROM clientes WHERE id = ? AND entrenador_id = ?");
     $stVerif->execute([$clienteId, $entId]);
     if (!$stVerif->fetch()) { jsonOut(false, 'No autorizado.'); return; }
 
@@ -600,7 +601,7 @@ function entGuardarRutina(): void {
     }
 
     // Verificar que cliente pertenece al entrenador
-    $chk = $db->prepare("SELECT id FROM clientes WHERE id = ? AND (? IS NOT NULL)");
+    $chk = $db->prepare("SELECT id FROM clientes WHERE id = ? AND entrenador_id = ?");
     $chk->execute([$clienteId, $entId]);
     if (!$chk->fetch()) jsonOut(false, 'Cliente no encontrado.');
 
@@ -709,7 +710,7 @@ function entCrearRutina(): void {
     $stmt = $db->prepare(
         "SELECT c.id, u.nombre FROM clientes c
          JOIN usuarios u ON c.usuario_id = u.id
-         WHERE (? IS NOT NULL) ORDER BY u.nombre"
+         WHERE c.entrenador_id = ? ORDER BY u.nombre"
     );
     $stmt->execute([$entId]);
     $clientes = $stmt->fetchAll();
@@ -826,7 +827,7 @@ function entGuardarPlantillaRutina(): void {
     }
 
     // Verificar que el cliente pertenece al entrenador
-    $chk = $db->prepare("SELECT id FROM clientes WHERE id=? AND (? IS NOT NULL)");
+    $chk = $db->prepare("SELECT id FROM clientes WHERE id=? AND entrenador_id = ?");
     $chk->execute([$clienteId, $entId]);
     if (!$chk->fetch()) {
         echo json_encode(['ok'=>false,'msg'=>'Cliente no encontrado.']);
@@ -1077,7 +1078,7 @@ function entEstadisticasCliente(): void {
     $stmt = $db->prepare(
         "SELECT u.nombre, c.id AS cliente_id, c.peso_kg, c.altura_cm
          FROM clientes c JOIN usuarios u ON c.usuario_id = u.id
-         WHERE c.id = ? AND (? IS NOT NULL)"
+         WHERE c.id = ? AND c.entrenador_id = ?"
     );
     $stmt->execute([$clienteId, $entId]);
     $cliente = $stmt->fetch();
@@ -1118,7 +1119,7 @@ function entActualizarMedidas(): void {
     if (!$clienteId || !$peso) jsonOut(false, 'Datos inválidos.');
 
     // Verificar pertenencia
-    $chk = $db->prepare("SELECT id FROM clientes WHERE id = ? AND (? IS NOT NULL)");
+    $chk = $db->prepare("SELECT id FROM clientes WHERE id = ? AND entrenador_id = ?");
     $chk->execute([$clienteId, $entId]);
     if (!$chk->fetch()) jsonOut(false, 'No autorizado.');
 
@@ -1149,8 +1150,10 @@ function entTerminarSesion(): void {
     if (!$sesId) jsonOut(false, 'ID inválido.');
 
     $upd = $db->prepare(
-        "UPDATE sesiones_asistencia SET estado='completada', verificada=1, fin_en=NOW(), notas=?
-         WHERE id = ? AND (? IS NOT NULL)"
+        "UPDATE sesiones_asistencia sa
+         JOIN clientes c ON sa.cliente_id = c.id
+         SET sa.estado='completada', sa.verificada=1, sa.fin_en=NOW(), sa.notas=?
+         WHERE sa.id = ? AND c.entrenador_id = ?"
     );
     $upd->execute([$notas, $sesId, $_SESSION['user_id']]);
 
@@ -1183,7 +1186,7 @@ function entAsistencias(): void {
          JOIN clientes c ON sa.cliente_id = c.id
          JOIN usuarios u ON c.usuario_id = u.id
          JOIN rutinas r ON sa.rutina_id = r.id
-         WHERE (? IS NOT NULL) 
+         WHERE c.entrenador_id = ? 
            AND (sa.estado = 'completada' OR sa.estado = 'incompleta')
            AND DATE(COALESCE(sa.fin_en, sa.inicio_en)) = ?
          ORDER BY COALESCE(sa.verificada, 0) ASC, COALESCE(sa.fin_en, sa.inicio_en) DESC"
@@ -1201,7 +1204,7 @@ function entAsistencias(): void {
          JOIN clientes c ON sa.cliente_id = c.id
          JOIN usuarios u ON c.usuario_id = u.id
          JOIN rutinas r ON sa.rutina_id = r.id
-         WHERE (? IS NOT NULL) AND sa.estado = 'iniciada' AND DATE(sa.inicio_en) = ?
+         WHERE c.entrenador_id = ? AND sa.estado = 'iniciada' AND DATE(sa.inicio_en) = ?
          ORDER BY sa.inicio_en DESC"
     );
     $stEnVivo->execute([$entId, $fechaSeleccionada]);
@@ -1223,7 +1226,7 @@ function entAsistencias(): void {
              GROUP BY cliente_id
          ) r_lat ON r_lat.cliente_id = c.id
          JOIN rutinas r ON r.id = r_lat.max_id
-         WHERE (? IS NOT NULL)
+         WHERE c.entrenador_id = ?
            AND NOT EXISTS (
                SELECT 1 FROM sesiones_asistencia sa 
                WHERE sa.cliente_id = c.id 
@@ -1247,7 +1250,7 @@ function entAsistencias(): void {
          FROM rutinas r
          JOIN clientes c ON r.cliente_id = c.id
          JOIN usuarios u ON c.usuario_id = u.id
-         WHERE (? IS NOT NULL) AND r.es_modificacion = 1 AND r.estado_modificacion = 'pendiente'
+         WHERE c.entrenador_id = ? AND r.es_modificacion = 1 AND r.estado_modificacion = 'pendiente'
          GROUP BY r.cliente_id, u.id, u.nombre
          ORDER BY creado_en DESC"
     );
@@ -1259,7 +1262,7 @@ function entAsistencias(): void {
         "SELECT u.nombre AS atleta_nombre, c.id AS cliente_id, c.objetivo, c.dias_entrenamiento
          FROM clientes c
          JOIN usuarios u ON c.usuario_id = u.id
-         WHERE (? IS NOT NULL) AND (u.activo = 1 OR u.activo IS NULL)
+         WHERE c.entrenador_id = ? AND (u.activo = 1 OR u.activo IS NULL)
          ORDER BY u.nombre"
     );
     $stTodosClientes->execute([$entId]);
@@ -1330,7 +1333,7 @@ function entAsistenciasFiltro(): void {
                 GROUP BY cliente_id
             ) r_lat ON r_lat.cliente_id = c.id
             JOIN rutinas r ON r.id = r_lat.max_id
-            WHERE (? IS NOT NULL)
+            WHERE c.entrenador_id = ?
               AND NOT EXISTS (
                   SELECT 1 FROM sesiones_asistencia sa 
                   WHERE sa.cliente_id = c.id 
@@ -1403,7 +1406,7 @@ function entAsistenciasData(): void {
          JOIN clientes c ON sa.cliente_id = c.id
          JOIN usuarios u ON c.usuario_id = u.id
          JOIN rutinas r ON sa.rutina_id = r.id
-         WHERE (? IS NOT NULL) 
+         WHERE c.entrenador_id = ? 
            AND (sa.estado = 'completada' OR sa.estado = 'incompleta')
            AND DATE(COALESCE(sa.fin_en, sa.inicio_en)) = ?
          ORDER BY COALESCE(sa.verificada, 0) ASC, COALESCE(sa.fin_en, sa.inicio_en) DESC"
@@ -1421,7 +1424,7 @@ function entAsistenciasData(): void {
          JOIN clientes c ON sa.cliente_id = c.id
          JOIN usuarios u ON c.usuario_id = u.id
          JOIN rutinas r ON sa.rutina_id = r.id
-         WHERE (? IS NOT NULL) AND sa.estado = 'iniciada'
+         WHERE c.entrenador_id = ? AND sa.estado = 'iniciada'
            AND DATE(sa.inicio_en) = ?
          ORDER BY sa.inicio_en DESC"
     );
@@ -1445,7 +1448,7 @@ function entAsistenciasData(): void {
              GROUP BY cliente_id
          ) r_lat ON r_lat.cliente_id = c.id
          JOIN rutinas r ON r.id = r_lat.max_id
-         WHERE (? IS NOT NULL)
+         WHERE c.entrenador_id = ?
            AND NOT EXISTS (
                SELECT 1 FROM sesiones_asistencia sa
                WHERE sa.cliente_id = c.id
@@ -1465,7 +1468,7 @@ function entAsistenciasData(): void {
          FROM rutinas r
          JOIN clientes c ON r.cliente_id = c.id
          JOIN usuarios u ON c.usuario_id = u.id
-         WHERE (? IS NOT NULL) AND r.es_modificacion = 1
+         WHERE c.entrenador_id = ? AND r.es_modificacion = 1
            AND r.estado_modificacion = 'pendiente'
          GROUP BY r.cliente_id, u.id, u.nombre
          ORDER BY creado_en DESC"
@@ -1479,7 +1482,7 @@ function entAsistenciasData(): void {
                 c.objetivo, c.dias_entrenamiento
          FROM clientes c
          JOIN usuarios u ON c.usuario_id = u.id
-         WHERE (? IS NOT NULL) AND (u.activo = 1 OR u.activo IS NULL)
+         WHERE c.entrenador_id = ? AND (u.activo = 1 OR u.activo IS NULL)
          ORDER BY u.nombre"
     );
     $stTodosClientes->execute([$entId]);
@@ -1584,7 +1587,7 @@ function entPagosRecibidos(): void {
          FROM pagos p
          JOIN clientes c ON p.cliente_id = c.id
          JOIN usuarios u ON c.usuario_id = u.id
-         WHERE (? IS NOT NULL) AND p.estado != 'pagado'
+         WHERE c.entrenador_id = ? AND p.estado != 'pagado'
          ORDER BY p.fecha_emision DESC"
     );
     $stmt->execute([$entId]);
@@ -1693,7 +1696,7 @@ function entAprobarPago(): void {
     $check = $db->prepare(
         "SELECT p.id FROM pagos p 
          JOIN clientes c ON p.cliente_id = c.id 
-         WHERE p.id = ? AND (? IS NOT NULL)"
+         WHERE p.id = ? AND c.entrenador_id = ?"
     );
     $check->execute([$pagoId, $entId]);
     if (!$check->fetch()) jsonOut(false, 'Pago no encontrado o sin permisos.');
@@ -1730,7 +1733,7 @@ function entApiPagosCliente(): void {
         $clienteId = (int)($_GET['id'] ?? 0);
         if ($clienteId <= 0) entPagosJson(['ok' => false, 'msg' => 'Atleta inválido.'], 422);
 
-        $stCli = $db->prepare("SELECT id, monto_mensualidad FROM clientes WHERE id = ? AND (? IS NOT NULL)");
+        $stCli = $db->prepare("SELECT id, monto_mensualidad FROM clientes WHERE id = ? AND c.entrenador_id = ?");
         $stCli->execute([$clienteId, $entId]);
         $cli = $stCli->fetch();
         if (!$cli) entPagosJson(['ok' => false, 'msg' => 'Atleta no encontrado.'], 404);
@@ -1790,7 +1793,7 @@ function entApiGuardarMensualidad(): void {
             entPagosJson(['ok' => false, 'msg' => 'El monto debe ser mayor a 0.'], 422);
         }
 
-        $chk = $db->prepare("SELECT id FROM clientes WHERE id = ? AND (? IS NOT NULL)");
+        $chk = $db->prepare("SELECT id FROM clientes WHERE id = ? AND entrenador_id = ?");
         $chk->execute([$clienteId, $entId]);
         if (!$chk->fetch()) entPagosJson(['ok' => false, 'msg' => 'Atleta no encontrado.'], 404);
 
@@ -1820,7 +1823,7 @@ function entConfiguracion(): void {
                 c.id AS cliente_id, c.peso_kg, c.altura_cm, c.objetivo
          FROM clientes c
          JOIN usuarios u ON c.usuario_id = u.id
-         WHERE (? IS NOT NULL)
+         WHERE c.entrenador_id = ?
          ORDER BY u.nombre"
     );
     $stAtl->execute([$entId]);
@@ -1900,7 +1903,7 @@ function entCambiarPasswordAtleta(): void {
     $check = $db->prepare(
         "SELECT c.id FROM clientes c
          JOIN usuarios u ON c.usuario_id = u.id
-         WHERE u.id = ? AND (? IS NOT NULL)"
+         WHERE u.id = ? AND c.entrenador_id = ?"
     );
     $check->execute([$usuarioId, $entId]);
     if (!$check->fetch()) jsonOut(false, 'No tienes permiso para modificar este usuario.');
@@ -1926,7 +1929,7 @@ function entCambiarRolAtleta(): void {
     $check = $db->prepare(
         "SELECT c.id FROM clientes c
          JOIN usuarios u ON c.usuario_id = u.id
-         WHERE u.id = ? AND (? IS NOT NULL)"
+         WHERE u.id = ? AND c.entrenador_id = ?"
     );
     $check->execute([$usuarioId, $entId]);
     if (!$check->fetch()) jsonOut(false, 'No tienes permiso para modificar este usuario.');
@@ -1958,7 +1961,7 @@ function entEliminarAtleta(): void {
         "SELECT u.id, u.nombre, u.rol, c.id AS cliente_id, c.foto 
          FROM usuarios u
          LEFT JOIN clientes c ON c.usuario_id = u.id
-         WHERE u.id = ? AND (? IS NOT NULL)"
+         WHERE u.id = ? AND c.entrenador_id = ?"
     );
     $check->execute([$usuarioId, $entId]);
     $user = $check->fetch(PDO::FETCH_ASSOC);
@@ -2020,7 +2023,7 @@ function entRevisarModificacion(): void {
              FROM rutinas r
              JOIN clientes c ON r.cliente_id = c.id
              JOIN usuarios u ON c.usuario_id = u.id
-             WHERE r.id = ? AND r.es_modificacion = 1 AND (? IS NOT NULL)"
+             WHERE r.id = ? AND r.es_modificacion = 1 AND c.entrenador_id = ?"
         );
         $stRut->execute([$rutinaId, $entId]);
         $rutina = $stRut->fetch();
@@ -2590,7 +2593,7 @@ function entApiRutinaLive(): void {
     }
 
     // Verify ownership
-    $chk = $db->prepare("SELECT id FROM clientes WHERE id = ? AND (? IS NOT NULL)");
+    $chk = $db->prepare("SELECT id FROM clientes WHERE id = ? AND entrenador_id = ?");
     $chk->execute([$clienteId, $entId]);
     if (!$chk->fetch()) {
         jsonOut(false, 'No autorizado.');
@@ -2945,10 +2948,10 @@ function entApiAprobarAtleta(): void {
     $targetUsuarioId = 0;
     $targetClienteId = 0;
 
-    // 1. Si viene cliente_id, buscar usuario_id correspondiente
+    // 1. Si viene cliente_id, buscar usuario_id correspondiente (solo atletas del entrenador actual)
     if ($clienteId > 0) {
-        $stC = $db->prepare("SELECT c.id AS cliente_id, c.usuario_id FROM clientes c WHERE c.id = ?");
-        $stC->execute([$clienteId]);
+        $stC = $db->prepare("SELECT c.id AS cliente_id, c.usuario_id FROM clientes c WHERE c.id = ? AND c.entrenador_id = ?");
+        $stC->execute([$clienteId, $entId]);
         $rowC = $stC->fetch(PDO::FETCH_ASSOC);
         if ($rowC) {
             $targetClienteId = (int)$rowC['cliente_id'];
@@ -2959,16 +2962,16 @@ function entApiAprobarAtleta(): void {
     // 2. Si no se resolvió por cliente_id pero viene usuario_id:
     if (!$targetUsuarioId && $usuarioId > 0) {
         // Primero verificar si coincide directamente con la tabla usuarios
-        $stU = $db->prepare("SELECT u.id AS usuario_id, c.id AS cliente_id FROM usuarios u LEFT JOIN clientes c ON c.usuario_id = u.id WHERE u.id = ?");
-        $stU->execute([$usuarioId]);
+        $stU = $db->prepare("SELECT u.id AS usuario_id, c.id AS cliente_id FROM usuarios u JOIN clientes c ON c.usuario_id = u.id WHERE u.id = ? AND c.entrenador_id = ?");
+        $stU->execute([$usuarioId, $entId]);
         $rowU = $stU->fetch(PDO::FETCH_ASSOC);
         if ($rowU) {
             $targetUsuarioId = (int)$rowU['usuario_id'];
             $targetClienteId = (int)($rowU['cliente_id'] ?? 0);
         } else {
             // Verificar si el ID enviado era en realidad el id de la tabla clientes
-            $stAlt = $db->prepare("SELECT c.id AS cliente_id, c.usuario_id FROM clientes c WHERE c.id = ?");
-            $stAlt->execute([$usuarioId]);
+            $stAlt = $db->prepare("SELECT c.id AS cliente_id, c.usuario_id FROM clientes c WHERE c.id = ? AND c.entrenador_id = ?");
+            $stAlt->execute([$usuarioId, $entId]);
             $rowAlt = $stAlt->fetch(PDO::FETCH_ASSOC);
             if ($rowAlt) {
                 $targetClienteId = (int)$rowAlt['cliente_id'];
@@ -3027,7 +3030,7 @@ function entApiProgresoEjercicios(): void {
     $grupo = trim($_GET['grupo'] ?? '');
 
     // Verificar que el atleta pertenezca al entrenador
-    $st = $db->prepare("SELECT id FROM clientes WHERE id = ? AND (? IS NOT NULL)");
+    $st = $db->prepare("SELECT id FROM clientes WHERE id = ? AND entrenador_id = ?");
     $st->execute([$clienteId, $entId]);
     if (!$st->fetch()) {
         echo json_encode(['ok' => false, 'ejercicios' => [], 'msg' => 'Atleta no encontrado o sin permisos']);
@@ -3062,7 +3065,7 @@ function entApiProgresoHistorial(): void {
     $ejId = (int)($_GET['ejercicio_id'] ?? 0);
 
     // Verificar que el atleta pertenezca al entrenador
-    $st = $db->prepare("SELECT id FROM clientes WHERE id = ? AND (? IS NOT NULL)");
+    $st = $db->prepare("SELECT id FROM clientes WHERE id = ? AND entrenador_id = ?");
     $st->execute([$clienteId, $entId]);
     if (!$st->fetch()) {
         echo json_encode(['ok' => false, 'historial' => [], 'msg' => 'Atleta no encontrado o sin permisos']);
@@ -3092,7 +3095,7 @@ function entApiDiaDetalle(): void {
     $fecha = trim((string)($_GET['fecha'] ?? ''));
 
     // Verificar que el atleta pertenezca al entrenador
-    $st = $db->prepare("SELECT id FROM clientes WHERE id = ? AND (? IS NOT NULL)");
+    $st = $db->prepare("SELECT id FROM clientes WHERE id = ? AND entrenador_id = ?");
     $st->execute([$clienteId, $entId]);
     if (!$st->fetch()) {
         http_response_code(403);
@@ -3264,7 +3267,7 @@ function entApiRutinaEjercicio(): void {
         FROM ejercicios e
         JOIN rutinas r ON r.id = e.rutina_id
         JOIN clientes c ON c.id = r.cliente_id
-        WHERE e.id = ? AND (? IS NOT NULL)
+        WHERE e.id = ? AND c.entrenador_id = ?
     ");
     $stCheck->execute([$ejercicioId, $entId]);
     $ejRow = $stCheck->fetch(PDO::FETCH_ASSOC);
@@ -3289,6 +3292,23 @@ function entApiRutinaEjercicio(): void {
                 WHERE id = ?
             ");
             $stUp->execute([$series, $reps, $rir, $imp, $ejercicioId]);
+
+            // Sincronizar plantilla vinculada si existe
+            $rutId = (int)$ejRow['rutina_id'];
+            $stPl = $db->prepare("SELECT plantilla_id FROM rutinas WHERE id = ?");
+            $stPl->execute([$rutId]);
+            $plId = (int)$stPl->fetchColumn();
+            if ($plId > 0) {
+                $ordenEj = (int)($ejRow['orden'] ?? 1);
+                $stPlEj = $db->prepare("SELECT id FROM plantilla_ejercicios WHERE plantilla_id = ? AND orden = ? LIMIT 1");
+                $stPlEj->execute([$plId, $ordenEj]);
+                $plEjId = (int)$stPlEj->fetchColumn();
+                if ($plEjId > 0) {
+                    $repsNum = (int)preg_replace('/\D/', '', $reps) ?: 10;
+                    $db->prepare("UPDATE plantilla_series SET reps_objetivo = ?, rir = ? WHERE plantilla_ej_id = ?")
+                       ->execute([$repsNum, $rir, $plEjId]);
+                }
+            }
 
             $equipamiento = inferirEquipamientoProgreso($ejRow['nombre'], $imp);
 
@@ -3336,6 +3356,17 @@ function entApiRutinaEjercicio(): void {
             ");
             $stUp->execute([$nuevoNombre, $nuevoGrupo, $imp, $ejercicioId]);
 
+            // Sincronizar plantilla vinculada si existe
+            $rutId = (int)$ejRow['rutina_id'];
+            $stPl = $db->prepare("SELECT plantilla_id FROM rutinas WHERE id = ?");
+            $stPl->execute([$rutId]);
+            $plId = (int)$stPl->fetchColumn();
+            if ($plId > 0) {
+                $ordenEj = (int)($ejRow['orden'] ?? 1);
+                $db->prepare("UPDATE plantilla_ejercicios SET nombre_override = ?, tipo_implemento = ? WHERE plantilla_id = ? AND orden = ?")
+                   ->execute([$nuevoNombre, $imp, $plId, $ordenEj]);
+            }
+
             jsonOut(true, 'Ejercicio reemplazado correctamente.', [
                 'ejercicio' => [
                     'id'             => $ejercicioId,
@@ -3350,6 +3381,20 @@ function entApiRutinaEjercicio(): void {
         if ($accion === 'eliminar') {
             $stDel = $db->prepare("DELETE FROM ejercicios WHERE id = ?");
             $stDel->execute([$ejercicioId]);
+
+            // Sincronizar plantilla vinculada si existe
+            $rutId = (int)$ejRow['rutina_id'];
+            $stPl = $db->prepare("SELECT plantilla_id FROM rutinas WHERE id = ?");
+            $stPl->execute([$rutId]);
+            $plId = (int)$stPl->fetchColumn();
+            if ($plId > 0) {
+                $ordenEj = (int)($ejRow['orden'] ?? 1);
+                $db->prepare("DELETE FROM plantilla_series WHERE plantilla_ej_id IN (SELECT id FROM plantilla_ejercicios WHERE plantilla_id = ? AND orden = ?)")
+                   ->execute([$plId, $ordenEj]);
+                $db->prepare("DELETE FROM plantilla_ejercicios WHERE plantilla_id = ? AND orden = ?")
+                   ->execute([$plId, $ordenEj]);
+            }
+
             jsonOut(true, 'Ejercicio eliminado de la rutina.', ['id' => $ejercicioId]);
         }
 
@@ -3649,7 +3694,7 @@ function entApiGuardarRutinaComoPlantilla(): void {
         SELECT r.*, c.usuario_id 
         FROM rutinas r
         JOIN clientes c ON c.id = r.cliente_id
-        WHERE r.id = ? AND (? IS NOT NULL)
+        WHERE r.id = ? AND c.entrenador_id = ?
     ");
     $stR->execute([$rutinaId, $entId]);
     $rutina = $stR->fetch(PDO::FETCH_ASSOC);
@@ -3885,7 +3930,7 @@ function entApiGuardarSerieAtleta(): void {
         }
 
         // Validar que el cliente pertenece al entrenador
-        $stVerif = $db->prepare("SELECT id FROM clientes WHERE id = ? AND (? IS NOT NULL)");
+        $stVerif = $db->prepare("SELECT id FROM clientes WHERE id = ? AND entrenador_id = ?");
         $stVerif->execute([$clienteId, $entId]);
         if (!$stVerif->fetch()) {
             http_response_code(403);
@@ -4116,7 +4161,7 @@ function entApiEliminarRutina(): void {
         SELECT r.id, r.cliente_id 
         FROM rutinas r
         JOIN clientes c ON c.id = r.cliente_id
-        WHERE r.id = ? AND (? IS NOT NULL)
+        WHERE r.id = ? AND c.entrenador_id = ?
     ");
     $chk->execute([$rutinaId, $entId]);
     $rutinaRow = $chk->fetch(PDO::FETCH_ASSOC);
@@ -4182,7 +4227,7 @@ function entApiActualizarRutinaCompleta(): void {
         SELECT r.id, r.cliente_id 
         FROM rutinas r
         JOIN clientes c ON c.id = r.cliente_id
-        WHERE r.id = ? AND (? IS NOT NULL)
+        WHERE r.id = ? AND c.entrenador_id = ?
     ");
     $chk->execute([$rutinaId, $entId]);
     $rutinaRow = $chk->fetch(PDO::FETCH_ASSOC);
@@ -4404,7 +4449,7 @@ function entApiImportarHistorialAnalizar(): void {
         SELECT c.id, c.peso_kg, u.nombre, u.email
         FROM clientes c
         JOIN usuarios u ON c.usuario_id = u.id
-        WHERE c.id = ? AND (? IS NOT NULL)
+        WHERE c.id = ? AND c.entrenador_id = ?
         LIMIT 1
     ");
     $stAtl->execute([$clienteId, $entId]);
@@ -4534,7 +4579,7 @@ function entApiImportarHistorialGuardar(): void {
     $db = getDB();
 
     // Validar atleta
-    $stAtl = $db->prepare("SELECT id FROM clientes WHERE id = ? AND (? IS NOT NULL) LIMIT 1");
+    $stAtl = $db->prepare("SELECT id FROM clientes WHERE id = ? AND entrenador_id = ? LIMIT 1");
     $stAtl->execute([$clienteId, $entId]);
     if (!$stAtl->fetch()) {
         while (ob_get_level() > 0) ob_end_clean();
@@ -4716,6 +4761,15 @@ function entApiImportarHistorialGuardar(): void {
                         $ejGrp = trim((string)($ejP['grupo_muscular'] ?? ''));
                         $ejEqp = trim((string)($ejP['equipamiento'] ?? '')) ?: ($prevData['equipamiento'] ?? null);
                         $ejDesc = trim((string)($ejP['descripcion_peso'] ?? '')) ?: ($prevData['descripcion_peso'] ?? null);
+
+                        if ($ejDesc !== null && ($ejUni === 'kg' || empty($ejP['unidad_carga']))) {
+                            $descLower = mb_strtolower($ejDesc);
+                            if (strpos($descLower, 'placa') !== false) {
+                                $ejUni = 'placas';
+                            } elseif (strpos($descLower, 'lb') !== false) {
+                                $ejUni = 'lbs';
+                            }
+                        }
 
                         $seriesListToUse = (!empty($ejP['series']) && (float)($ejP['series'][0]['peso'] ?? 0) > 0)
                             ? $ejP['series'] 
@@ -5044,7 +5098,7 @@ function entExportarAtletaExcel(): void {
         SELECT c.id, c.peso_kg, c.altura_cm, c.objetivo, u.nombre, u.email
         FROM clientes c
         JOIN usuarios u ON c.usuario_id = u.id
-        WHERE c.id = ? AND (? IS NOT NULL)
+        WHERE c.id = ? AND c.entrenador_id = ?
     ");
     $stAtl->execute([$clienteId, $entId]);
     $atleta = $stAtl->fetch(PDO::FETCH_ASSOC);
@@ -5453,7 +5507,7 @@ function entApiClienteMedidas(): void {
         SELECT c.id, c.peso_kg, c.altura_cm, COALESCE(c.genero, 'masculino') AS genero, u.nombre
         FROM clientes c
         JOIN usuarios u ON c.usuario_id = u.id
-        WHERE c.id = ? AND (? IS NOT NULL)
+        WHERE c.id = ? AND c.entrenador_id = ?
     ");
     $stAtl->execute([$clienteId, $entId]);
     $atleta = $stAtl->fetch(PDO::FETCH_ASSOC);
@@ -5499,7 +5553,7 @@ function entApiGuardarClienteMedidas(): void {
         jsonOut(false, 'Cliente o fecha inválidos.', [], 400);
     }
 
-    $stChk = $db->prepare("SELECT id FROM clientes WHERE id = ? AND (? IS NOT NULL)");
+    $stChk = $db->prepare("SELECT id FROM clientes WHERE id = ? AND entrenador_id = ?");
     $stChk->execute([$clienteId, $entId]);
     if (!$stChk->fetch()) {
         jsonOut(false, 'No autorizado.', [], 403);
@@ -5610,7 +5664,7 @@ function entApiCambiarGeneroCliente(): void {
         jsonOut(false, 'Género inválido.', [], 400);
     }
 
-    $stChk = $db->prepare("SELECT id FROM clientes WHERE id = ? AND (? IS NOT NULL)");
+    $stChk = $db->prepare("SELECT id FROM clientes WHERE id = ? AND entrenador_id = ?");
     $stChk->execute([$clienteId, $entId]);
     if (!$stChk->fetch()) {
         jsonOut(false, 'No autorizado.', [], 403);

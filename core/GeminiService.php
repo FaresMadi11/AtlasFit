@@ -44,7 +44,7 @@ class GeminiService {
 
         // Construir el prompt de ingeniería deportiva
         $systemPrompt = <<<PROMPT
-Eres un Analista Principal de Ciencias del Deporte y Procesador de Datos para Xprod Fit.
+Eres un Analista Principal de Ciencias del Deporte y Procesador de Datos para Atlas Fit.
 Tu tarea es leer minuciosamente un registro histórico de entrenamientos del atleta "{$nombreAtleta}" (proveniente de un archivo Excel con tablas/hojas, Word con texto/tablas o PDF) y reconstruir su CRONOLOGÍA COMPLETA Y DETALLADA sin omitir semanas ni series.
 
 CATÁLOGO OFICIAL DE EJERCICIOS DEL SISTEMA:

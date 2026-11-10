@@ -67,7 +67,7 @@ if ($accion === 'verificar_respuesta') {
                 
                 // Enviar Correo con PHPMailer
                 $body = "Hola " . e($usuario['nombre']) . ",<br><br>Tu código de recuperación es: <strong>" . $codigo . "</strong><br>Este código expirará en 15 minutos.";
-                $mailSent = sendEmail($email, "Código de Recuperación - Xprod Fit", $body);
+                $mailSent = sendEmail($email, "Código de Recuperación - Atlas Fit", $body);
                 
                 if ($mailSent) {
                     echo json_encode(["success" => true, "message" => "Código enviado al correo."]);

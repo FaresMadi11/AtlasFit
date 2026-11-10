@@ -3344,15 +3344,11 @@ svg.silueta-interactive {
                   </div>
                 </div>
               </div>
-
             </div>
           </div>
 
-            </div>
-          </div>
-
-        </div>
-      </div>
+        </div><!-- /xpSwipeTrack -->
+      </div><!-- /xpSwipeWrapper -->
 
       <!-- = = = 2. BLOQUE: PROGRESO POR GRUPO MUSCULAR & RÉCORDS = = = -->
       <div class="card-bento mb-3" style="padding:18px 20px;">
@@ -3589,7 +3585,7 @@ svg.silueta-interactive {
               <h3 class="crdi-title" id="crdiTituloFecha">Cargando...</h3>
             </div>
             <div style="display:flex; align-items:center; gap:8px;">
-              <div id="crdiBadge" class="crdi-badge">Hoy</div>
+              <div id="crdiBadge" class="crdi-badge" style="display:none;"></div>
               <button type="button" class="crdi-btn-del-rutina" id="btnDelRutinaTop" style="display:none;" onclick="confirmarEliminarRutinaCompleta()" title="Eliminar rutina completa">
                 <i class="ti ti-trash"></i> Eliminar
               </button>
@@ -6121,12 +6117,16 @@ if (document.readyState === 'complete') {
       }
 
       badgeEl.className = 'crdi-badge';
+      badgeEl.style.display = 'inline-flex';
       if (data.estado === 'completado') {
         badgeEl.classList.add('badge-completado');
         badgeEl.innerHTML = '<i class="ti ti-circle-check"></i> Completado';
       } else if (data.estado === 'incompleta') {
         badgeEl.classList.add('badge-incompleta');
         badgeEl.innerHTML = '<i class="ti ti-clock-pause"></i> Rutina incompleta';
+      } else if (data.estado === 'sin_registro') {
+        badgeEl.style.display = 'none';
+        badgeEl.innerHTML = '';
       } else if (data.estado === 'sin_rutina' || data.estado === 'sin_actividad') {
         const dt = new Date(fecha + 'T00:00:00');
         const dow = dt.getDay();

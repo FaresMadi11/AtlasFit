@@ -85,19 +85,23 @@ if ($route !== '') {
 }
 if ($route === '') {
     if (!empty($_SESSION['user_id'])) {
-        $route = (($_SESSION['rol'] ?? '') === 'entrenador') ? 'entrenador/dashboard' : 'cliente/dashboard';
+        $rolSes = $_SESSION['rol'] ?? '';
+        $route = $rolSes === 'admin'
+            ? 'admin/dashboard'
+            : ($rolSes === 'entrenador' ? 'entrenador/dashboard' : 'cliente/dashboard');
     } else {
         $route = 'auth/login';
     }
 }
 
 $segment = explode('/', $route);
-$area    = $segment[0] ?? '';   // auth | entrenador | cliente | legal
+$area    = $segment[0] ?? '';   // auth | admin | entrenador | cliente | legal
 $action  = $segment[1] ?? '';   // login | dashboard | privacidad | etc.
 
 try {
     match($area) {
         'auth'       => (require BASE_DIR . '/controllers/AuthController.php'),
+        'admin'      => (require BASE_DIR . '/controllers/AdminController.php'),
         'entrenador' => (require BASE_DIR . '/controllers/EntrenadorController.php'),
         'cliente'    => (require BASE_DIR . '/controllers/ClienteController.php'),
         'public'     => (require BASE_DIR . '/controllers/PublicController.php'),

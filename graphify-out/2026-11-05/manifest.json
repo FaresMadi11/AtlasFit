@@ -12,9 +12,9 @@
     "semantic_hash": "504d1052fd6972a2be702e240c7e3feb"
   },
   "assets/js/app.js": {
-    "mtime": 1793531872.2142327,
-    "seen": 1793873676.7725036,
-    "ast_hash": "f5f1c3c33b58663ce1af556ff1581fb4",
+    "mtime": 1793877868.215956,
+    "seen": 1793885241.093923,
+    "ast_hash": "4cf8d61589bf472a122d718249c423e9",
     "semantic_hash": ""
   },
   "assets/js/cookies.js": {
@@ -36,15 +36,15 @@
     "semantic_hash": ""
   },
   "controllers/ClienteController.php": {
-    "mtime": 1793873750.5121477,
-    "seen": 1793875089.259122,
-    "ast_hash": "39699394e9d9a951e07ec3c35e4ba35a",
+    "mtime": 1793886852.3315978,
+    "seen": 1793887492.0497024,
+    "ast_hash": "bd27abfa3a8c42fa2a2fd73a3c5551e6",
     "semantic_hash": ""
   },
   "controllers/EntrenadorController.php": {
-    "mtime": 1793873750.8053832,
-    "seen": 1793875089.2591238,
-    "ast_hash": "7fff65ae8dcc6276406d827070cb382f",
+    "mtime": 1793886910.8489518,
+    "seen": 1793887492.04971,
+    "ast_hash": "61eb6d5996fb95974bde89658304daa2",
     "semantic_hash": ""
   },
   "controllers/GoogleAuthController.php": {
@@ -84,8 +84,8 @@
     "semantic_hash": ""
   },
   "core/helpers.php": {
-    "mtime": 1793874855.0673263,
-    "seen": 1793875089.260293,
+    "mtime": 1793875282.0818367,
+    "seen": 1793876673.6898346,
     "ast_hash": "d1add903e9564215113930a15bd4eba0",
     "semantic_hash": ""
   },
@@ -216,8 +216,8 @@
     "semantic_hash": "ca6328d41cbcf6112d6fc81c7e2c8325"
   },
   "views/auth/login.php": {
-    "mtime": 1793875037.9053843,
-    "seen": 1793875089.263209,
+    "mtime": 1793875282.2715807,
+    "seen": 1793876673.6999922,
     "ast_hash": "909f109c6d22795b6d5d528ccfcbc2e5",
     "semantic_hash": ""
   },
@@ -234,9 +234,9 @@
     "semantic_hash": ""
   },
   "views/cliente/estadisticas.php": {
-    "mtime": 1793873751.5386755,
-    "seen": 1793875089.2634249,
-    "ast_hash": "ca469d1109ebe466c4644dc835863d37",
+    "mtime": 1793877868.431036,
+    "seen": 1793885241.11383,
+    "ast_hash": "89b0a324593464eb60dddcba99c49a0f",
     "semantic_hash": ""
   },
   "views/cliente/modificar_rutina.php": {
@@ -258,9 +258,9 @@
     "semantic_hash": ""
   },
   "views/cliente/rutina_dia.php": {
-    "mtime": 1793873751.9677,
-    "seen": 1793875089.2637274,
-    "ast_hash": "3e30784f7224f050bf42d96ec51ed2c4",
+    "mtime": 1793886945.7041407,
+    "seen": 1793887492.0739546,
+    "ast_hash": "164bf42359379546f80c1faa120f1ea4",
     "semantic_hash": ""
   },
   "views/cliente/rutinas.php": {
@@ -270,9 +270,9 @@
     "semantic_hash": ""
   },
   "views/entrenador/asistencias.php": {
-    "mtime": 1793875073.391335,
-    "seen": 1793875089.2638419,
-    "ast_hash": "64a63d57fe322cd74790f7c3d6eb4887",
+    "mtime": 1793887003.1317728,
+    "seen": 1793887492.0744383,
+    "ast_hash": "f9f937930701425aeb7afbbca6e22b96",
     "semantic_hash": ""
   },
   "views/entrenador/clientes.php": {
@@ -312,8 +312,8 @@
     "semantic_hash": ""
   },
   "views/entrenador/notificaciones.php": {
-    "mtime": 1793874990.6653259,
-    "seen": 1793875089.264457,
+    "mtime": 1793875282.746544,
+    "seen": 1793876673.7046041,
     "ast_hash": "fc7b3872ced477047c82d19cd73fcdb5",
     "semantic_hash": ""
   },
@@ -330,9 +330,9 @@
     "semantic_hash": "3528c4391025b58445fa59b7963705d9"
   },
   "views/entrenador/perfil_cliente.php": {
-    "mtime": 1793873752.7798893,
-    "seen": 1793875089.2646616,
-    "ast_hash": "ef1af62230176e36b19214c5224a4184",
+    "mtime": 1793877868.964768,
+    "seen": 1793885241.1192603,
+    "ast_hash": "52c6965da3083c95faa70db752872533",
     "semantic_hash": ""
   },
   "views/entrenador/registrar_cliente.php": {
@@ -360,9 +360,9 @@
     "semantic_hash": ""
   },
   "views/layout/header.php": {
-    "mtime": 1793873752.9370131,
-    "seen": 1793875089.2653284,
-    "ast_hash": "49a6c548ced79518465955f5f2916c05",
+    "mtime": 1793877869.179735,
+    "seen": 1793885241.121236,
+    "ast_hash": "66052d1b33dbe28afa88092e97ec54fb",
     "semantic_hash": ""
   },
   "views/legal/privacidad.php": {
@@ -408,8 +408,8 @@
     "semantic_hash": ""
   },
   "views/cliente/notificaciones.php": {
-    "mtime": 1793874992.484874,
-    "seen": 1793875089.2635286,
+    "mtime": 1793875282.4799948,
+    "seen": 1793876673.701006,
     "ast_hash": "cbd64bc504badd02a8a7ee414e1cedb5",
     "semantic_hash": ""
   },

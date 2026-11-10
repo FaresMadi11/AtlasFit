@@ -89,7 +89,7 @@ function requireLogin(): void {
         redirect('auth/login');
     }
     // Verificación de estado de cuenta para atletas (cacheada 60s en sesión para ahorrar 1 query a TiDB por clic)
-    if (($_SESSION['rol'] ?? '') !== 'entrenador') {
+    if (!in_array($_SESSION['rol'] ?? '', ['entrenador', 'admin'], true)) {
         $now = time();
         $lastCheck = (int)($_SESSION['_acc_ok_ts'] ?? 0);
         if (($now - $lastCheck) > 60) {
@@ -129,11 +129,260 @@ function releaseSessionLockIfReadOnly(): void {
     }
 }
 
-/** Verifica rol, si no tiene acceso redirige */
+/**
+ * Obtiene y calcula en tiempo real el estado de la membresía mensual de un entrenador.
+ * Reglas de negocio:
+ *  - Recordatorio: desde 7 días antes de fecha_proximo_pago hasta el día de pago.
+ *  - Período de gracia: desde 1 hasta 7 días después de fecha_proximo_pago.
+ *  - Suspensión: a partir del día 8 después de fecha_proximo_pago, o si pausado_manualmente = 1.
+ */
+function obtenerEstadoMembresiaEntrenador(int $entrenadorId): array {
+    static $cache = [];
+    if (isset($cache[$entrenadorId])) {
+        return $cache[$entrenadorId];
+    }
+
+    $default = [
+        'entrenador_id'        => $entrenadorId,
+        'codigo_referido'      => 'COACH-' . $entrenadorId,
+        'link_referido'        => url('auth/registro?ref=COACH-' . $entrenadorId),
+        'monto_mensualidad'    => 25.00,
+        'moneda'               => 'USD',
+        'fecha_proximo_pago'   => date('Y-m-d', strtotime('+30 days')),
+        'fecha_limite_gracia'  => date('Y-m-d', strtotime('+37 days')),
+        'dias_gracia'          => 7,
+        'dias_para_pago'       => 30,
+        'dias_gracia_restantes'=> 7,
+        'pausado_manualmente'  => 0,
+        'estado_calculado'     => 'activa',
+        'bloqueado'            => false,
+        'mostrar_banner'       => false,
+        'tipo_banner'          => null,
+        'titulo_alerta'        => null,
+        'mensaje_alerta'       => null,
+    ];
+
+    if ($entrenadorId <= 0) {
+        return $default;
+    }
+
+    try {
+        $db = getDB();
+        $st = $db->prepare("SELECT * FROM entrenadores_membresias WHERE entrenador_id = ? LIMIT 1");
+        $st->execute([$entrenadorId]);
+        $row = $st->fetch(PDO::FETCH_ASSOC);
+
+        if (!$row) {
+            $stU = $db->prepare("SELECT nombre FROM usuarios WHERE id = ? LIMIT 1");
+            $stU->execute([$entrenadorId]);
+            $nom = (string)($stU->fetchColumn() ?: 'COACH');
+            $clean = strtoupper(preg_replace('/[^A-Za-z0-9]/', '', sinAcentos($nom)));
+            if ($clean === '') $clean = 'COACH';
+            $code = substr($clean, 0, 10) . '-' . $entrenadorId;
+
+            $fechaInit = date('Y-m-d', strtotime('+30 days'));
+            $db->prepare("
+                INSERT IGNORE INTO entrenadores_membresias 
+                (entrenador_id, codigo_referido, monto_mensualidad, moneda, fecha_proximo_pago, dias_gracia, estado_suscripcion, pausado_manualmente)
+                VALUES (?, ?, 25.00, 'USD', ?, 7, 'activa', 0)
+            ")->execute([$entrenadorId, $code, $fechaInit]);
+
+            $st->execute([$entrenadorId]);
+            $row = $st->fetch(PDO::FETCH_ASSOC);
+        }
+
+        if (!$row) {
+            return $default;
+        }
+
+        $codigo      = (string)$row['codigo_referido'];
+        $fechaPago   = (string)$row['fecha_proximo_pago'];
+        $diasGracia  = isset($row['dias_gracia']) ? max(0, (int)$row['dias_gracia']) : 7;
+        $pausadoMan  = (int)($row['pausado_manualmente'] ?? 0);
+        $msgCustom   = trim((string)($row['mensaje_bloqueo'] ?? ''));
+        if ($msgCustom === '') {
+            try {
+                $stGlobalMsg = $db->query("SELECT valor FROM ajustes_globales WHERE clave = 'mensaje_pausa_entrenadores' LIMIT 1");
+                $valGlobalMsg = $stGlobalMsg ? trim((string)$stGlobalMsg->fetchColumn()) : '';
+                if ($valGlobalMsg !== '') {
+                    $msgCustom = $valGlobalMsg;
+                }
+            } catch (\Throwable $e) {}
+        }
+
+        $hoyTs       = strtotime(date('Y-m-d'));
+        $pagoTs      = strtotime($fechaPago) ?: $hoyTs;
+        $avisoTs     = strtotime('-7 days', $pagoTs);
+        $fechaAviso  = date('Y-m-d', $avisoTs);
+        $limiteTs    = strtotime("+{$diasGracia} days", $pagoTs);
+        $fechaLimite = date('Y-m-d', $limiteTs);
+
+        $diasParaPago = (int)round(($pagoTs - $hoyTs) / 86400);
+        $diasGraciaRestantes = (int)round(($limiteTs - $hoyTs) / 86400);
+
+        $estadoCalculado = 'activa';
+        $bloqueado       = false;
+        $mostrarBanner   = false;
+        $tipoBanner      = null;
+        $tituloAlerta    = null;
+        $mensajeAlerta   = null;
+
+        $fechaAvisoFmt  = date('d/m/Y', $avisoTs);
+        $fechaPagoFmt   = date('d/m/Y', $pagoTs);
+        $fechaLimiteFmt = date('d/m/Y', $limiteTs);
+
+        if ($pausadoMan === 1) {
+            $estadoCalculado = 'pausada_manual';
+            $bloqueado       = true;
+            $tituloAlerta    = 'Web en Pausa';
+            $mensajeAlerta   = $msgCustom !== ''
+                ? $msgCustom
+                : 'El uso de la web ha sido pausado hasta que logres completar el pago de tu membresía mensual.';
+        } elseif ($diasParaPago < -$diasGracia) {
+            // Pasó más de 1 semana después de la fecha de pago -> Suspensión automática
+            $estadoCalculado = 'suspendida';
+            $bloqueado       = true;
+            $tituloAlerta    = 'Membresía Vencida — Web en Suspensión';
+            $mensajeAlerta   = $msgCustom !== ''
+                ? $msgCustom
+                : "El uso de la web ha sido pausado temporalmente porque el plazo de pago venció el {$fechaLimiteFmt}. Se reactivará en cuanto completes el pago de tu membresía.";
+        } elseif ($diasParaPago < 0) {
+            // Dentro de la semana de gracia post-vencimiento (días -1 a -7)
+            $diasVencidos    = abs($diasParaPago);
+            $estadoCalculado = 'en_gracia';
+            $bloqueado       = false;
+            $mostrarBanner   = true;
+            $tipoBanner      = 'gracia';
+            $tituloAlerta    = 'Período de Gracia de Membresía';
+            if ($diasGraciaRestantes <= 0) {
+                $mensajeAlerta = "Tu fecha de pago fue el {$fechaPagoFmt}. Hoy es tu último día de gracia antes de que la web se ponga en suspensión.";
+            } else {
+                $dTxt = $diasGraciaRestantes === 1 ? '1 día' : "{$diasGraciaRestantes} días";
+                $mensajeAlerta = "Tu membresía venció el {$fechaPagoFmt}. Tienes {$dTxt} de prórroga (hasta el {$fechaLimiteFmt}) para realizar el pago antes de que la web se pause.";
+            }
+        } elseif ($diasParaPago <= 7) {
+            // Semana previa a la fecha de pago (días 0 a 7 antes)
+            $estadoCalculado = 'recordatorio';
+            $bloqueado       = false;
+            $mostrarBanner   = true;
+            $tipoBanner      = 'recordatorio';
+            $tituloAlerta    = 'Recordatorio de Membresía';
+            if ($diasParaPago === 0) {
+                $mensajeAlerta = "Hoy ({$fechaPagoFmt}) es tu fecha de pago de membresía mensual. Recuerda que cuentas con 7 días de chance hasta el {$fechaLimiteFmt}.";
+            } else {
+                $dTxt = $diasParaPago === 1 ? 'mañana' : "en {$diasParaPago} días";
+                $mensajeAlerta = "Recordatorio: Tu fecha de pago de la membresía mensual es {$dTxt} ({$fechaPagoFmt}).";
+            }
+        }
+
+        // Sincronizar columna estado_suscripcion en BD si cambió
+        $dbEstado = match ($estadoCalculado) {
+            'pausada_manual' => 'pausada_manual',
+            'suspendida'     => 'suspendida',
+            'en_gracia'      => 'en_gracia',
+            default          => 'activa',
+        };
+        if (($row['estado_suscripcion'] ?? '') !== $dbEstado) {
+            $db->prepare("UPDATE entrenadores_membresias SET estado_suscripcion = ? WHERE id = ?")
+               ->execute([$dbEstado, (int)$row['id']]);
+        }
+
+        $baseAppUrl = str_replace(' ', '%20', rtrim((string)APP_URL, '/'));
+        $res = [
+            'id'                    => (int)$row['id'],
+            'entrenador_id'         => $entrenadorId,
+            'codigo_referido'       => $codigo,
+            'link_referido'         => $baseAppUrl . '/auth/registro?ref=' . rawurlencode($codigo),
+            'monto_mensualidad'     => (float)($row['monto_mensualidad'] ?? 25.00),
+            'moneda'                => (string)($row['moneda'] ?? 'USD'),
+            'fecha_aviso'           => $fechaAviso,
+            'fecha_aviso_fmt'       => $fechaAvisoFmt,
+            'fecha_proximo_pago'    => $fechaPago,
+            'fecha_proximo_pago_fmt'=> $fechaPagoFmt,
+            'fecha_limite_gracia'   => $fechaLimite,
+            'fecha_limite_fmt'      => $fechaLimiteFmt,
+            'dias_gracia'           => $diasGracia,
+            'dias_para_pago'        => $diasParaPago,
+            'dias_gracia_restantes' => max(0, $diasGraciaRestantes),
+            'pausado_manualmente'   => $pausadoMan,
+            'estado_calculado'      => $estadoCalculado,
+            'bloqueado'             => $bloqueado,
+            'mostrar_banner'        => $mostrarBanner,
+            'tipo_banner'           => $tipoBanner,
+            'titulo_alerta'         => $tituloAlerta,
+            'mensaje_alerta'        => $mensajeAlerta,
+            'mensaje_bloqueo'       => trim((string)($row['mensaje_bloqueo'] ?? '')),
+            'notas_admin'           => $row['notas_admin'] ?? null,
+        ];
+        $cache[$entrenadorId] = $res;
+        return $res;
+    } catch (\Throwable $e) {
+        error_log('[obtenerEstadoMembresiaEntrenador] ' . $e->getMessage());
+        return $default;
+    }
+}
+
+/**
+ * Busca un entrenador activo a partir de su código de referido / link.
+ */
+function resolverEntrenadorPorCodigo(?string $codigo): ?array {
+    $clean = strtoupper(trim((string)$codigo));
+    if ($clean === '') return null;
+
+    try {
+        $db = getDB();
+        $st = $db->prepare("
+            SELECT em.entrenador_id, em.codigo_referido, u.nombre AS entrenador_nombre, u.avatar_url
+            FROM entrenadores_membresias em
+            JOIN usuarios u ON u.id = em.entrenador_id
+            WHERE UPPER(TRIM(em.codigo_referido)) = ?
+              AND u.rol = 'entrenador'
+              AND u.activo = 1
+            LIMIT 1
+        ");
+        $st->execute([$clean]);
+        $row = $st->fetch(PDO::FETCH_ASSOC);
+        return $row ?: null;
+    } catch (\Throwable $e) {
+        return null;
+    }
+}
+
+/** Verifica rol, si no tiene acceso redirige. Si es entrenador, valida que su membresía no esté suspendida. */
 function requireRole(string $rol): void {
     requireLogin();
-    if (($_SESSION['rol'] ?? '') !== $rol) {
+    $currentRol = $_SESSION['rol'] ?? '';
+    if ($currentRol !== $rol) {
+        if ($currentRol === 'admin') {
+            redirect('admin/dashboard');
+        } elseif ($currentRol === 'entrenador') {
+            redirect('entrenador/dashboard');
+        } elseif ($currentRol === 'cliente') {
+            redirect('cliente/dashboard');
+        }
         redirect('auth/login');
+    }
+
+    if ($rol === 'entrenador') {
+        $entId = (int)($_SESSION['user_id'] ?? 0);
+        $membresia = obtenerEstadoMembresiaEntrenador($entId);
+        if (!empty($membresia['bloqueado'])) {
+            $isAjax = (!empty($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest')
+                   || (isset($_SERVER['HTTP_ACCEPT']) && str_contains($_SERVER['HTTP_ACCEPT'], 'application/json'))
+                   || (!empty($_SERVER['CONTENT_TYPE']) && str_contains($_SERVER['CONTENT_TYPE'], 'application/json'))
+                   || str_starts_with((string)($GLOBALS['action'] ?? ''), 'api-');
+
+            if ($isAjax) {
+                jsonOut(false, $membresia['mensaje_alerta'] ?? 'La web ha sido pausada hasta completar el pago de la membresía.', [
+                    'suspended' => true,
+                    'estado'    => $membresia['estado_calculado']
+                ], 403);
+            }
+
+            $pageTitle = 'Membresía en Pausa';
+            require BASE_DIR . '/views/entrenador/membresia_suspendida.php';
+            exit;
+        }
     }
 }
 
@@ -167,7 +416,7 @@ function sendEmail(string $to, string $subject, string $body): bool {
         $mail->SMTPSecure = PHPMailer\PHPMailer\PHPMailer::ENCRYPTION_STARTTLS;
         $mail->Port = env('MAIL_PORT', '587');
         
-        $mail->setFrom(env('MAIL_FROM', 'noreply@xprodfit.com'), 'Xprod Fit');
+        $mail->setFrom(env('MAIL_FROM', 'noreply@atlasfit.com'), 'Atlas Fit');
         $mail->addAddress($to);
         
         $mail->isHTML(true);
@@ -374,7 +623,9 @@ function obtenerNotificacionesUsuario(int $userId, string $rol, int $limit = 25,
 
     $unreadCond = $soloNoLeidas ? " AND (n.leido = 0 AND n.leida = 0) " : "";
 
-    if ($rol === 'entrenador') {
+    if ($rol === 'admin') {
+        return [];
+    } elseif ($rol === 'entrenador') {
         $st = $db->prepare("
             SELECT n.*, u.nombre AS remitente_nombre, u.avatar_url AS remitente_avatar
             FROM notificaciones n
@@ -456,7 +707,9 @@ function obtenerNotificacionesUsuario(int $userId, string $rol, int $limit = 25,
 function contarNotificacionesNoLeidas(int $userId, string $rol): int {
     $db = getDB();
     purgarNotificacionesAntiguas($db);
-    if ($rol === 'entrenador') {
+    if ($rol === 'admin') {
+        return 0;
+    } elseif ($rol === 'entrenador') {
         $st = $db->prepare("
             SELECT COUNT(*) FROM notificaciones n
             WHERE n.rol_destinatario = 'entrenador'
@@ -494,7 +747,9 @@ function marcarNotificacionLeida(int $notifId, int $userId): bool {
     $db = getDB();
     $rol = $_SESSION['rol'] ?? 'cliente';
     $clienteId = (int)($_SESSION['cliente_id'] ?? 0);
-    if ($rol === 'entrenador') {
+    if ($rol === 'admin') {
+        return true;
+    } elseif ($rol === 'entrenador') {
         $st = $db->prepare("
             UPDATE notificaciones 
             SET leido = 1, leida = 1 
@@ -518,7 +773,9 @@ function marcarNotificacionLeida(int $notifId, int $userId): bool {
  */
 function marcarTodasNotificacionesLeidas(int $userId, string $rol): bool {
     $db = getDB();
-    if ($rol === 'entrenador') {
+    if ($rol === 'admin') {
+        return true;
+    } elseif ($rol === 'entrenador') {
         $st = $db->prepare("
             UPDATE notificaciones 
             SET leido = 1, leida = 1 

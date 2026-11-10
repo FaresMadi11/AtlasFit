@@ -1097,6 +1097,29 @@ function obtenerDetalleDia(PDO $db, int $clienteId, string $fecha, string $role 
                     ]);
                 }
             }
+
+            // Si hay una rutina asignada para ese día de la semana, exponerla (SSOT)
+            // Esto permite que el entrenador vea y edite la rutina asignada para ese día,
+            // marcando el estado como 'sin_registro' en lugar de un falso 'sin_rutina'
+            $progHist = obtenerRutinasProgramadasPorDia($db, $clienteId)[$dow] ?? null;
+            if ($progHist) {
+                $ejs = obtenerEjerciciosProgramados($db, (int)$progHist['id'], $clienteId, $fecha);
+                $cardioInfo = obtenerInfoCardioRutina($db, (int)$progHist['id']);
+                return array_merge($base, [
+                    'estado'     => ($role === 'entrenador') ? 'sin_registro' : 'sin_actividad',
+                    'rutina'     => [
+                        'id'                  => (int)$progHist['id'],
+                        'nombre'              => $progHist['nombre'],
+                        'cardio_activo'       => $cardioInfo['cardio_activo'],
+                        'cardio_tiempo'       => $cardioInfo['cardio_tiempo'],
+                        'cardio_indicaciones' => $cardioInfo['cardio_indicaciones'],
+                    ],
+                    'resumen'    => ['ejercicios' => count($ejs), 'series' => 0, 'series_planificadas' => array_sum(array_column($ejs, 'series_total')), 'volumen_kg' => 0],
+                    'ejercicios' => $ejs,
+                    'notas'      => $notasSesion,
+                ]);
+            }
+
             return array_merge($base, ['estado' => 'sin_actividad', 'rutina' => null, 'resumen' => null, 'ejercicios' => []]);
         }
     }

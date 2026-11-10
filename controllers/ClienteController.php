@@ -319,10 +319,11 @@ function cliApiRutinaSync(): void {
         $plantillaId = (int)($rutRow['plantilla_id'] ?? 0);
         if ($plantillaId > 0) {
             $stPs = $db->prepare("
-                SELECT pe.orden, pe.nombre, pe.descanso_segundos,
-                       ps.numero_serie, ps.tipo_serie, ps.reps_objetivo, ps.peso_objetivo, ps.rir_objetivo
+                SELECT pe.orden, COALESCE(pe.nombre_override, ce.nombre, '') AS nombre, pe.descanso_segundos,
+                       ps.numero_serie, ps.tipo_serie, ps.reps_objetivo, ps.kg_objetivo, ps.rir
                 FROM plantilla_ejercicios pe
-                LEFT JOIN plantilla_series ps ON ps.plantilla_ejercicio_id = pe.id
+                LEFT JOIN catalogo_ejercicios ce ON ce.id = pe.catalogo_id
+                LEFT JOIN plantilla_series ps ON ps.plantilla_ej_id = pe.id
                 WHERE pe.plantilla_id = ?
                 ORDER BY pe.orden ASC, ps.numero_serie ASC
             ");
@@ -330,7 +331,18 @@ function cliApiRutinaSync(): void {
             $psRows = $stPs->fetchAll(PDO::FETCH_ASSOC);
         }
 
-        $hash = md5(json_encode([$rutRow, $ejsRows, $psRows], JSON_UNESCAPED_UNICODE));
+        // Series realizadas o modificadas hoy (para sincronizar progreso y pesos en vivo)
+        $stSeries = $db->prepare("
+            SELECT ss.ejercicio_id, ss.numero_serie, ss.reps_realizadas, ss.peso_usado, ss.completado, ss.tipo_serie
+            FROM sesion_series ss
+            WHERE ss.cliente_id = ? AND ss.fecha = CURDATE() AND ss.ejercicio_id IN
+                  (SELECT id FROM ejercicios WHERE rutina_id = ?)
+            ORDER BY ss.ejercicio_id, ss.numero_serie
+        ");
+        $stSeries->execute([$clienteId, $rutinaId]);
+        $seriesRows = $stSeries->fetchAll(PDO::FETCH_ASSOC);
+
+        $hash = md5(json_encode([$rutRow, $ejsRows, $psRows, $seriesRows], JSON_UNESCAPED_UNICODE));
         echo json_encode([
             'ok'        => true,
             'hash'      => $hash,

@@ -24,11 +24,11 @@ $metaColorLogin = $mapaMetaColorLogin[$temaGlobalLogin] ?? '#02040a';
 <html lang="es" data-theme="<?= e($temaGlobalLogin) ?>" id="loginHtmlRoot">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-<title>Acceso – Xprod Fit</title>
+<title>Acceso – Atlas Fit</title>
 <meta name="theme-color" id="loginThemeColorMeta" content="<?= e($metaColorLogin) ?>">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="Xprod Fit">
+<meta name="apple-mobile-web-app-title" content="Atlas Fit">
 <meta name="mobile-web-app-capable" content="yes">
 <?php $icoVer = @filemtime(__DIR__ . '/../../assets/img/icon-192.png') ?: time(); ?>
 <link rel="manifest" href="<?= APP_URL ?>/manifest.webmanifest?v=<?= $icoVer ?>">
@@ -78,7 +78,7 @@ $metaColorLogin = $mapaMetaColorLogin[$temaGlobalLogin] ?? '#02040a';
         ks.forEach(function(k) { caches.delete(k); });
       }).catch(function(){});
     }
-  } else if (!navigator.onLine) {
+  } else if (!navigator.onLine && qs.indexOf('ref=') === -1) {
     try {
       if (localStorage.getItem('xp_auth_active') === '1') {
         var targetHome = localStorage.getItem('xp_auth_home') || (appBase + '/cliente/dashboard');
@@ -1411,9 +1411,17 @@ $vistaInicial = $vistaInicial ?? 'login';
 $isGoogleMode = (!empty($_SESSION['google_onboarding']) || isset($_GET['google']));
 $googleData   = $_SESSION['google_onboarding'] ?? [];
 
+$refRawView = isset($_GET['ref']) && is_string($_GET['ref'])
+    ? $_GET['ref']
+    : (string)($_SESSION['ref_codigo'] ?? ($_COOKIE['xp_ref_code'] ?? ''));
+$refEntrenadorInfo = ($refRawView !== '' && function_exists('resolverEntrenadorPorCodigo'))
+    ? resolverEntrenadorPorCodigo($refRawView)
+    : null;
+$refCodigoActivo = $refEntrenadorInfo ? (string)$refEntrenadorInfo['codigo_referido'] : '';
+
 if (isset($_GET['standby']) || (!empty($_SESSION['standby']))) {
     $vistaInicial = 'standby';
-} elseif ($isGoogleMode) {
+} elseif ($isGoogleMode || (!empty($_GET['ref']) && $refEntrenadorInfo)) {
     $vistaInicial = 'register';
 }
 $esLogin    = ($vistaInicial === 'login');
@@ -1517,7 +1525,7 @@ $esStandby  = ($vistaInicial === 'standby');
         <?php if (!$isGoogleMode): ?>
         <!-- Botón Registro con Google (1-Click verificado) -->
         <div style="margin-bottom: 20px;">
-          <a href="<?= APP_URL ?>/auth/google" class="btn-google" role="button" aria-label="Registrarse con Google">
+          <a href="<?= APP_URL ?>/auth/google<?= $refCodigoActivo !== '' ? ('?ref=' . rawurlencode($refCodigoActivo)) : '' ?>" id="btnRegGoogleOAuth" class="btn-google" role="button" aria-label="Registrarse con Google">
             <svg viewBox="0 0 24 24" aria-hidden="true">
               <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
               <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
@@ -1548,6 +1556,17 @@ $esStandby  = ($vistaInicial === 'standby');
           <label for="reg_cedula">Cédula / Documento (solo números)</label>
           <input type="text" inputmode="numeric" pattern="[0-9]*" id="reg_cedula" name="cedula" value="<?= e($googleData['cedula'] ?? '') ?>" placeholder="Ej: 28123456" maxlength="8" required autocomplete="off" spellcheck="false" aria-required="true" aria-describedby="err_cedula">
           <small class="ibg-error" id="err_cedula" role="alert"></small>
+        </div>
+
+        <div class="input-box-group" id="group_reg_codigo_entrenador" style="<?= $refEntrenadorInfo ? 'border-color:rgba(138,43,226,0.55);background:rgba(138,43,226,0.08);' : '' ?>">
+          <label for="reg_codigo_entrenador" style="display:flex;align-items:center;justify-content:space-between;gap:6px;">
+            <span id="lblCodigoEntrenadorTxt"><i class="ti ti-ticket" style="color:#b388ff;"></i> Código de Entrenador <?= $refEntrenadorInfo ? '' : '(Opcional)' ?></span>
+            <span id="badgeCoachRef" style="font-size:0.68rem;padding:2px 8px;border-radius:99px;background:rgba(34,197,94,0.18);color:#4ade80;border:1px solid rgba(34,197,94,0.35);font-weight:700;text-transform:none;<?= $refEntrenadorInfo ? 'display:inline-flex;align-items:center;gap:4px;' : 'display:none;' ?>">
+              <i class="ti ti-circle-check"></i> <span id="badgeCoachRefNombre">Coach: <?= e($refEntrenadorInfo['entrenador_nombre'] ?? '') ?></span>
+            </span>
+          </label>
+          <input type="text" id="reg_codigo_entrenador" name="codigo_entrenador" value="<?= e($refCodigoActivo) ?>" placeholder="Ej: SABEH-FIT" maxlength="40" autocomplete="off" spellcheck="false" style="text-transform:uppercase;font-weight:700;letter-spacing:0.6px;" aria-describedby="err_codigo_entrenador">
+          <small class="ibg-error" id="err_codigo_entrenador" role="alert"></small>
         </div>
 
         <div class="input-box-group" id="group_reg_email">
@@ -2065,10 +2084,10 @@ const viewRecovery = document.getElementById('view-recovery');
 const viewStandby  = document.getElementById('view-standby');
 
 const TITULOS = {
-  login:    'Acceso – Xprod Fit',
-  register: 'Registro – Xprod Fit',
-  recovery: 'Recuperación – Xprod Fit',
-  standby:  'Cuenta en Revisión – Xprod Fit',
+  login:    'Acceso – Atlas Fit',
+  register: 'Registro – Atlas Fit',
+  recovery: 'Recuperación – Atlas Fit',
+  standby:  'Cuenta en Revisión – Atlas Fit',
 };
 
 const RUTAS = {
@@ -2106,13 +2125,60 @@ function switchView(name, { focus = true } = {}) {
   const main = document.getElementById('mainContent');
   if (main) main.scrollTop = 0;
 
-  try { history.replaceState(null, '', APP + (RUTAS[targetName] || '/auth/login')); } catch (_) {}
+  try {
+    const currentSearch = window.location.search || '';
+    history.replaceState(null, '', APP + (RUTAS[targetName] || '/auth/login') + currentSearch);
+  } catch (_) {}
 
   if (focus && VISTAS[targetName]) {
     const first = VISTAS[targetName].querySelector('input:not([type=hidden]):not([disabled]):not([readonly]), select');
     if (first) setTimeout(() => first.focus({ preventScroll: true }), 60);
   }
 }
+
+// Validación en vivo del Código de Entrenador y sincronización con Google OAuth
+(function() {
+  const inpRef = document.getElementById('reg_codigo_entrenador');
+  const grpRef = document.getElementById('group_reg_codigo_entrenador');
+  const bdgRef = document.getElementById('badgeCoachRef');
+  const bdgNom = document.getElementById('badgeCoachRefNombre');
+  const btnGoo = document.getElementById('btnRegGoogleOAuth');
+  if (!inpRef) return;
+
+  let timerRef = null;
+  const checkCodeLive = (rawVal) => {
+    const code = String(rawVal || '').trim().toUpperCase();
+    if (btnGoo) {
+      btnGoo.href = APP + '/auth/google' + (code ? ('?ref=' + encodeURIComponent(code)) : '');
+    }
+    if (code.length < 3) {
+      if (bdgRef) bdgRef.style.display = 'none';
+      if (grpRef) { grpRef.style.borderColor = ''; grpRef.style.background = ''; }
+      return;
+    }
+    fetch(APP + '/auth/api-validar-codigo?codigo=' + encodeURIComponent(code))
+      .then(r => r.json())
+      .then(d => {
+        if (d && d.ok && d.entrenador_nombre) {
+          if (bdgNom) bdgNom.textContent = 'Coach: ' + d.entrenador_nombre;
+          if (bdgRef) bdgRef.style.display = 'inline-flex';
+          if (grpRef) {
+            grpRef.style.borderColor = 'rgba(138,43,226,0.55)';
+            grpRef.style.background = 'rgba(138,43,226,0.08)';
+          }
+        } else {
+          if (bdgRef) bdgRef.style.display = 'none';
+          if (grpRef) { grpRef.style.borderColor = ''; grpRef.style.background = ''; }
+        }
+      })
+      .catch(() => {});
+  };
+
+  inpRef.addEventListener('input', () => {
+    clearTimeout(timerRef);
+    timerRef = setTimeout(() => checkCodeLive(inpRef.value), 260);
+  });
+})();
 
 document.getElementById('linkToRegister')?.addEventListener('click', e => {
   e.preventDefault();
@@ -2778,6 +2844,7 @@ async function submitRegistration(isOmitido = false) {
     nombres:             (f['nombres']?.value || '').trim().replace(/\s+/g, ' '),
     apellidos:           (f['apellidos']?.value || '').trim().replace(/\s+/g, ' '),
     cedula:              normalizarCedula(f['cedula']?.value || ''),
+    codigo_entrenador:   (f['codigo_entrenador']?.value || '').trim().toUpperCase(),
     email:               (f['email']?.value || '').trim(),
     password:            (!isGoogle && f['password']) ? f['password'].value.trim() : '',
     pregunta_seguridad:  (!isGoogle && f['pregunta_seguridad']) ? f['pregunta_seguridad'].value : '',

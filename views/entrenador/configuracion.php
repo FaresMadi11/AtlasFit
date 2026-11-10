@@ -49,7 +49,7 @@ require __DIR__ . '/../layout/header.php';
     </div>
     <div class="xp-pwa-install-info">
       <span class="xp-pwa-install-badge"><span class="badge-dot"></span> App Oficial & Offline</span>
-      <h3 class="xp-pwa-install-title">Descargar Xprod Fit en este dispositivo</h3>
+      <h3 class="xp-pwa-install-title">Descargar Atlas Fit en este dispositivo</h3>
     </div>
   </div>
   <button type="button" class="xp-pwa-install-btn" onclick="instalarXprodApp()">
@@ -68,11 +68,11 @@ require __DIR__ . '/../layout/header.php';
   </div>
 
   <div class="xp-theme-grid">
-    <!-- Tema 1: Xprod Clásico -->
-    <div class="xp-theme-card" id="themeCardClassic" onclick="solicitarCambioTema('classic', 'Estilo Clásico Xprod Fit')">
+    <!-- Tema 1: Atlas Clásico -->
+    <div class="xp-theme-card" id="themeCardClassic" onclick="solicitarCambioTema('classic', 'Estilo Clásico Atlas Fit')">
       <div class="xp-theme-card-head">
         <div class="xp-theme-info">
-          <div class="xp-theme-name">Estilo Clásico Xprod Fit</div>
+          <div class="xp-theme-name">Estilo Clásico Atlas Fit</div>
           <div class="xp-theme-desc">Morado Eléctrico, estética nocturna y wallpapers góticos</div>
         </div>
         <span class="xp-theme-badge" id="badgeThemeClassic"><i class="ti ti-check"></i> Activo</span>
@@ -87,11 +87,11 @@ require __DIR__ . '/../layout/header.php';
       </div>
     </div>
 
-    <!-- Tema 2: Xprod Obsidian -->
-    <div class="xp-theme-card" id="themeCardObsidian" onclick="solicitarCambioTema('obsidian', 'Estilo Xprod Obsidian')">
+    <!-- Tema 2: Atlas Obsidian -->
+    <div class="xp-theme-card" id="themeCardObsidian" onclick="solicitarCambioTema('obsidian', 'Estilo Atlas Obsidian')">
       <div class="xp-theme-card-head">
         <div class="xp-theme-info">
-          <div class="xp-theme-name">Estilo Xprod Obsidian</div>
+          <div class="xp-theme-name">Estilo Atlas Obsidian</div>
           <div class="xp-theme-desc">Minimalismo puro, morado lavanda y fondo limpio</div>
         </div>
         <span class="xp-theme-badge" id="badgeThemeObsidian"><i class="ti ti-check"></i> Activo</span>
@@ -3780,7 +3780,7 @@ async function descargarCopiaSeguridadDb() {
 
   const confirmResult = await Swal.fire({
     title: '¿Generar Copia de Seguridad?',
-    text: 'Se creará y descargará un archivo comprimido (.sql.gz) con la base de datos completa de Xprod Fit (atletas, rutinas, series y finanzas).',
+    text: 'Se creará y descargará un archivo comprimido (.sql.gz) con la base de datos completa de Atlas Fit (atletas, rutinas, series y finanzas).',
     icon: 'question',
     showCancelButton: true,
     confirmButtonText: '<i class="ti ti-download"></i> Descargar Respaldo',

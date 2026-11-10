@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Política de Privacidad – Xprod Fit</title>
-<meta name="description" content="Política de Privacidad de Xprod Fit. Conoce cómo tratamos y protegemos tus datos personales de acuerdo al RGPD y la LOPD.">
+<title>Política de Privacidad – Atlas Fit</title>
+<meta name="description" content="Política de Privacidad de Atlas Fit. Conoce cómo tratamos y protegemos tus datos personales de acuerdo al RGPD y la LOPD.">
 <meta name="robots" content="index, follow">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
@@ -67,7 +67,7 @@ li{font-size:.93rem;color:rgba(255,255,255,.75);margin-bottom:6px;}
   <header class="legal-header">
     <a href="<?= APP_URL ?>" class="legal-logo">
       <div class="legal-logo-icon">⚡</div>
-      <span class="legal-logo-name">XprodFit</span>
+      <span class="legal-logo-name">AtlasFit</span>
     </a>
     <div class="legal-badge">Documento Legal</div>
     <h1>Política de Privacidad</h1>
@@ -105,11 +105,11 @@ li{font-size:.93rem;color:rgba(255,255,255,.75);margin-bottom:6px;}
   <!-- 1. Responsable -->
   <section class="legal-section" id="responsable">
     <h2 class="section-title">1. Responsable del Tratamiento</h2>
-    <p>El responsable del tratamiento de los datos personales recogidos a través de la plataforma <strong>Xprod Fit</strong> es:</p>
+    <p>El responsable del tratamiento de los datos personales recogidos a través de la plataforma <strong>Atlas Fit</strong> es:</p>
     <ul>
-      <li><strong>Denominación:</strong> Xprod Fit</li>
-      <li><strong>Email de contacto:</strong> <a href="mailto:privacidad@xprodfit.com">privacidad@xprodfit.com</a></li>
-      <li><strong>Plataforma:</strong> <?= defined('APP_URL') ? htmlspecialchars(APP_URL, ENT_QUOTES, 'UTF-8') : 'Xprod Fit' ?></li>
+      <li><strong>Denominación:</strong> Atlas Fit</li>
+      <li><strong>Email de contacto:</strong> <a href="mailto:privacidad@atlasfit.com">privacidad@atlasfit.com</a></li>
+      <li><strong>Plataforma:</strong> <?= defined('APP_URL') ? htmlspecialchars(APP_URL, ENT_QUOTES, 'UTF-8') : 'Atlas Fit' ?></li>
     </ul>
   </section>
 
@@ -218,7 +218,7 @@ li{font-size:.93rem;color:rgba(255,255,255,.75);margin-bottom:6px;}
       <li><strong>Limitación:</strong> solicitar que limitemos el tratamiento</li>
     </ul>
     <div class="info-box">
-      <p>Para ejercer cualquiera de estos derechos, escríbenos a <a href="mailto:privacidad@xprodfit.com">privacidad@xprodfit.com</a> con el asunto "Ejercicio de derechos RGPD". Responderemos en un máximo de 30 días.</p>
+      <p>Para ejercer cualquiera de estos derechos, escríbenos a <a href="mailto:privacidad@atlasfit.com">privacidad@atlasfit.com</a> con el asunto "Ejercicio de derechos RGPD". Responderemos en un máximo de 30 días.</p>
     </div>
   </section>
 
@@ -241,7 +241,7 @@ li{font-size:.93rem;color:rgba(255,255,255,.75);margin-bottom:6px;}
     <h2 class="section-title">9. Contacto y Reclamaciones</h2>
     <p>Para cualquier consulta sobre esta política de privacidad:</p>
     <ul>
-      <li><strong>Email:</strong> <a href="mailto:privacidad@xprodfit.com">privacidad@xprodfit.com</a></li>
+      <li><strong>Email:</strong> <a href="mailto:privacidad@atlasfit.com">privacidad@atlasfit.com</a></li>
     </ul>
     <p>Si consideras que el tratamiento de tus datos no es conforme, tienes derecho a presentar una reclamación ante la autoridad de control competente (en España: <a href="https://www.aepd.es" target="_blank" rel="noopener">AEPD</a>).</p>
   </section>
@@ -250,7 +250,7 @@ li{font-size:.93rem;color:rgba(255,255,255,.75);margin-bottom:6px;}
 
   <footer class="legal-footer">
     <p>
-      © <?= date('Y') ?> Xprod Fit · Todos los derechos reservados ·
+      © <?= date('Y') ?> Atlas Fit · Todos los derechos reservados ·
       <a href="<?= APP_URL ?>/legal/terminos">Términos y Condiciones</a>
     </p>
   </footer>

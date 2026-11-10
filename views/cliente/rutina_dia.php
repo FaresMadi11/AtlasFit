@@ -1697,14 +1697,14 @@ $diaHoyNum = ($diaHoyNumRaw >= 1 && $diaHoyNumRaw <= 5) ? $diaHoyNumRaw : 5;
           $cfgReps    = ($serieCfg && isset($serieCfg['reps_objetivo']) && is_numeric($serieCfg['reps_objetivo'])) ? (int)$serieCfg['reps_objetivo'] : null;
           $cfgRir     = ($serieCfg && isset($serieCfg['rir']) && is_numeric($serieCfg['rir'])) ? (int)$serieCfg['rir'] : null;
 
-          // Valores iniciales calculados respetando registro guardado o configuración de plantilla del entrenador
+          // Valores iniciales calculados respetando registro guardado o configuración directa del ejercicio
           $defaultReps = '';
-          if ($cfgReps !== null && is_numeric($cfgReps) && (int)$cfgReps > 0) {
-              $defaultReps = (int)$cfgReps;
-          } elseif (!empty($ej['repeticiones'])) {
+          if (!empty($ej['repeticiones'])) {
               if (preg_match('/(\d+)/', (string)$ej['repeticiones'], $m)) {
                   $defaultReps = (int)$m[1];
               }
+          } elseif ($cfgReps !== null && is_numeric($cfgReps) && (int)$cfgReps > 0) {
+              $defaultReps = (int)$cfgReps;
           }
           $valReps = ($savedReps !== '' && $savedReps !== null) ? $savedReps : $defaultReps;
 
@@ -1716,7 +1716,7 @@ $diaHoyNum = ($diaHoyNumRaw >= 1 && $diaHoyNumRaw <= 5) ? $diaHoyNumRaw : 5;
           }
           $valPeso = ($savedPeso !== '' && $savedPeso !== null) ? $savedPeso : $defaultPeso;
 
-          $displayRir = ($cfgRir !== null) ? $cfgRir : (($ej['rir'] !== null && $ej['rir'] !== '') ? $ej['rir'] : null);
+          $displayRir = ($ej['rir'] !== null && $ej['rir'] !== '') ? $ej['rir'] : (($cfgRir !== null) ? $cfgRir : null);
 
           // Lógica condicional de tipos de serie para paridad visual estricta
           $rawTipo = $serieData['tipo_serie'] ?? ($serieCfg['tipo_serie'] ?? ($ej['tipos_configurados'][$s] ?? 'normal'));

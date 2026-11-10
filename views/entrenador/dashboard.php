@@ -37,6 +37,58 @@
   </div>
 </div>
 
+<?php
+  $membresiaDash = $membresiaEntrenador ?? obtenerEstadoMembresiaEntrenador((int)($_SESSION['user_id'] ?? 0));
+  $codRefDash    = (string)($membresiaDash['codigo_referido'] ?? '');
+  $linkRefDash   = (string)($membresiaDash['link_referido'] ?? (APP_URL . '/auth/registro?ref=' . urlencode($codRefDash)));
+?>
+<!-- Tarjeta Bento: Código y Link de Invitación de Entrenador -->
+<div class="trainer-ref-bento" style="background: linear-gradient(135deg, rgba(138,43,226,0.16) 0%, rgba(18,18,24,0.92) 100%); border: 1px solid rgba(138,43,226,0.32); border-radius: 20px; padding: 14px 18px; margin-bottom: 18px; display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap; box-shadow: 0 8px 26px rgba(0,0,0,0.22);">
+  <div style="display:flex; align-items:center; gap:12px; min-width:220px; flex:1;">
+    <div style="width:42px; height:42px; border-radius:12px; background:rgba(138,43,226,0.22); border:1px solid rgba(138,43,226,0.45); color:#d8b4fe; display:flex; align-items:center; justify-content:center; font-size:1.35rem; flex-shrink:0;">
+      <i class="ti ti-qrcode"></i>
+    </div>
+    <div style="display:flex; flex-direction:column; gap:2px; min-width:0;">
+      <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+        <span style="font-size:0.72rem; font-weight:700; text-transform:uppercase; letter-spacing:0.6px; color:#c084fc;">Tu Código de Entrenador</span>
+        <span style="font-size:0.78rem; font-weight:800; padding:2px 9px; border-radius:8px; background:rgba(138,43,226,0.28); color:#fff; border:1px solid rgba(179,136,255,0.4); letter-spacing:0.8px;"><?= e($codRefDash) ?></span>
+      </div>
+      <span style="font-size:0.8rem; color:#94a3b8; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:460px;" title="<?= e($linkRefDash) ?>">
+        Comparte tu link o código para que tus atletas queden asignados a tu perfil automáticamente.
+      </span>
+    </div>
+  </div>
+  <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+    <button type="button" onclick="copiarTextoEntrenador(<?= htmlspecialchars(json_encode($codRefDash), ENT_QUOTES) ?>, 'Código copiado')" style="padding:8px 13px; border-radius:12px; background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.14); color:#e2e8f0; font-size:0.78rem; font-weight:700; cursor:pointer; display:inline-flex; align-items:center; gap:6px; transition:all 0.2s;">
+      <i class="ti ti-copy"></i> Copiar Código
+    </button>
+    <button type="button" onclick="copiarTextoEntrenador(<?= htmlspecialchars(json_encode($linkRefDash), ENT_QUOTES) ?>, 'Link de registro copiado')" style="padding:8px 14px; border-radius:12px; background:linear-gradient(135deg,#8a2be2,#6d28d9); border:none; color:#fff; font-size:0.78rem; font-weight:700; cursor:pointer; display:inline-flex; align-items:center; gap:6px; box-shadow:0 4px 14px rgba(138,43,226,0.38); transition:all 0.2s;">
+      <i class="ti ti-link"></i> Copiar Link de Atleta
+    </button>
+  </div>
+</div>
+<script>
+function copiarTextoEntrenador(texto, titulo) {
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(texto).then(function() {
+      if (typeof Swal !== 'undefined') {
+        Swal.fire({ toast: true, position: 'top-end', icon: 'success', title: titulo, text: texto, showConfirmButton: false, timer: 2400, background: '#111827', color: '#fff' });
+      }
+    });
+  } else {
+    var ta = document.createElement('textarea');
+    ta.value = texto;
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand('copy');
+    document.body.removeChild(ta);
+    if (typeof Swal !== 'undefined') {
+      Swal.fire({ toast: true, position: 'top-end', icon: 'success', title: titulo, text: texto, showConfirmButton: false, timer: 2400, background: '#111827', color: '#fff' });
+    }
+  }
+}
+</script>
+
 <!-- Stats rápidas -->
 <div class="dash-stat-grid">
   <a href="<?= APP_URL ?>/entrenador/asistencias?tab=alertas#modificar"

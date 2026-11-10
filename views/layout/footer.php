@@ -2,7 +2,7 @@
 <?php if (empty($hideFooter)): ?>
 <footer class="xp-footer">
   <div class="xp-footer-inner">
-    <p class="xp-footer-copy">© <?= date('Y') ?> Xprod Fit · Sistema de Gestión <span class="xp-footer-ver">v2.4</span></p>
+    <p class="xp-footer-copy">© <?= date('Y') ?> Atlas Fit · Sistema de Gestión <span class="xp-footer-ver">v2.4</span></p>
     <nav class="xp-footer-links" aria-label="Links legales">
       <a href="<?= APP_URL ?>/legal/privacidad" class="xp-footer-legal-link" onclick="openLegalModal('privacidad', event)">Privacidad</a>
       <span aria-hidden="true" class="xp-footer-dot">·</span>
@@ -68,7 +68,7 @@ const LEGAL_CONTENTS = {
       <div class="xp-legal-section">
         <h4 class="xp-legal-subtitle"><i class="ti ti-lock"></i> 1. Confidencialidad Atleta - Entrenador</h4>
         <p class="xp-legal-text">
-          Toda la información personal, de contacto y biométrica que registras en Xprod Fit —incluyendo tu nombre completo, cédula de identidad, peso corporal, estatura, porcentaje de grasa, marcas de repetición máxima (RM), metas físicas seleccionadas e historial de entrenamientos— es tratada con el más alto nivel de confidencialidad y reserva.
+          Toda la información personal, de contacto y biométrica que registras en Atlas Fit —incluyendo tu nombre completo, cédula de identidad, peso corporal, estatura, porcentaje de grasa, marcas de repetición máxima (RM), metas físicas seleccionadas e historial de entrenamientos— es tratada con el más alto nivel de confidencialidad y reserva.
         </p>
         <p class="xp-legal-text">
           Dichos datos son de uso estrictamente bilateral y exclusivo entre tú y tu preparador físico asignado, con la única finalidad de estructurar tu planificación deportiva, ajustar cargas y evaluar tu evolución física en el tiempo.
@@ -107,7 +107,7 @@ const LEGAL_CONTENTS = {
       <div class="xp-legal-section">
         <h4 class="xp-legal-subtitle"><i class="ti ti-stethoscope"></i> 1. Exención de Responsabilidad Médica (Disclaimer)</h4>
         <p class="xp-legal-text">
-          Xprod Fit es una solución tecnológica integral concebida para la gestión, dosificación de sobrecarga progresiva y registro de actividad atlética. <strong>La plataforma no presta servicios médicos, asesoría clínica, diagnósticos ni prescripciones de salud.</strong>
+          Atlas Fit es una solución tecnológica integral concebida para la gestión, dosificación de sobrecarga progresiva y registro de actividad atlética. <strong>La plataforma no presta servicios médicos, asesoría clínica, diagnósticos ni prescripciones de salud.</strong>
         </p>
         <p class="xp-legal-text">
           El usuario atleta reconoce y declara expresamente que cuenta con una evaluación médica previa que certifica su aptitud física para someterse a regímenes de esfuerzo físico, sobrecarga muscular y entrenamientos de alta intensidad.
@@ -131,7 +131,7 @@ const LEGAL_CONTENTS = {
       <div class="xp-legal-section">
         <h4 class="xp-legal-subtitle"><i class="ti ti-copyright"></i> 3. Propiedad de Metodologías y Rutinas</h4>
         <p class="xp-legal-text">
-          Las planificaciones de entrenamiento, metodologías, rutinas y librerías de ejercicios estructuradas dentro de la plataforma son propiedad intelectual de los entrenadores y de Xprod Fit. Queda prohibida su reproducción, distribución o reventa no autorizada con fines de lucro.
+          Las planificaciones de entrenamiento, metodologías, rutinas y librerías de ejercicios estructuradas dentro de la plataforma son propiedad intelectual de los entrenadores y de Atlas Fit. Queda prohibida su reproducción, distribución o reventa no autorizada con fines de lucro.
         </p>
       </div>
     `,

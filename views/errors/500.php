@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Error del Servidor – Xprod Fit</title>
+  <title>Error del Servidor – Atlas Fit</title>
   <style>
     body {
       background: #02040a;

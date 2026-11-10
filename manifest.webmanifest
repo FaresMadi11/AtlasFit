@@ -1,6 +1,6 @@
 {
-  "name": "Xprod Fit",
-  "short_name": "Xprod Fit",
+  "name": "Atlas Fit",
+  "short_name": "Atlas Fit",
   "description": "Sistema de gestión para entrenadores y atletas",
   "start_url": "./",
   "scope": "./",

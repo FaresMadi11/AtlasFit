@@ -33,7 +33,7 @@ class UsuarioModel {
      * o null si tiene acceso. Los entrenadores nunca se bloquean (evita lock-out del admin).
      */
     public static function mensajeBloqueo(array $user): ?string {
-        if (($user['rol'] ?? '') === 'entrenador') return null;
+        if (in_array($user['rol'] ?? '', ['entrenador', 'admin'], true)) return null;
         return match ($user['estado_cuenta'] ?? 'pendiente') {
             'activo'    => null,
             'rechazado' => self::MSG_RECHAZADO,
@@ -117,7 +117,7 @@ class UsuarioModel {
      */
     public function create(string $nombre, string $email, string $hash, string $rol = 'cliente'): int {
         // Validar rol permitido
-        if (!in_array($rol, ['cliente', 'entrenador'], true)) {
+        if (!in_array($rol, ['cliente', 'entrenador', 'admin'], true)) {
             throw new \InvalidArgumentException("Rol inválido: {$rol}");
         }
 

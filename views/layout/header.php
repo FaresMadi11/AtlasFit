@@ -27,12 +27,12 @@ try {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, interactive-widget=overlays-content">
-  <title><?= e($pageTitle ?? 'Xprod Fit') ?> | Xprod Fit</title>
-  <meta name="description" content="Xprod Fit – Sistema de gestión para entrenadores y atletas.">
+  <title><?= e($pageTitle ?? 'Atlas Fit') ?> | Atlas Fit</title>
+  <meta name="description" content="Atlas Fit – Sistema de gestión para entrenadores y atletas.">
   <meta name="theme-color" content="#02040a">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <meta name="apple-mobile-web-app-title" content="Xprod Fit">
+  <meta name="apple-mobile-web-app-title" content="Atlas Fit">
   <meta name="mobile-web-app-capable" content="yes">
 
   <!-- ── Speculation Rules API (Prefetch instantáneo al pasar cursor o tocar pestañas) ── -->
@@ -106,7 +106,7 @@ try {
       // Bloquear la altura inicial del fondo para que el teclado móvil nunca lo achique ni cambie su escala
       const initH = Math.max(window.innerHeight || 0, document.documentElement.clientHeight || 0);
       if (initH > 0) rootEl.style.setProperty('--xp-init-vh', initH + 'px');
-      <?php if ($rolUser): ?>try { localStorage.setItem('xp_auth_active', '1'); localStorage.setItem('xp_auth_role', '<?= e($rolUser) ?>'); localStorage.setItem('xp_auth_home', window.APP + '/<?= $rolUser === 'entrenador' ? 'entrenador/dashboard' : 'cliente/dashboard' ?>'); } catch (_) {}<?php endif; ?>
+      <?php if ($rolUser): $homePathJs = $rolUser === 'admin' ? 'admin/dashboard' : ($rolUser === 'entrenador' ? 'entrenador/dashboard' : 'cliente/dashboard'); ?>try { localStorage.setItem('xp_auth_active', '1'); localStorage.setItem('xp_auth_role', '<?= e($rolUser) ?>'); localStorage.setItem('xp_auth_home', window.APP + '/<?= $homePathJs ?>'); } catch (_) {}<?php endif; ?>
       if ('caches' in window) {
         caches.keys().then(function(ks) {
           ks.forEach(function(k) { if (k !== 'xprod-fit-v4.1') caches.delete(k); });
@@ -127,8 +127,8 @@ try {
 ?>
 <nav class="xp-nav" id="mainNav">
   <div class="xp-nav-brand">
-    <div class="brand-icon" style="background:transparent;padding:0;overflow:hidden;border-radius:8px;"><img src="<?= APP_URL ?>/assets/img/icon-192.png" alt="XF" style="width:28px;height:28px;object-fit:cover;border-radius:6px;display:block;"></div>
-    <span class="brand-name">Xprod<strong>Fit</strong></span>
+    <div class="brand-icon" style="background:transparent;padding:0;overflow:hidden;border-radius:8px;"><img src="<?= APP_URL ?>/assets/img/icon-192.png" alt="AF" style="width:28px;height:28px;object-fit:cover;border-radius:6px;display:block;"></div>
+    <span class="brand-name">Atlas<strong>Fit</strong></span>
   </div>
 
   <div class="xp-nav-links">
@@ -136,7 +136,20 @@ try {
       $currentAction = $segment[1] ?? '';
       if ($currentAction === '') $currentAction = 'dashboard';
     ?>
-    <?php if ($rolUser === 'entrenador'): ?>
+    <?php if ($rolUser === 'admin'): ?>
+      <a href="<?= APP_URL ?>/admin/rutina" class="<?= ($currentAction === 'dashboard' || $currentAction === 'rutina') ? 'active' : '' ?>">
+        <span class="nav-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:middle;display:inline-block;"><rect x="2" y="9" width="3" height="6" rx="1.5" fill="currentColor" fill-opacity="0.25"/><rect x="5" y="6" width="3" height="12" rx="1.5" fill="currentColor"/><line x1="8" y1="12" x2="16" y2="12" stroke-width="2.5"/><rect x="16" y="6" width="3" height="12" rx="1.5" fill="currentColor"/><rect x="19" y="9" width="3" height="6" rx="1.5" fill="currentColor" fill-opacity="0.25"/></svg></span>
+        <span>Rutina</span>
+      </a>
+      <a href="<?= APP_URL ?>/admin/gestion" class="<?= $currentAction === 'gestion' ? 'active' : '' ?>">
+        <span class="nav-icon"><i class="ti ti-users-group"></i></span>
+        <span>Gestión</span>
+      </a>
+      <a href="<?= APP_URL ?>/admin/configuracion" class="<?= $currentAction === 'configuracion' ? 'active' : '' ?>">
+        <span class="nav-icon"><i class="ti ti-settings"></i></span>
+        <span>Configuración</span>
+      </a>
+    <?php elseif ($rolUser === 'entrenador'): ?>
       <a href="<?= APP_URL ?>/entrenador/dashboard" class="<?= $currentAction === 'dashboard' ? 'active' : '' ?>">
         <span class="nav-icon"><i class="ti ti-home"></i></span>
         <span>Inicio</span>
@@ -569,6 +582,30 @@ try {
 
 
 <main class="xp-main">
+<?php if ($rolUser === 'entrenador'):
+  $membresiaHeader = obtenerEstadoMembresiaEntrenador((int)($_SESSION['user_id'] ?? 0));
+  if (!empty($membresiaHeader['mostrar_banner'])):
+    $esGracia = ($membresiaHeader['tipo_alerta'] ?? '') === 'warning';
+?>
+  <div class="xp-membresia-banner <?= $esGracia ? 'is-grace' : 'is-reminder' ?>" role="status" style="margin: 0 0 16px 0; padding: 13px 16px; border-radius: 16px; display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; background: <?= $esGracia ? 'rgba(245, 158, 11, 0.14)' : 'rgba(138, 43, 226, 0.14)' ?>; border: 1px solid <?= $esGracia ? 'rgba(245, 158, 11, 0.42)' : 'rgba(138, 43, 226, 0.42)' ?>; box-shadow: 0 8px 24px rgba(0,0,0,0.22);">
+    <div style="display:flex; align-items:center; gap:12px; flex:1; min-width:220px;">
+      <div style="width:38px; height:38px; border-radius:12px; display:flex; align-items:center; justify-content:center; flex-shrink:0; background: <?= $esGracia ? 'rgba(245, 158, 11, 0.22)' : 'rgba(138, 43, 226, 0.24)' ?>; color: <?= $esGracia ? '#fbbf24' : '#d8b4fe' ?>; font-size:1.25rem;">
+        <i class="ti <?= $esGracia ? 'ti-alert-triangle' : 'ti-calendar-event' ?>"></i>
+      </div>
+      <div style="display:flex; flex-direction:column; gap:2px;">
+        <span style="font-size:0.72rem; font-weight:800; text-transform:uppercase; letter-spacing:0.6px; color: <?= $esGracia ? '#fbbf24' : '#c084fc' ?>;">
+          <?= $esGracia ? 'Periodo de Gracia Activo (7 Días)' : 'Recordatorio de Membresía Mensual' ?>
+        </span>
+        <span style="font-size:0.86rem; color:#f8fafc; font-weight:500; line-height:1.35;">
+          <?= e($membresiaHeader['mensaje_alerta'] ?? '') ?>
+        </span>
+      </div>
+    </div>
+    <span style="font-size:0.75rem; font-weight:700; padding:5px 11px; border-radius:99px; background:rgba(255,255,255,0.06); color:#e2e8f0; border:1px solid rgba(255,255,255,0.1); white-space:nowrap;">
+      Corte: <?= e(date('d/m/Y', strtotime((string)$membresiaHeader['fecha_proximo_pago']))) ?>
+    </span>
+  </div>
+<?php endif; endif; ?>
 <?php if ($flash): ?>
   <div id="flashMsg" class="flash-msg flash-<?= e($flash['type']) ?>">
     <i class="ti ti-<?= $flash['type'] === 'success' ? 'check' : 'alert-circle' ?>"></i>

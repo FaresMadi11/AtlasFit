@@ -17,13 +17,14 @@ if (!function_exists('csrfField')) {
 }
 
 match($action) {
-    'login'                    => authLogin(),
-    'do-login'                 => authDoLogin(),
-    'registro'                 => authRegistro(),
-    'do-registro'              => authDoRegistro(),
-    'logout'                   => authLogout(),
-    'google'                   => authGoogleRedirect(),
-    'google-callback'          => authGoogleCallback(),
+    'login'                       => authLogin(),
+    'do-login'                    => authDoLogin(),
+    'registro'                    => authRegistro(),
+    'do-registro'                 => authDoRegistro(),
+    'api-validar-codigo'          => authApiValidarCodigo(),
+    'logout'                      => authLogout(),
+    'google'                      => authGoogleRedirect(),
+    'google-callback'             => authGoogleCallback(),
     'recuperar'                   => authRecuperar(),
     'do-recuperar-identificar'    => authDoRecuperarIdentificar(),
     'do-recuperar-verificar-resp' => authDoRecuperarVerificarRespuesta(),
@@ -38,9 +39,31 @@ match($action) {
 function authLogin(string $vistaInicial = 'login'): void {
     header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
     header('Pragma: no-cache');
-    if (!empty($_SESSION['user_id'])) {
+
+    $tieneRefUrl = false;
+    if (!empty($_GET['ref']) && is_string($_GET['ref'])) {
+        $tieneRefUrl = true;
+        $refRaw = strtoupper(trim($_GET['ref']));
+        $refCheck = resolverEntrenadorPorCodigo($refRaw);
+        $codigoGuardar = $refCheck ? (string)$refCheck['codigo_referido'] : $refRaw;
+        if ($codigoGuardar !== '') {
+            $_SESSION['ref_codigo'] = $codigoGuardar;
+            @setcookie('xp_ref_code', $codigoGuardar, [
+                'expires'  => time() + (14 * 86400),
+                'path'     => '/',
+                'httponly' => true,
+                'samesite' => 'Lax',
+            ]);
+        }
+        $vistaInicial = 'register';
+    }
+
+    // Si NO viene con link de referido (?ref=...), redirigir al dashboard si ya tiene sesión activa
+    if (!$tieneRefUrl && !empty($_SESSION['user_id'])) {
         $rol = $_SESSION['rol'] ?? '';
-        if ($rol === 'entrenador') {
+        if ($rol === 'admin') {
+            redirect('admin/rutina');
+        } elseif ($rol === 'entrenador') {
             redirect('entrenador/dashboard');
         } elseif ($rol === 'cliente' || $rol === 'atleta') {
             $_SESSION['rol'] = 'cliente'; // Failsafe normalization
@@ -55,6 +78,29 @@ function authLogin(string $vistaInicial = 'login'): void {
     // login.php contiene las 3 vistas (#view-login / #view-register / #view-recovery) sobre el mismo fondo.
     $vistaInicial = in_array($vistaInicial, ['register', 'recovery'], true) ? $vistaInicial : 'login';
     require BASE_DIR . '/views/auth/login.php';
+}
+
+function authApiValidarCodigo(): void {
+    $codigo = trim((string)($_GET['codigo'] ?? $_POST['codigo'] ?? ''));
+    if ($codigo === '') {
+        jsonOut(false, 'Código vacío');
+    }
+    $info = resolverEntrenadorPorCodigo($codigo);
+    if (!$info) {
+        jsonOut(false, 'Código no encontrado');
+    }
+    $_SESSION['ref_codigo'] = $info['codigo_referido'];
+    @setcookie('xp_ref_code', $info['codigo_referido'], [
+        'expires'  => time() + (14 * 86400),
+        'path'     => '/',
+        'httponly' => true,
+        'samesite' => 'Lax',
+    ]);
+    jsonOut(true, 'Entrenador verificado', [
+        'entrenador_id'     => (int)$info['entrenador_id'],
+        'codigo_referido'   => (string)$info['codigo_referido'],
+        'entrenador_nombre' => (string)$info['entrenador_nombre'],
+    ]);
 }
 
 /** /auth/registro: mismo documento que el login, abierto directamente en la vista de registro. */
@@ -150,7 +196,9 @@ function authDoLogin(): void {
         // Persistir sesión por 90 días en el teléfono (sobrevive al cerrar la app de recientes)
         xpSetRememberCookie($user);
 
-        $dest = $user['rol'] === 'entrenador' ? 'entrenador/dashboard' : 'cliente/dashboard';
+        $dest = $user['rol'] === 'admin'
+            ? 'admin/dashboard'
+            : ($user['rol'] === 'entrenador' ? 'entrenador/dashboard' : 'cliente/dashboard');
 
         if (!$isAjax) {
             redirect($dest);
@@ -336,7 +384,19 @@ function authDoRegistro(): void {
         $um = new UsuarioModel();
         $db = getDB();
         $clienteId = null;
-        $entrenadorId = (int)($db->query("SELECT id FROM usuarios WHERE rol='entrenador' ORDER BY id LIMIT 1")->fetchColumn() ?: 0);
+
+        $codigoInput = strtoupper(trim(sanitizeInput($in('codigo_entrenador'), 40)));
+        $codigoFallback = strtoupper(trim((string)($_SESSION['ref_codigo'] ?? ($_COOKIE['xp_ref_code'] ?? ''))));
+        $codigoEntrenador = $codigoInput !== '' ? $codigoInput : $codigoFallback;
+
+        $refEnt = $codigoEntrenador !== '' ? resolverEntrenadorPorCodigo($codigoEntrenador) : null;
+        if ($codigoInput !== '' && !$refEnt) {
+            authRegistroError('El código de entrenador ingresado no existe o no está activo.', 'codigo_entrenador');
+        }
+
+        $entrenadorId = $refEnt
+            ? (int)$refEnt['entrenador_id']
+            : (int)($db->query("SELECT id FROM usuarios WHERE rol='entrenador' AND activo=1 ORDER BY id LIMIT 1")->fetchColumn() ?: 0);
 
         if (!$isGoogle) {
             if (strlen($pass) < 8) {
@@ -415,8 +475,8 @@ function authDoRegistro(): void {
 
                 if ($cRowId) {
                     $clienteId = (int)$cRowId;
-                    $db->prepare("UPDATE clientes SET cedula = ?, peso_kg = ?, altura_cm = ?, fecha_nac = ?, objetivo = ?, meta_detalle = ? WHERE id = ?")
-                       ->execute([$cedula, $pesoKg, $alturaCm, $fechaNac, $objetivoTexto, $metaDetalleJson, $clienteId]);
+                    $db->prepare("UPDATE clientes SET cedula = ?, entrenador_id = ?, peso_kg = ?, altura_cm = ?, fecha_nac = ?, objetivo = ?, meta_detalle = ? WHERE id = ?")
+                       ->execute([$cedula, $entrenadorId > 0 ? $entrenadorId : null, $pesoKg, $alturaCm, $fechaNac, $objetivoTexto, $metaDetalleJson, $clienteId]);
                 } else {
                     $stInsCli = $db->prepare("INSERT INTO clientes (usuario_id, cedula, entrenador_id, peso_kg, altura_cm, fecha_nac, objetivo, meta_detalle) VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
                     $stInsCli->execute([$uid, $cedula, $entrenadorId > 0 ? $entrenadorId : null, $pesoKg, $alturaCm, $fechaNac, $objetivoTexto, $metaDetalleJson]);
@@ -740,6 +800,19 @@ function authLogout(): void {
 // ══════════════════════════════════════════════════════════════
 
 function authGoogleRedirect(): void {
+    if (!empty($_GET['ref']) && is_string($_GET['ref'])) {
+        $refInfo = resolverEntrenadorPorCodigo($_GET['ref']);
+        $codeToSave = $refInfo ? (string)$refInfo['codigo_referido'] : strtoupper(trim($_GET['ref']));
+        if ($codeToSave !== '') {
+            $_SESSION['ref_codigo'] = $codeToSave;
+            @setcookie('xp_ref_code', $codeToSave, [
+                'expires'  => time() + (14 * 86400),
+                'path'     => '/',
+                'httponly' => true,
+                'samesite' => 'Lax',
+            ]);
+        }
+    }
     require_once BASE_DIR . '/controllers/GoogleAuthController.php';
     googleRedirect();
 }

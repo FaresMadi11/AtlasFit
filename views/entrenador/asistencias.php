@@ -661,23 +661,30 @@
 }
 .cdd-st-head {
   display: grid;
-  grid-template-columns: 50px 1.2fr 0.9fr 48px;
-  gap: 12px;
+  grid-template-columns: 38px 1fr 1fr 40px 32px;
+  gap: 6px;
   padding: 4px 2px 6px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.06);
 }
 .cdd-st-th {
-  font-size: 0.62rem;
+  font-size: 0.65rem;
   font-weight: 800;
-  letter-spacing: 0.07em;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
   color: #64748b;
+  white-space: nowrap;
 }
 .cdd-st-th.col-center {
   text-align: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 .cdd-st-th.col-right {
   text-align: right;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
   padding-right: 2px;
 }
 .cdd-st-body {
@@ -695,10 +702,10 @@
 }
 .cdd-st-row {
   display: grid;
-  grid-template-columns: 50px 1.2fr 0.9fr 48px;
-  gap: 12px;
+  grid-template-columns: 38px 1fr 1fr 40px 32px;
+  gap: 6px;
   align-items: center;
-  padding: 5px 2px;
+  padding: 4px 2px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.03);
   transition: background 0.15s ease;
 }
@@ -743,6 +750,10 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
 }
 .cdd-cell-peso.is-bodyweight {
   color: #4ade80;
@@ -1018,51 +1029,70 @@
 /* Controles de series interactivos para entrenador */
 .cdd-live-input-wrap {
   display: flex;
+  align-items: center;
   justify-content: center;
+  width: 100%;
 }
 .cdd-live-input {
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 7px;
   color: #fff;
   font-weight: 700;
   font-size: 0.82rem;
   text-align: center;
-  width: 60px;
-  height: 32px;
+  width: 46px;
+  max-width: 100%;
+  height: 28px;
+  padding: 0 4px;
   outline: none;
   font-family: inherit;
-  transition: border-color 0.15s, background 0.15s;
+  transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1);
 }
 .cdd-live-input:focus {
   border-color: #8a2be2;
-  background: rgba(138, 43, 226, 0.12);
+  background: rgba(138, 43, 226, 0.14);
+  box-shadow: 0 0 0 2px rgba(138, 43, 226, 0.22);
+}
+.cdd-live-input:hover:not(:focus) {
+  border-color: rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.08);
+}
+.cdd-live-input::-webkit-outer-spin-button,
+.cdd-live-input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+.cdd-live-input[type=number] {
+  -moz-appearance: textfield;
 }
 .cdd-live-cell-tag {
-  font-size: 0.72rem;
+  font-size: 0.68rem;
   font-weight: 700;
   color: #4ade80;
   background: rgba(34, 197, 94, 0.1);
   border: 1px solid rgba(34, 197, 94, 0.25);
-  padding: 3px 8px;
+  padding: 2px 6px;
   border-radius: 6px;
   display: inline-flex;
   align-items: center;
   gap: 3px;
+  white-space: nowrap;
 }
 .cdd-btn-serie-check {
-  width: 32px;
-  height: 32px;
-  border-radius: 8px;
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  width: 28px;
+  height: 28px;
+  border-radius: 7px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
   background: rgba(255, 255, 255, 0.05);
   color: #64748b;
   display: grid;
   place-items: center;
   cursor: pointer;
-  font-size: 1.05rem;
+  font-size: 0.95rem;
   transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
   padding: 0;
+  margin: 0 auto;
 }
 .cdd-btn-serie-check:hover {
   border-color: #10b981;
@@ -1073,7 +1103,7 @@
   background: #10b981 !important;
   border-color: #10b981 !important;
   color: #ffffff !important;
-  box-shadow: 0 0 12px rgba(16, 185, 129, 0.45);
+  box-shadow: 0 0 10px rgba(16, 185, 129, 0.4);
 }
 .cdd-st-row.is-serie-completed {
   background: rgba(16, 185, 129, 0.04);
@@ -1086,13 +1116,14 @@
 /* Columnas ajustadas para incluir check interactivo */
 .cdd-st-head, .cdd-st-row {
   display: grid;
-  grid-template-columns: 36px 1fr 1fr 44px 34px;
-  gap: 8px;
+  grid-template-columns: 38px 1fr 1fr 40px 32px;
+  gap: 6px;
   align-items: center;
 }
 .cdd-series-table.no-rir .cdd-st-head,
 .cdd-series-table.no-rir .cdd-st-row {
-  grid-template-columns: 36px 1fr 1fr 34px;
+  grid-template-columns: 38px 1fr 1fr 32px;
+  gap: 8px;
 }
 
 /* ════ MODAL BENTO UI DETALLE DE EJERCICIO ════ */
@@ -2084,11 +2115,11 @@ function iniciarPolling() {
   if (isPollingActive) return;
   isPollingActive = true;
   setInterval(() => {
-    // Evitar sondeo si la pestaña no es visible, o si el usuario está interactuando con un cajón/modal/input
+    // Evitar sondeo si la pestaña no es visible, o si el usuario está escribiendo o en un modal
     if (document.hidden || document.visibilityState !== 'visible') return;
-    if (document.querySelector('.cd-item-wrapper.is-open, .swal2-container, .drill-modal.open, input:focus, textarea:focus')) return;
+    if (document.querySelector('.swal2-container, .drill-modal.open, input:focus, textarea:focus')) return;
     cargarDatosPorFecha(fechaGlobal, true);
-  }, 35000);
+  }, 10000);
 }
 
 /* Paleta de colores para avatares */
@@ -2371,6 +2402,23 @@ async function guardarSerieEntrenador(clienteId, ejercicioId, numSerie, tipoImp,
     const data = await res.json();
     if (!data.ok) {
       throw new Error(data.msg || 'No se pudo guardar la serie.');
+    }
+
+    // Actualizar cache local
+    const cacheKey = `${clienteId}_${fechaGlobal}`;
+    if (rutinaAtletaCache.has(cacheKey)) {
+      const cacheData = rutinaAtletaCache.get(cacheKey);
+      if (cacheData && Array.isArray(cacheData.ejercicios)) {
+        const targetEj = cacheData.ejercicios.find(e => parseInt(e.id || 0) === ejercicioId);
+        if (targetEj && Array.isArray(targetEj.series_detalle)) {
+          const targetSerie = targetEj.series_detalle.find(s => parseInt(s.numero || 1) === numSerie);
+          if (targetSerie) {
+            targetSerie.peso = peso;
+            targetSerie.reps = reps;
+            targetSerie.completado = isCompletado;
+          }
+        }
+      }
     }
   } catch (err) {
     if (typeof Swal !== 'undefined') {
@@ -2910,6 +2958,18 @@ function renderRutinaDrawer(drawer, data, modoTab) {
                           String(ej.equipamiento || '').toLowerCase().includes('peso corporal') || 
                           String(ej.equipamiento || '').toLowerCase().includes('sin_peso');
 
+        const uCargaEj = (ej.unidad_carga || 'kg').toLowerCase();
+        let unitHeaderLabel = 'KG';
+        if (isSinPeso || uCargaEj === 'ninguna') {
+          unitHeaderLabel = 'CARGA';
+        } else if (uCargaEj === 'placas') {
+          unitHeaderLabel = 'PLACAS';
+        } else if (uCargaEj === 'lbs' || uCargaEj === 'lb') {
+          unitHeaderLabel = 'LBS';
+        } else {
+          unitHeaderLabel = 'KG';
+        }
+
         let seriesTableHtml = '';
 
         if (isCompletado && Array.isArray(ej.series) && ej.series.length > 0) {
@@ -2938,7 +2998,7 @@ function renderRutinaDrawer(drawer, data, modoTab) {
             } else if (s.peso != null && parseFloat(s.peso) > 0) {
               const pNum = parseFloat(s.peso);
               if (uSerie === 'placas') {
-                pesoText = `${pNum} ${pNum === 1 ? 'placa' : 'placas'}`;
+                pesoText = `${pNum} plq`;
               } else if (uSerie === 'lbs' || uSerie === 'lb') {
                 pesoText = `${pNum} lbs`;
               } else {
@@ -2953,16 +3013,16 @@ function renderRutinaDrawer(drawer, data, modoTab) {
                 <div class="cdd-box-num ${badgeClass}" title="Serie ${sNum} (${sTipo})">${badgeText}</div>
                 <div class="cdd-cell-peso ${pesoIsBodyweight ? 'is-bodyweight' : ''}" title="Peso registrado">${pesoText}</div>
                 <div class="cdd-cell-reps">${repsText}<small>reps</small></div>
-                <div class="cdd-cell-rir"><span class="cdd-data-done" title="Completada"><i class="ti ti-check"></i></span></div>
+                <div class="cdd-cell-rir" style="display:flex;justify-content:center;"><span class="cdd-data-done" title="Completada"><i class="ti ti-check"></i></span></div>
               </div>
             `;
           }).join('');
 
           seriesTableHtml = `
-            <div class="cdd-series-table">
+            <div class="cdd-series-table no-rir">
               <div class="cdd-st-head">
                 <span class="cdd-st-th col-center">Serie</span>
-                <span class="cdd-st-th">Carga</span>
+                <span class="cdd-st-th col-center">${unitHeaderLabel}</span>
                 <span class="cdd-st-th col-center">Reps</span>
                 <span class="cdd-st-th col-right">Estado</span>
               </div>
@@ -3014,13 +3074,12 @@ function renderRutinaDrawer(drawer, data, modoTab) {
             if (isSinPeso) {
               pesoControl = '<span class="cdd-live-cell-tag"><i class="ti ti-user-check"></i> Corporal</span>';
             } else {
-              const uCarga = (ej.unidad_carga || 'kg').toLowerCase();
-              const unitPh = (uCarga === 'placas') ? 'Placas' : (uCarga === 'lbs' ? 'Lbs' : 'Kg');
-              const maxW = (uCarga === 'placas') ? 40 : (uCarga === 'lbs' ? 999 : 500);
+              const uCarga = (s.unidad || ej.unidad_carga || 'kg').toLowerCase();
+              const maxW = (uCarga === 'placas') ? 40 : ((uCarga === 'lbs' || uCarga === 'lb') ? 999 : 500);
               pesoControl = `
                 <div class="cdd-live-input-wrap">
                   <input type="number" step="${uCarga === 'placas' ? '1' : '0.5'}" min="0" max="${maxW}"
-                         class="cdd-live-input cdd-live-peso" value="${pesoVal}" placeholder="${unitPh}"
+                         class="cdd-live-input cdd-live-peso" value="${pesoVal}" placeholder="0"
                          onchange="guardarSerieEntrenador(${cid}, ${ejId}, ${sNum}, '${safeImp}', '${uCarga}', '${sTipo}', this.closest('.cdd-st-row'))"
                          aria-label="Carga serie ${sNum}">
                 </div>`;
@@ -3037,7 +3096,7 @@ function renderRutinaDrawer(drawer, data, modoTab) {
             const repsControl = `
               <div class="cdd-live-input-wrap">
                 <input type="number" step="1" min="1" max="100"
-                       class="cdd-live-input cdd-live-reps" value="${repsVal}" placeholder="Reps"
+                       class="cdd-live-input cdd-live-reps" value="${repsVal}" placeholder="0"
                        onchange="guardarSerieEntrenador(${cid}, ${ejId}, ${sNum}, '${safeImp}', '${ej.unidad_carga || 'kg'}', '${sTipo}', this.closest('.cdd-st-row'))"
                        aria-label="Reps serie ${sNum}">
               </div>`;
@@ -3046,7 +3105,7 @@ function renderRutinaDrawer(drawer, data, modoTab) {
             const rirVal = s.rir != null ? s.rir : rir;
             const rirHtml = (ej.rir_desmarcado || ej.rir === null)
               ? ''
-              : `<div class="cdd-cell-rir"><span class="cdd-data-rir" title="Reps en reserva">@${esc(rirVal)}</span></div>`;
+              : `<div class="cdd-cell-rir" style="display:flex;justify-content:center;"><span class="cdd-data-rir" title="Reps en reserva">@${esc(rirVal)}</span></div>`;
 
             // Botón interactivo de serie completada
             const checkBtn = `
@@ -3076,7 +3135,7 @@ function renderRutinaDrawer(drawer, data, modoTab) {
             <div class="cdd-series-table ${isRirHidden ? 'no-rir' : ''}">
               <div class="cdd-st-head">
                 <span class="cdd-st-th col-center">Serie</span>
-                <span class="cdd-st-th">Carga</span>
+                <span class="cdd-st-th col-center">${unitHeaderLabel}</span>
                 <span class="cdd-st-th col-center">Reps</span>
                 ${rirTh}
                 <span class="cdd-st-th col-right">✓</span>
@@ -3823,13 +3882,18 @@ function actualizarEjercicioEnCache(clienteId, ejId, camposNuevos) {
     const numSets = parseInt(target.series_total || target.series || 1);
     const repsVal = target.repeticiones || '10';
     const rirVal = target.rir != null ? target.rir : 2;
-    target.series_detalle = Array.from({ length: Math.max(1, numSets) }, (_, i) => ({
-      numero: i + 1,
-      tipo: 'normal',
-      reps: repsVal,
-      peso: null,
-      rir: rirVal
-    }));
+    const prevSeries = Array.isArray(target.series_detalle) ? target.series_detalle : [];
+    target.series_detalle = Array.from({ length: Math.max(1, numSets) }, (_, i) => {
+      const prev = prevSeries[i] || {};
+      return {
+        numero: i + 1,
+        tipo: prev.tipo || 'normal',
+        reps: repsVal,
+        peso: (prev.peso !== undefined && prev.peso !== null) ? prev.peso : null,
+        rir: rirVal,
+        completado: Boolean(prev.completado)
+      };
+    });
 
     const drawer = document.getElementById(`drawer-pen-${clienteId}`) || document.getElementById(`drawer-comp-${clienteId}`);
     if (drawer) {

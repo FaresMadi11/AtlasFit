@@ -347,7 +347,7 @@ $apellidoAtleta = $partesNombre[1] ?? '';
       </div>
       <div class="xp-pwa-install-info">
         <span class="xp-pwa-install-badge"><span class="badge-dot"></span> App Oficial & Offline</span>
-        <h3 class="xp-pwa-install-title">Descargar Xprod Fit en tu dispositivo</h3>
+        <h3 class="xp-pwa-install-title">Descargar Atlas Fit en tu dispositivo</h3>
       </div>
     </div>
     <button type="button" class="xp-pwa-install-btn" onclick="instalarXprodApp()">

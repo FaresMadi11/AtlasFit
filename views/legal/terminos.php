@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Términos y Condiciones – Xprod Fit</title>
-<meta name="description" content="Términos y Condiciones de uso de Xprod Fit, la plataforma de gestión de entrenamiento deportivo.">
+<title>Términos y Condiciones – Atlas Fit</title>
+<meta name="description" content="Términos y Condiciones de uso de Atlas Fit, la plataforma de gestión de entrenamiento deportivo.">
 <meta name="robots" content="index, follow">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
@@ -48,7 +48,7 @@ li{font-size:.93rem;color:rgba(255,255,255,.75);margin-bottom:6px;}
   <header class="legal-header">
     <a href="<?= APP_URL ?>" class="legal-logo">
       <div class="legal-logo-icon">⚡</div>
-      <span class="legal-logo-name">XprodFit</span>
+      <span class="legal-logo-name">AtlasFit</span>
     </a>
     <div class="legal-badge">Documento Legal</div>
     <h1>Términos y Condiciones</h1>
@@ -60,7 +60,7 @@ li{font-size:.93rem;color:rgba(255,255,255,.75);margin-bottom:6px;}
   </header>
 
   <div class="info-box">
-    <p>Al registrarte o usar Xprod Fit, aceptas estos Términos y Condiciones. Por favor, léelos detenidamente.</p>
+    <p>Al registrarte o usar Atlas Fit, aceptas estos Términos y Condiciones. Por favor, léelos detenidamente.</p>
   </div>
 
   <nav class="legal-toc" aria-label="Índice">
@@ -83,10 +83,10 @@ li{font-size:.93rem;color:rgba(255,255,255,.75);margin-bottom:6px;}
   <!-- 1 -->
   <section class="legal-section" id="objeto">
     <h2 class="section-title">1. Objeto y Partes</h2>
-    <p>Los presentes Términos y Condiciones (en adelante, "T&C") regulan el acceso y uso de la plataforma web <strong>Xprod Fit</strong>, un sistema de gestión de entrenamiento deportivo destinado a entrenadores personales y sus atletas.</p>
+    <p>Los presentes Términos y Condiciones (en adelante, "T&C") regulan el acceso y uso de la plataforma web <strong>Atlas Fit</strong>, un sistema de gestión de entrenamiento deportivo destinado a entrenadores personales y sus atletas.</p>
     <p>Los T&C establecen un acuerdo vinculante entre:</p>
     <ul>
-      <li><strong>Xprod Fit</strong> (el "Proveedor")</li>
+      <li><strong>Atlas Fit</strong> (el "Proveedor")</li>
       <li>El <strong>usuario</strong> que accede o usa la plataforma (el "Usuario")</li>
     </ul>
   </section>
@@ -135,7 +135,7 @@ li{font-size:.93rem;color:rgba(255,255,255,.75);margin-bottom:6px;}
   <!-- 5 -->
   <section class="legal-section" id="pago">
     <h2 class="section-title">5. Pagos y Facturación</h2>
-    <p>Los pagos registrados en la plataforma corresponden a acuerdos entre entrenadores y atletas. Xprod Fit actúa como plataforma de gestión y <strong>no procesa pagos directamente</strong>.</p>
+    <p>Los pagos registrados en la plataforma corresponden a acuerdos entre entrenadores y atletas. Atlas Fit actúa como plataforma de gestión y <strong>no procesa pagos directamente</strong>.</p>
     <p>El registro de pagos en la plataforma tiene únicamente fines organizativos. Cualquier disputa sobre pagos debe resolverse directamente entre las partes implicadas.</p>
   </section>
 
@@ -153,14 +153,14 @@ li{font-size:.93rem;color:rgba(255,255,255,.75);margin-bottom:6px;}
   <!-- 7 -->
   <section class="legal-section" id="propiedad">
     <h2 class="section-title">7. Propiedad Intelectual</h2>
-    <p>Todos los derechos de propiedad intelectual sobre la plataforma Xprod Fit (código, diseño, marca, logotipos) pertenecen al Proveedor o a sus licenciantes.</p>
+    <p>Todos los derechos de propiedad intelectual sobre la plataforma Atlas Fit (código, diseño, marca, logotipos) pertenecen al Proveedor o a sus licenciantes.</p>
     <p>El uso de la plataforma no otorga al Usuario ningún derecho sobre la propiedad intelectual del Proveedor.</p>
   </section>
 
   <!-- 8 -->
   <section class="legal-section" id="responsabilidad">
     <h2 class="section-title">8. Limitación de Responsabilidad</h2>
-    <p>En la máxima medida permitida por la ley, Xprod Fit no será responsable por:</p>
+    <p>En la máxima medida permitida por la ley, Atlas Fit no será responsable por:</p>
     <ul>
       <li>Daños derivados de un uso inadecuado de la plataforma</li>
       <li>Pérdida de datos por causas ajenas al control del Proveedor</li>
@@ -168,7 +168,7 @@ li{font-size:.93rem;color:rgba(255,255,255,.75);margin-bottom:6px;}
       <li>Lesiones derivadas del seguimiento de rutinas de entrenamiento (el usuario debe consultar a un profesional de salud)</li>
     </ul>
     <div class="warn-box">
-      <p>⚠️ <strong>Aviso de salud:</strong> Los planes de entrenamiento en Xprod Fit son elaborados por entrenadores. Xprod Fit no es responsable de lesiones o problemas de salud derivados de su seguimiento. Consulta a un médico antes de iniciar cualquier programa de ejercicio intenso.</p>
+      <p>⚠️ <strong>Aviso de salud:</strong> Los planes de entrenamiento en Atlas Fit son elaborados por entrenadores. Atlas Fit no es responsable de lesiones o problemas de salud derivados de su seguimiento. Consulta a un médico antes de iniciar cualquier programa de ejercicio intenso.</p>
     </div>
   </section>
 
@@ -176,7 +176,7 @@ li{font-size:.93rem;color:rgba(255,255,255,.75);margin-bottom:6px;}
   <section class="legal-section" id="suspension">
     <h2 class="section-title">9. Suspensión y Terminación</h2>
     <p>El Proveedor se reserva el derecho de suspender o eliminar cuentas que incumplan los presentes T&C, sin previo aviso en casos de violación grave.</p>
-    <p>El Usuario puede solicitar la eliminación de su cuenta en cualquier momento contactando a <a href="mailto:privacidad@xprodfit.com">privacidad@xprodfit.com</a>.</p>
+    <p>El Usuario puede solicitar la eliminación de su cuenta en cualquier momento contactando a <a href="mailto:privacidad@atlasfit.com">privacidad@atlasfit.com</a>.</p>
   </section>
 
   <!-- 10 -->
@@ -197,7 +197,7 @@ li{font-size:.93rem;color:rgba(255,255,255,.75);margin-bottom:6px;}
 
   <footer class="legal-footer">
     <p>
-      © <?= date('Y') ?> Xprod Fit · Todos los derechos reservados ·
+      © <?= date('Y') ?> Atlas Fit · Todos los derechos reservados ·
       <a href="<?= APP_URL ?>/legal/privacidad">Política de Privacidad</a>
     </p>
   </footer>
