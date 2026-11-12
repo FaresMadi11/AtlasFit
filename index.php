@@ -1,7 +1,7 @@
 <?php
 // index.php – Router principal de Xprod Fit
 declare(strict_types=1);
-if (function_exists('opcache_reset')) { opcache_reset(); }
+// OPcache permanece activo entre peticiones para respuesta instantánea en producción.
 
 // ── 1. Cargar variables de entorno (PRIMERO de todo) ──────────
 require __DIR__ . '/core/env.php';
@@ -74,6 +74,8 @@ require BASE_DIR . '/core/DocumentParser.php';
 require BASE_DIR . '/core/GeminiService.php';
 require BASE_DIR . '/core/BackupService.php';
 require BASE_DIR . '/core/ExcelExportService.php';
+require BASE_DIR . '/core/CatalogoService.php';
+require BASE_DIR . '/core/ImportadorService.php';
 
 // Restaurar sesión persistente automáticamente si el usuario cerró la app de "Recientes"
 xpRestoreRememberSession();

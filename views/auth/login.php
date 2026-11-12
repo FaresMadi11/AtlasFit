@@ -1,13 +1,11 @@
 <?php
 $temaGlobalLogin = 'classic';
+$temaLoginVer    = 1;
 try {
-    if (function_exists('getDB')) {
-        $dbLogin = getDB();
-        $stTemaLogin = $dbLogin->query("SELECT valor FROM ajustes_globales WHERE clave = 'tema_sistema' LIMIT 1");
-        $valTema = $stTemaLogin ? (string)$stTemaLogin->fetchColumn() : '';
-        if (in_array($valTema, ['classic', 'obsidian', 'royal-plum', 'deep-ocean', 'nordic-frost', 'dark', 'light'], true)) {
-            $temaGlobalLogin = $valTema;
-        }
+    if (function_exists('xpResolverTemaWeb') && function_exists('getDB')) {
+        $temaLoginInfo   = xpResolverTemaWeb(getDB(), null);
+        $temaGlobalLogin = $temaLoginInfo['tema_global'] ?? 'classic';
+        $temaLoginVer    = (int)($temaLoginInfo['global_ver'] ?? 1);
     }
 } catch (\Throwable $e) {}
 $mapaMetaColorLogin = [
@@ -38,14 +36,20 @@ $metaColorLogin = $mapaMetaColorLogin[$temaGlobalLogin] ?? '#02040a';
 <link rel="icon" type="image/svg+xml" href="<?= APP_URL ?>/assets/img/favicon.svg?v=<?= $icoVer ?>">
 <link rel="apple-touch-icon" href="<?= APP_URL ?>/assets/img/apple-touch-icon.png?v=<?= $icoVer ?>">
 <link rel="stylesheet" href="<?= APP_URL ?>/assets/vendor/tabler-icons/tabler-icons.min.css">
+<link rel="stylesheet" href="<?= APP_URL ?>/assets/css/custom-select.css?v=<?= @filemtime(__DIR__ . '/../../assets/css/custom-select.css') ?: '1.0' ?>">
 <script>
 (function() {
   var dbTheme = <?= json_encode($temaGlobalLogin) ?>;
+  var dbGVer  = <?= (int)$temaLoginVer ?>;
   var savedTheme = dbTheme;
   try {
     var lsTheme = localStorage.getItem('xp_theme');
-    if (lsTheme && ['classic','obsidian','royal-plum','deep-ocean','nordic-frost','dark','light'].indexOf(lsTheme) !== -1) {
+    var lsGVer  = Number(localStorage.getItem('xp_theme_gver') || '0');
+    if (navigator.onLine === false && lsTheme && ['classic','obsidian','royal-plum','deep-ocean','nordic-frost','dark','light'].indexOf(lsTheme) !== -1 && lsGVer >= dbGVer) {
       savedTheme = lsTheme;
+    } else {
+      localStorage.setItem('xp_theme', dbTheme);
+      localStorage.setItem('xp_theme_gver', String(dbGVer));
     }
   } catch (_) {}
   window.XP_LOGIN_THEME = savedTheme;
@@ -121,6 +125,7 @@ window.togglePassVisibility = togglePassVisibility;
 :root,
 html[data-theme="classic"],
 html[data-theme="dark"] {
+  color-scheme: dark;
   --login-bg: #02040a;
   --login-overlay: rgba(2, 4, 10, 0.30);
   --login-orb1: rgba(138, 43, 226, 0.16);
@@ -259,7 +264,9 @@ main#mainContent{
 
 /* ── Fields (Touch targets & Typography) ── */
 .field{
-  background:#00000066;
+  display:flex;
+  flex-direction:column;
+  background:#0a0b12;
   border:1px solid rgba(255,255,255,0.15);
   border-radius:12px;
   padding:14px 16px; 
@@ -267,16 +274,19 @@ main#mainContent{
   transition:border-color .25s,box-shadow .25s;
 }
 .field:focus-within{border-color:#8a2be2;box-shadow: 0 0 12px rgba(138,43,226,0.25);}
+.field.has-error{border-color:rgba(248,113,113,0.65) !important;box-shadow:0 0 0 2px rgba(248,113,113,0.14) !important;}
+.field.has-error .ibg-error{display:inline-flex;}
 .field label{display:block;font-size:0.75rem;color:rgba(255,255,255,.6);font-weight:700;text-transform:uppercase;letter-spacing:.6px;margin-bottom:8px;} 
 .field input{
-  width:100%;background:transparent !important;background-color:transparent !important;border:none !important;box-shadow:none !important;-webkit-box-shadow:none !important;color:#FFFFFF;font-size:1.05rem;font-weight:500;outline:none;font-family:'Inter',sans-serif;
+  width:100%;background:transparent;border:none !important;box-shadow:none !important;-webkit-box-shadow:none !important;color:#FFFFFF;font-size:1.05rem;font-weight:500;outline:none;font-family:'Inter',sans-serif;
 } 
 .field input::placeholder{color:rgba(255,255,255,.18);}
-/* Autofill 100% transparente: elimina cualquier caja, sombra o rectángulo gris sobre los textos */
+/* Autofill integrado a la tarjeta oscura: evita rectángulos blancos/azules al volver al login */
 input:-webkit-autofill,
-input:-webkit-autofill:hover, 
+input:-webkit-autofill:hover,
 input:-webkit-autofill:focus,
 input:-webkit-autofill:active,
+input:-internal-autofill-selected,
 textarea:-webkit-autofill,
 textarea:-webkit-autofill:hover,
 textarea:-webkit-autofill:focus,
@@ -287,11 +297,17 @@ select:-webkit-autofill:focus,
 select:-webkit-autofill:active {
     -webkit-text-fill-color: #ffffff !important;
     caret-color: #ffffff !important;
-    -webkit-box-shadow: 0 0 0 1000px transparent inset !important;
-    box-shadow: 0 0 0 1000px transparent inset !important;
-    background-color: transparent !important;
-    background: transparent !important;
-    transition: background-color 5000000s ease-in-out 0s, color 5000000s ease-in-out 0s !important;
+    -webkit-box-shadow: 0 0 0 1000px #0a0b12 inset !important;
+    box-shadow: 0 0 0 1000px #0a0b12 inset !important;
+    transition: background-color 9999999s step-end 0s, color 9999999s step-end 0s !important;
+}
+.input-box-group input:-webkit-autofill,
+.input-box-group input:-webkit-autofill:hover,
+.input-box-group input:-webkit-autofill:focus,
+.input-box-group input:-webkit-autofill:active,
+.input-box-group input:-internal-autofill-selected {
+    -webkit-box-shadow: 0 0 0 1000px #0f1017 inset !important;
+    box-shadow: 0 0 0 1000px #0f1017 inset !important;
 }
 .pass-row{display:flex;align-items:center;position:relative;width:100%;}
 .pass-row input{flex:1;min-width:0;padding-right:48px !important;}
@@ -430,7 +446,9 @@ select:-webkit-autofill:active {
 
 /* Campo = bloque redondeado compacto con la etiqueta DENTRO (arriba a la izquierda) */
 .input-box-group{
-  background: rgba(15, 15, 20, 0.55);
+  display: flex;
+  flex-direction: column;
+  background: #0f1017;
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 14px;
   padding: 9px 13px;
@@ -441,7 +459,7 @@ select:-webkit-autofill:active {
 .input-box-group label{font-size:0.75rem;font-weight:600;color:#94a3b8;display:block;margin-bottom:4px;}
 .input-box-group input,
 .input-box-group select{
-  background-color: transparent !important;
+  background-color: transparent;
   border: none !important;
   outline: none !important;
   box-shadow: none !important;
@@ -451,7 +469,7 @@ select:-webkit-autofill:active {
   font-size: 1rem;
   font-family:'Inter',sans-serif;
 }
-.input-box-group input{border-radius:6px;background:transparent !important;}
+.input-box-group input{border-radius:6px;}
 .input-box-group input::placeholder{color:rgba(255,255,255,.28);}
 
 /* <select> oscuro con flecha propia */
@@ -463,19 +481,67 @@ select:-webkit-autofill:active {
 .input-box-group select:invalid{color:rgba(255,255,255,.4);}
 .input-box-group select option{background:#15151a;color:#fff;}
 
-/* Errores de validación por campo */
+/* Aviso único y discreto por encima del campo que falta o es inválido */
 .input-box-group.has-error{
-  border-color: #f87171 !important;
-  box-shadow: 0 0 0 3px rgba(248, 113, 113, 0.25), 0 0 16px rgba(138, 43, 226, 0.35) !important;
-  animation: ibgShake 0.4s ease-in-out;
+  border-color: rgba(248, 113, 113, 0.65) !important;
+  box-shadow: 0 0 0 2px rgba(248, 113, 113, 0.14) !important;
 }
 @keyframes ibgShake {
   0%, 100% { transform: translateX(0); }
-  20%, 60% { transform: translateX(-4px); }
-  40%, 80% { transform: translateX(4px); }
+  25%, 75% { transform: translateX(-3px); }
+  50% { transform: translateX(3px); }
 }
-.ibg-error{display:none;font-size:.72rem;color:#fca5a5;margin-top:6px;line-height:1.3;font-weight:600;}
-.input-box-group.has-error .ibg-error{display:block;}
+.ibg-error{
+  display:none;
+  order:-1;
+  align-items:center;
+  gap:5px;
+  width:fit-content;
+  max-width:100%;
+  margin:0 0 6px 0;
+  padding:3px 9px;
+  border-radius:999px;
+  background:rgba(248,113,113,0.12);
+  border:1px solid rgba(248,113,113,0.28);
+  font-size:.72rem;
+  color:#fca5a5;
+  line-height:1.3;
+  font-weight:500;
+}
+.input-box-group.has-error .ibg-error{display:inline-flex;}
+.reg-email-row{display:flex;align-items:center;gap:8px;}
+.reg-email-row input{flex:1;min-width:0;}
+.btn-verify-email{
+  flex-shrink:0;white-space:nowrap;border:1px solid rgba(168,85,247,.42);
+  background:rgba(138,43,226,.22);color:#e9d5ff;border-radius:10px;
+  padding:7px 11px;font-size:.75rem;font-weight:700;cursor:pointer;
+  transition:all .2s ease;display:inline-flex;align-items:center;gap:5px;
+}
+.btn-verify-email:hover:not(:disabled){background:rgba(138,43,226,.38);color:#fff;}
+.btn-verify-email:disabled{opacity:.55;cursor:not-allowed;}
+.reg-otp-wrap{
+  margin-top:9px;padding-top:9px;border-top:1px dashed rgba(255,255,255,.1);
+  display:flex;align-items:center;gap:8px;flex-wrap:wrap;
+}
+.reg-otp-input{
+  flex:1;min-width:130px;padding:7px 10px !important;border-radius:9px !important;
+  background:rgba(255,255,255,.06) !important;border:1px solid rgba(168,85,247,.35) !important;
+  color:#fff !important;font-size:.92rem !important;font-weight:700;letter-spacing:3px;text-align:center;
+}
+.reg-otp-input:focus{border-color:#a855f7 !important;box-shadow:0 0 0 2px rgba(138,43,226,.22) !important;}
+.btn-confirm-otp{
+  flex-shrink:0;border:none;border-radius:9px;padding:8px 13px;font-size:.76rem;font-weight:700;
+  background:linear-gradient(135deg,#8a2be2,#6d28d9);color:#fff;cursor:pointer;
+  display:inline-flex;align-items:center;gap:5px;transition:all .2s ease;
+}
+.btn-confirm-otp:hover:not(:disabled){filter:brightness(1.12);}
+.btn-confirm-otp:disabled{opacity:.55;cursor:not-allowed;}
+.badge-email-ok{
+  font-size:.68rem;padding:2px 8px;border-radius:99px;font-weight:700;text-transform:none;
+  background:rgba(34,197,94,.16);color:#4ade80;border:1px solid rgba(34,197,94,.35);
+  display:none;align-items:center;gap:4px;
+}
+.badge-email-ok.is-visible{display:inline-flex;}
 
 @media (max-width:330px){.reg-grid-2{grid-template-columns:1fr;gap:0;}}
 
@@ -1052,33 +1118,88 @@ select:-webkit-autofill:active {
 .wizard-nav-row {
   display: flex;
   gap: 10px;
-  align-items: center;
-  margin-top: 14px;
-  margin-bottom: 12px;
+  align-items: stretch;
+  margin-top: 18px;
+  margin-bottom: 10px;
 }
 .btn-wizard-back {
-  padding: 13px 18px;
-  background: rgba(255,255,255,0.06);
-  border: 1px solid rgba(255,255,255,0.12);
-  color: #cbd5e1;
-  border-radius: 50px;
+  min-height: 48px;
+  padding: 0 18px;
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.14);
+  color: #e2e8f0;
+  border-radius: 16px;
   font-weight: 600;
-  font-size: 0.95rem;
+  font-size: 0.92rem;
   cursor: pointer;
-  display: flex;
+  display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 6px;
+  white-space: nowrap;
+  flex-shrink: 0;
   font-family: 'Inter', sans-serif;
   transition: all 0.2s ease;
 }
 .btn-wizard-back:hover {
-  background: rgba(255,255,255,0.12);
+  background: rgba(255,255,255,0.11);
+  border-color: rgba(255,255,255,0.24);
   color: #fff;
+  transform: translateY(-1px);
 }
 .btn-wizard-next, .btn-wizard-finish {
-  background: linear-gradient(135deg, #8a2be2 0%, #7c3aed 100%) !important;
+  background: linear-gradient(135deg, #8a2be2 0%, #6d28d9 100%) !important;
   color: #fff !important;
-  box-shadow: 0 6px 22px rgba(138,43,226,0.35) !important;
+  box-shadow: 0 8px 24px rgba(138,43,226,0.36) !important;
+  border: 1px solid rgba(216,180,254,0.28) !important;
+  border-radius: 16px !important;
+  min-height: 48px !important;
+  padding: 0 20px !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 7px !important;
+  white-space: nowrap !important;
+  text-transform: none !important;
+  letter-spacing: 0.2px !important;
+  font-size: 0.95rem !important;
+  font-weight: 700 !important;
+}
+.btn-wizard-finish:hover {
+  filter: brightness(1.08);
+  box-shadow: 0 10px 28px rgba(138,43,226,0.48) !important;
+  transform: translateY(-1px);
+}
+.btn-skip-goals {
+  width: 100%;
+  min-height: 42px;
+  padding: 10px 16px;
+  background: rgba(255,255,255,0.035);
+  border: 1px dashed rgba(179,136,255,0.30);
+  color: #cbd5e1;
+  border-radius: 14px;
+  font-family: 'Inter', sans-serif;
+  font-size: 0.86rem;
+  font-weight: 600;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  transition: all 0.2s ease;
+}
+.btn-skip-goals i {
+  font-size: 0.95rem;
+  color: #b388ff;
+  transition: transform 0.2s ease;
+}
+.btn-skip-goals:hover {
+  background: rgba(138,43,226,0.12);
+  border-color: rgba(179,136,255,0.58);
+  color: #fff;
+}
+.btn-skip-goals:hover i {
+  transform: translateX(3px);
 }
 .btn-wizard-next:hover, .btn-wizard-finish:hover {
   opacity: 0.92;
@@ -1408,8 +1529,8 @@ select:-webkit-autofill:active {
 
 <?php
 $vistaInicial = $vistaInicial ?? 'login';
-$isGoogleMode = (!empty($_SESSION['google_onboarding']) || isset($_GET['google']));
-$googleData   = $_SESSION['google_onboarding'] ?? [];
+$isGoogleMode = (!empty($_SESSION['google_onboarding']) && !empty($_SESSION['google_onboarding']['email']));
+$googleData   = $isGoogleMode ? ($_SESSION['google_onboarding'] ?? []) : [];
 
 $refRawView = isset($_GET['ref']) && is_string($_GET['ref'])
     ? $_GET['ref']
@@ -1436,16 +1557,18 @@ $esStandby  = ($vistaInicial === 'standby');
   <div id="view-login" class="auth-view"<?= $esLogin ? '' : ' style="display: none;" aria-hidden="true"' ?>>
   <form id="loginForm" method="POST" action="<?= APP_URL ?>/auth/do-login" novalidate aria-label="Formulario de inicio de sesión">
     <?= csrfField() ?>
-    <div class="field">
+    <div class="field" id="group_login_usuario">
       <label for="login_usuario">Usuario o Correo</label>
-      <input type="text" id="login_usuario" name="usuario" placeholder="tu@correo.com" required autocomplete="username" aria-required="true">
+      <input type="text" id="login_usuario" name="usuario" placeholder="tu@correo.com" required autocomplete="username" aria-required="true" aria-describedby="err_login_usuario">
+      <small class="ibg-error" id="err_login_usuario" role="alert"></small>
     </div>
-    <div class="field">
+    <div class="field" id="group_login_pass">
       <label for="login_pass">Contraseña</label>
       <div class="pass-row">
-        <input type="password" id="login_pass" name="password" placeholder="••••••••" required autocomplete="current-password" aria-required="true">
+        <input type="password" id="login_pass" name="password" placeholder="••••••••" required autocomplete="current-password" aria-required="true" aria-describedby="err_login_pass">
         <button type="button" class="btn-eye" data-target="login_pass" onclick="togglePassVisibility(this, event)" onpointerdown="event.stopPropagation();" aria-label="Mostrar u ocultar contraseña"><i class="ti ti-eye" aria-hidden="true"></i></button>
       </div>
+      <small class="ibg-error" id="err_login_pass" role="alert"></small>
     </div>
     <button type="submit" id="btnLogin" class="btn-submit">Iniciar Sesión</button>
   </form>
@@ -1560,18 +1683,38 @@ $esStandby  = ($vistaInicial === 'standby');
 
         <div class="input-box-group" id="group_reg_codigo_entrenador" style="<?= $refEntrenadorInfo ? 'border-color:rgba(138,43,226,0.55);background:rgba(138,43,226,0.08);' : '' ?>">
           <label for="reg_codigo_entrenador" style="display:flex;align-items:center;justify-content:space-between;gap:6px;">
-            <span id="lblCodigoEntrenadorTxt"><i class="ti ti-ticket" style="color:#b388ff;"></i> Código de Entrenador <?= $refEntrenadorInfo ? '' : '(Opcional)' ?></span>
+            <span id="lblCodigoEntrenadorTxt"><i class="ti ti-ticket" style="color:#b388ff;"></i> Código de Entrenador <span style="color:#ff4d6d;">*</span></span>
             <span id="badgeCoachRef" style="font-size:0.68rem;padding:2px 8px;border-radius:99px;background:rgba(34,197,94,0.18);color:#4ade80;border:1px solid rgba(34,197,94,0.35);font-weight:700;text-transform:none;<?= $refEntrenadorInfo ? 'display:inline-flex;align-items:center;gap:4px;' : 'display:none;' ?>">
               <i class="ti ti-circle-check"></i> <span id="badgeCoachRefNombre">Coach: <?= e($refEntrenadorInfo['entrenador_nombre'] ?? '') ?></span>
             </span>
           </label>
-          <input type="text" id="reg_codigo_entrenador" name="codigo_entrenador" value="<?= e($refCodigoActivo) ?>" placeholder="Ej: SABEH-FIT" maxlength="40" autocomplete="off" spellcheck="false" style="text-transform:uppercase;font-weight:700;letter-spacing:0.6px;" aria-describedby="err_codigo_entrenador">
+          <input type="text" id="reg_codigo_entrenador" name="codigo_entrenador" value="<?= e($refCodigoActivo) ?>" placeholder="Ej: SABEH-FIT" maxlength="40" required autocomplete="off" spellcheck="false" style="text-transform:uppercase;font-weight:700;letter-spacing:0.6px;" aria-required="true" aria-describedby="err_codigo_entrenador">
           <small class="ibg-error" id="err_codigo_entrenador" role="alert"></small>
         </div>
 
         <div class="input-box-group" id="group_reg_email">
-          <label for="reg_email">Correo electrónico</label>
-          <input type="email" id="reg_email" name="email" value="<?= e($googleData['email'] ?? '') ?>" <?= $isGoogleMode ? 'readonly style="opacity:0.85;cursor:not-allowed;"' : '' ?> placeholder="tu@correo.com" maxlength="150" required autocomplete="email" aria-required="true" aria-describedby="err_email">
+          <label for="reg_email" style="display:flex;align-items:center;justify-content:space-between;gap:6px;">
+            <span>Correo electrónico</span>
+            <span id="badgeEmailVerified" class="badge-email-ok <?= $isGoogleMode ? 'is-visible' : '' ?>">
+              <i class="ti ti-circle-check"></i> <?= $isGoogleMode ? 'Verificado con Google' : 'Correo verificado' ?>
+            </span>
+          </label>
+          <div class="reg-email-row">
+            <input type="email" id="reg_email" name="email" value="<?= e($googleData['email'] ?? '') ?>" <?= $isGoogleMode ? 'readonly style="opacity:0.85;cursor:not-allowed;"' : '' ?> placeholder="tu@correo.com" maxlength="150" required autocomplete="email" aria-required="true" aria-describedby="err_email">
+            <?php if (!$isGoogleMode): ?>
+            <button type="button" id="btnEnviarCodigoEmail" class="btn-verify-email" onclick="enviarCodigoVerificacionEmail()">
+              <i class="ti ti-mail-forward"></i> <span>Enviar código</span>
+            </button>
+            <?php endif; ?>
+          </div>
+          <?php if (!$isGoogleMode): ?>
+          <div id="boxEmailOtp" class="reg-otp-wrap" style="display:none;">
+            <input type="text" id="reg_email_otp" class="reg-otp-input" inputmode="numeric" pattern="[0-9]*" maxlength="6" placeholder="Código 6 dígitos" autocomplete="one-time-code" aria-label="Código de verificación enviado a tu correo">
+            <button type="button" id="btnVerificarCodigoEmail" class="btn-confirm-otp" onclick="verificarCodigoEmailBtn()">
+              <i class="ti ti-check"></i> Confirmar
+            </button>
+          </div>
+          <?php endif; ?>
           <small class="ibg-error" id="err_email" role="alert"></small>
         </div>
 
@@ -1645,11 +1788,6 @@ $esStandby  = ($vistaInicial === 'standby');
               } catch(_) {}
             })();
           </script>
-        </div>
-
-        <div id="step1ErrorBanner" style="display:none;margin-bottom:12px;padding:12px 16px;background:rgba(239,68,68,0.18);border:1px solid rgba(239,68,68,0.45);border-radius:14px;color:#fca5a5;font-size:0.875rem;font-weight:600;text-align:center;">
-          <i class="ti ti-alert-circle" style="vertical-align:middle;margin-right:6px;font-size:1.1rem;"></i>
-          <span id="step1ErrorText"></span>
         </div>
 
         <button type="button" id="btnWizardStep1Next" class="btn-submit btn-wizard-next btn-wizard-next-step1" onclick="handleWizardStep1Next(event)">
@@ -1745,6 +1883,7 @@ $esStandby  = ($vistaInicial === 'standby');
         <p class="form-sub">Selecciona tu objetivo principal para personalizar tu experiencia</p>
 
         <!-- Cuadrícula de tarjetas/chips interactivos -->
+        <small class="ibg-error" id="err_goals" role="alert" style="margin:0 0 10px 0;"></small>
         <div class="goals-grid" id="goalsGrid">
           <div class="goal-chip" data-goal="Perder grasa / Definición" data-id="perder_grasa" data-color="#f87171" data-icon="ti-flame" role="checkbox" aria-checked="false" tabindex="0">
             <div class="goal-chip-top">
@@ -1802,6 +1941,7 @@ $esStandby  = ($vistaInicial === 'standby');
             </div>
             <div class="goal-chip-title">Otros (Personalizado)</div>
             <div class="goal-chip-custom-wrap" id="boxMetaOtros" style="display:none;" onclick="event.stopPropagation()" onpointerdown="event.stopPropagation()">
+              <small class="ibg-error" id="err_meta_otros" role="alert" style="margin:0 0 6px 0;"></small>
               <div class="custom-goal-field">
                 <i class="ti ti-sparkles custom-goal-icon" aria-hidden="true"></i>
                 <input type="text" id="inputMetaOtros" maxlength="150" placeholder="Ej: Preparación para triatlón..." class="custom-goal-input" autocomplete="off" onclick="event.stopPropagation()" onpointerdown="event.stopPropagation()">
@@ -1840,15 +1980,15 @@ $esStandby  = ($vistaInicial === 'standby');
 
         <div class="wizard-nav-row" style="margin-top:20px;">
           <button type="button" id="btnWizardStep3Back" class="btn-wizard-back" onclick="forceStepSwitch(3, 2)">
-            <i class="ti ti-arrow-left"></i> Atrás
+            <i class="ti ti-arrow-left"></i> <span>Atrás</span>
           </button>
-          <button type="submit" id="btnRegister" class="btn-submit btn-wizard-finish" style="margin:0;flex:2;">
-            <i class="ti ti-check" style="margin-right:4px;"></i> Finalizar y Solicitar Acceso
+          <button type="submit" id="btnRegister" class="btn-submit btn-wizard-finish" style="margin:0;flex:1;">
+            <i class="ti ti-check"></i> <span>Solicitar acceso</span>
           </button>
         </div>
 
         <!-- Botón 'Omitir por ahora' -->
-        <div style="text-align:center; margin-top:8px;">
+        <div style="text-align:center; margin-top:4px;">
           <button type="button" id="btnSkipGoals" class="btn-skip-goals" aria-label="Omitir elección de metas y finalizar">
             <span>Omitir por ahora</span>
             <i class="ti ti-arrow-right"></i>
@@ -2028,14 +2168,44 @@ async function postApi(endpoint, body) {
 
 // ── LOGIN ──
 const origLogin = 'Iniciar Sesión';
+function clearLoginFieldError(fieldEl) {
+  if (!fieldEl) return;
+  fieldEl.classList.remove('has-error');
+  const inp = fieldEl.querySelector('input');
+  if (inp) inp.removeAttribute('aria-invalid');
+  const errEl = fieldEl.querySelector('.ibg-error');
+  if (errEl) { errEl.textContent = ''; errEl.style.display = ''; }
+}
+function setLoginFieldError(inputId, msg) {
+  const inp = document.getElementById(inputId);
+  const box = inp?.closest('.field');
+  if (box) {
+    box.classList.add('has-error');
+    const errEl = box.querySelector('.ibg-error');
+    if (errEl) { errEl.textContent = msg; errEl.style.display = 'inline-flex'; }
+  }
+  if (inp) {
+    inp.setAttribute('aria-invalid', 'true');
+    inp.focus({ preventScroll: true });
+  }
+}
+document.getElementById('loginForm')?.addEventListener('input', e => {
+  clearLoginFieldError(e.target?.closest?.('.field'));
+});
 document.getElementById('loginForm')?.addEventListener('submit', async e => {
   e.preventDefault();
-  
+  clearLoginFieldError(document.getElementById('group_login_usuario'));
+  clearLoginFieldError(document.getElementById('group_login_pass'));
+
   const userInp = document.getElementById('login_usuario').value.trim();
   const passInp = document.getElementById('login_pass').value.trim();
-  
-  if (!userInp || !passInp) {
-    Toast.fire({icon: 'warning', title: 'Por favor, llena ambos campos.'});
+
+  if (!userInp) {
+    setLoginFieldError('login_usuario', 'Ingresa tu usuario o correo.');
+    return;
+  }
+  if (!passInp) {
+    setLoginFieldError('login_pass', 'Ingresa tu contraseña.');
     return;
   }
 
@@ -2220,7 +2390,7 @@ if (viewStandby && viewStandby.style.display === 'block') document.title = TITUL
 // ══════════════════════════════════════════════════════════════
 
 const registerForm = document.getElementById('registerForm');
-const origRegister = '<i class="ti ti-check" style="margin-right:4px;"></i> Finalizar y Solicitar Acceso';
+const origRegister = '<i class="ti ti-check"></i> <span>Solicitar acceso</span>';
 
 function clearRegErrors() {
   document.querySelectorAll('.input-box-group').forEach(g => {
@@ -2228,13 +2398,11 @@ function clearRegErrors() {
     g.style.borderColor = '';
     g.style.boxShadow = '';
   });
-  document.querySelectorAll('.ibg-error').forEach(s => {
+  document.querySelectorAll('#view-register .ibg-error').forEach(s => {
     s.textContent = '';
     s.style.display = 'none';
   });
   document.querySelectorAll('[aria-invalid]').forEach(i => i.removeAttribute('aria-invalid'));
-  const b = document.getElementById('step1ErrorBanner');
-  if (b) b.style.display = 'none';
 }
 
 function setRegError(campo, msg) {
@@ -2243,18 +2411,13 @@ function setRegError(campo, msg) {
   const box = input.closest('.input-box-group');
   if (box) {
     box.classList.add('has-error');
-    box.style.borderColor = '#ff4d6d';
-    box.style.boxShadow = '0 0 0 3px rgba(255, 77, 109, 0.35), 0 0 20px rgba(138, 43, 226, 0.45)';
-    box.classList.remove('ibg-shake');
-    void box.offsetWidth;
-    box.classList.add('ibg-shake');
   }
   input.setAttribute('aria-invalid', 'true');
   const errId = campo.startsWith('reg_') ? campo.replace('reg_', 'err_') : 'err_' + campo;
-  const out = document.getElementById(errId);
+  const out = (box ? box.querySelector('.ibg-error') : null) || document.getElementById(errId);
   if (out) {
     out.textContent = msg;
-    out.style.display = 'block';
+    out.style.display = 'inline-flex';
   }
   return input;
 }
@@ -2415,8 +2578,17 @@ const boxMetaOtros = document.getElementById('boxMetaOtros');
 const inputMetaOtros = document.getElementById('inputMetaOtros');
 const boxSubHipertrofia = document.getElementById('boxSubnivelHipertrofia');
 
+if (inputMetaOtros) {
+  inputMetaOtros.addEventListener('input', () => {
+    const errOtros = document.getElementById('err_meta_otros');
+    if (errOtros) { errOtros.textContent = ''; errOtros.style.display = 'none'; }
+  });
+}
+
 document.querySelectorAll('#goalsGrid .goal-chip').forEach(chip => {
   chip.addEventListener('click', (e) => {
+    const errGoals = document.getElementById('err_goals');
+    if (errGoals) { errGoals.textContent = ''; errGoals.style.display = 'none'; }
     // Si el clic ocurrió dentro del input personalizado de otros, no alternar el chip
     if (e.target && e.target.closest('#inputMetaOtros')) {
       return;
@@ -2562,8 +2734,163 @@ window.goToWizardStep = function(step) {
   window.forceStepSwitch(wizardCurrentStep, step);
 };
 
+/* ── Verificación Real de Correo por Código OTP ── */
+let verifiedEmailAddress = '';
+let emailOtpCooldownTimer = null;
+
+function resetEmailVerificationUI(clearOtpInput = true) {
+  verifiedEmailAddress = '';
+  const badge = document.getElementById('badgeEmailVerified');
+  if (badge && document.getElementById('regAuthProvider')?.value !== 'google') {
+    badge.classList.remove('is-visible');
+  }
+  if (clearOtpInput) {
+    const otpInp = document.getElementById('reg_email_otp');
+    if (otpInp) otpInp.value = '';
+  }
+}
+
+document.getElementById('reg_email')?.addEventListener('input', function() {
+  const cur = (this.value || '').trim().toLowerCase();
+  if (verifiedEmailAddress && cur !== verifiedEmailAddress) {
+    resetEmailVerificationUI(true);
+  }
+});
+
+function startEmailOtpCooldown(secs) {
+  const btn = document.getElementById('btnEnviarCodigoEmail');
+  if (!btn) return;
+  if (emailOtpCooldownTimer) clearInterval(emailOtpCooldownTimer);
+  let left = Math.max(1, parseInt(secs || 45, 10));
+  const updateTxt = () => {
+    btn.disabled = true;
+    btn.innerHTML = '<i class="ti ti-clock"></i> <span>' + left + 's</span>';
+  };
+  updateTxt();
+  emailOtpCooldownTimer = setInterval(() => {
+    left--;
+    if (left <= 0) {
+      clearInterval(emailOtpCooldownTimer);
+      emailOtpCooldownTimer = null;
+      btn.disabled = false;
+      btn.innerHTML = '<i class="ti ti-mail-forward"></i> <span>Reenviar</span>';
+    } else {
+      updateTxt();
+    }
+  }, 1000);
+}
+
+window.enviarCodigoVerificacionEmail = async function() {
+  const emailInp = document.getElementById('reg_email');
+  const errEl = document.getElementById('err_email');
+  const box = document.getElementById('group_reg_email');
+  const btn = document.getElementById('btnEnviarCodigoEmail');
+  const valEmail = (emailInp?.value || '').trim().toLowerCase();
+
+  if (box) { box.classList.remove('has-error', 'ibg-shake'); box.style.borderColor = ''; box.style.boxShadow = ''; }
+  if (errEl) { errEl.textContent = ''; errEl.style.display = 'none'; }
+
+  if (!valEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(valEmail)) {
+    if (box) box.classList.add('has-error');
+    if (errEl) { errEl.textContent = 'Ingresa primero un correo electrónico válido.'; errEl.style.display = 'block'; }
+    emailInp?.focus();
+    return;
+  }
+
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spin"></span> <span>Enviando...</span>';
+  }
+
+  try {
+    const res = await postApi('auth/api-enviar-codigo-email', {
+      csrf_token: typeof CSRF !== 'undefined' ? CSRF : '',
+      email: valEmail
+    });
+    if (res && res.ok) {
+      resetEmailVerificationUI(true);
+      const otpBox = document.getElementById('boxEmailOtp');
+      if (otpBox) otpBox.style.display = 'flex';
+      Toast.fire({ icon: 'success', title: res.msg || 'Código enviado a tu correo.' });
+      startEmailOtpCooldown(res.cooldown || 45);
+      setTimeout(() => document.getElementById('reg_email_otp')?.focus(), 80);
+    } else {
+      if (box) box.classList.add('has-error');
+      const baseErr = res?.msg || 'No se pudo enviar el código a tu correo.';
+      const fallbackHint = ' Si no llega a tu bandeja o Spam, también puedes continuar con Google en 1 clic.';
+      if (errEl) {
+        errEl.textContent = res?.cooldown ? baseErr : (baseErr + fallbackHint);
+        errEl.style.display = 'block';
+      }
+      if (res?.cooldown) startEmailOtpCooldown(res.cooldown);
+      else if (btn) { btn.disabled = false; btn.innerHTML = '<i class="ti ti-mail-forward"></i> <span>Reintentar</span>'; }
+    }
+  } catch (err) {
+    if (btn) { btn.disabled = false; btn.innerHTML = '<i class="ti ti-mail-forward"></i> <span>Reintentar</span>'; }
+    if (errEl) {
+      errEl.textContent = (err?.message || 'Error de conexión.') + ' Verifica tu red o usa "Continuar con Google".';
+      errEl.style.display = 'block';
+    }
+  }
+};
+
+window.verificarCodigoEmailBtn = async function(silent = false) {
+  const emailInp = document.getElementById('reg_email');
+  const otpInp = document.getElementById('reg_email_otp');
+  const errEl = document.getElementById('err_email');
+  const box = document.getElementById('group_reg_email');
+  const btn = document.getElementById('btnVerificarCodigoEmail');
+
+  const valEmail = (emailInp?.value || '').trim().toLowerCase();
+  const valOtp = (otpInp?.value || '').replace(/\D+/g, '');
+  if (otpInp) otpInp.value = valOtp;
+
+  if (valOtp.length !== 6) {
+    if (!silent) {
+      if (box) box.classList.add('has-error');
+      if (errEl) { errEl.textContent = 'Ingresa los 6 dígitos del código enviado a tu correo.'; errEl.style.display = 'block'; }
+      otpInp?.focus();
+    }
+    return { ok: false, msg: 'Ingresa el código de 6 dígitos enviado a tu correo.' };
+  }
+
+  if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spin"></span> Validando'; }
+  try {
+    const res = await postApi('auth/api-verificar-codigo-email', {
+      csrf_token: typeof CSRF !== 'undefined' ? CSRF : '',
+      email: valEmail,
+      codigo: valOtp
+    });
+    if (res && res.ok) {
+      verifiedEmailAddress = valEmail;
+      if (box) { box.classList.remove('has-error'); box.style.borderColor = 'rgba(34,197,94,0.45)'; box.style.boxShadow = ''; }
+      if (errEl) { errEl.textContent = ''; errEl.style.display = 'none'; }
+      document.getElementById('badgeEmailVerified')?.classList.add('is-visible');
+      const otpBox = document.getElementById('boxEmailOtp');
+      if (otpBox) otpBox.style.display = 'none';
+      if (emailOtpCooldownTimer) { clearInterval(emailOtpCooldownTimer); emailOtpCooldownTimer = null; }
+      const sendBtn = document.getElementById('btnEnviarCodigoEmail');
+      if (sendBtn) {
+        sendBtn.disabled = false;
+        sendBtn.innerHTML = '<i class="ti ti-refresh"></i> <span>Cambiar</span>';
+      }
+      if (!silent) Toast.fire({ icon: 'success', title: '¡Correo verificado!' });
+      return { ok: true };
+    }
+    if (!silent) {
+      if (box) box.classList.add('has-error');
+      if (errEl) { errEl.textContent = res?.msg || 'Código incorrecto.'; errEl.style.display = 'block'; }
+    }
+    return { ok: false, msg: res?.msg || 'Código incorrecto.' };
+  } catch (err) {
+    return { ok: false, msg: err?.message || 'Error de conexión.' };
+  } finally {
+    if (btn) { btn.disabled = false; btn.innerHTML = '<i class="ti ti-check"></i> Confirmar'; }
+  }
+};
+
 /* ── 6. Manejador Global e Incondicional de SIGUIENTE → (Paso 1) ── */
-window.handleWizardStep1Next = function(event) {
+window.handleWizardStep1Next = async function(event) {
   if (event) {
     if (typeof event.preventDefault === 'function') event.preventDefault();
     if (typeof event.stopPropagation === 'function') event.stopPropagation();
@@ -2583,6 +2910,7 @@ window.handleWizardStep1Next = function(event) {
   const valApellidos  = (document.getElementById('reg_apellidos')?.value || '').trim().replace(/\s+/g, ' ');
   const valCedulaRaw  = (document.getElementById('reg_cedula')?.value || '').trim();
   const valCedulaNorm = normalizarCedula(valCedulaRaw);
+  const valCodigoEnt  = (document.getElementById('reg_codigo_entrenador')?.value || '').trim().toUpperCase();
   const valEmail      = (document.getElementById('reg_email')?.value || '').trim();
   const valPass       = (document.getElementById('reg_pass')?.value || '').trim();
   const valPregunta   = (document.getElementById('reg_pregunta')?.value || '').trim();
@@ -2603,6 +2931,9 @@ window.handleWizardStep1Next = function(event) {
   } else if (!valCedulaNorm) {
     errorField = 'reg_cedula';
     errorMsg   = 'La cédula debe contener entre 5 y 8 números sin letras.';
+  } else if (!valCodigoEnt || valCodigoEnt.length < 3) {
+    errorField = 'reg_codigo_entrenador';
+    errorMsg   = 'El código o link de entrenador es obligatorio para registrarte.';
   } else if (!valEmail) {
     errorField = 'reg_email';
     errorMsg   = 'Por favor ingresa tu correo electrónico.';
@@ -2625,19 +2956,55 @@ window.handleWizardStep1Next = function(event) {
     }
   }
 
+  // Validación obligatoria de correo verificado por OTP para registros locales
+  if (!errorField && !isGoogle && verifiedEmailAddress !== valEmail.toLowerCase()) {
+    const valOtpPending = (document.getElementById('reg_email_otp')?.value || '').replace(/\D+/g, '');
+    if (valOtpPending.length === 6) {
+      const otpCheck = await window.verificarCodigoEmailBtn(true);
+      if (!otpCheck.ok) {
+        errorField = 'reg_email_otp';
+        errorMsg   = otpCheck.msg || 'El código de verificación del correo es inválido.';
+      }
+    } else {
+      errorField = 'reg_email';
+      errorMsg   = 'Debes confirmar un correo real: pulsa "Enviar código" e ingresa el código de 6 dígitos enviado a tu bandeja.';
+    }
+  }
+
+  // Validación remota estricta del código de entrenador si pasó las validaciones locales
+  if (!errorField && valCodigoEnt) {
+    const nextBtn = document.getElementById('btnWizardStep1Next');
+    if (nextBtn) nextBtn.disabled = true;
+    try {
+      const respCode = await fetch(APP + '/auth/api-validar-codigo?codigo=' + encodeURIComponent(valCodigoEnt));
+      const dataCode = await respCode.json();
+      if (!dataCode || !dataCode.ok) {
+        errorField = 'reg_codigo_entrenador';
+        errorMsg   = (dataCode && dataCode.msg && dataCode.msg !== 'Código no encontrado')
+          ? dataCode.msg
+          : 'El código de entrenador ingresado no existe o no está activo.';
+      } else {
+        const bdgNom = document.getElementById('badgeCoachRefNombre');
+        const bdgRef = document.getElementById('badgeCoachRef');
+        if (bdgNom && dataCode.entrenador_nombre) bdgNom.textContent = 'Coach: ' + dataCode.entrenador_nombre;
+        if (bdgRef) bdgRef.style.display = 'inline-flex';
+      }
+    } catch (_) {
+      errorField = 'reg_codigo_entrenador';
+      errorMsg   = 'No se pudo verificar el código de entrenador. Revisa tu conexión.';
+    } finally {
+      if (nextBtn) nextBtn.disabled = false;
+    }
+  }
+
   if (errorField) {
     const inp = document.getElementById(errorField);
     const box = inp ? inp.closest('.input-box-group') : null;
     if (box) {
       box.classList.add('has-error');
-      box.style.borderColor = '#ff4d6d';
-      box.style.boxShadow = '0 0 0 3px rgba(255, 77, 109, 0.35), 0 0 22px rgba(138, 43, 226, 0.45)';
-      box.classList.remove('ibg-shake');
-      void box.offsetWidth;
-      box.classList.add('ibg-shake');
     }
 
-    // Scroll inteligente del contenedor mainContent hacia el campo con error
+    // Scroll suave del contenedor hacia el campo con el aviso discreto arriba
     const main = document.getElementById('mainContent');
     if (box && main) {
       const boxRect = box.getBoundingClientRect();
@@ -2655,7 +3022,7 @@ window.handleWizardStep1Next = function(event) {
     const errSmall = (box ? box.querySelector('.ibg-error') : null) || document.getElementById(errId);
     if (errSmall) {
       errSmall.textContent = errorMsg;
-      errSmall.style.display = 'block';
+      errSmall.style.display = 'inline-flex';
     }
 
     if (inp) {
@@ -2663,41 +3030,6 @@ window.handleWizardStep1Next = function(event) {
       setTimeout(() => {
         try { inp.focus({ preventScroll: true }); } catch (_) {}
       }, 100);
-    }
-
-    // Feedback visual en el banner encima del botón
-    const banner = document.getElementById('step1ErrorBanner');
-    const bText = document.getElementById('step1ErrorText');
-    if (banner && bText) {
-      bText.textContent = errorMsg;
-      banner.style.display = 'block';
-    }
-
-    // Sacudir el botón para feedback táctil instantáneo
-    const nextBtn = document.getElementById('btnWizardStep1Next');
-    if (nextBtn) {
-      nextBtn.classList.remove('ibg-shake');
-      void nextBtn.offsetWidth;
-      nextBtn.classList.add('ibg-shake');
-    }
-
-    // Modal centrado e inconfundible con SweetAlert2
-    if (typeof Swal !== 'undefined' && Swal?.fire) {
-      Swal.fire({
-        icon: 'warning',
-        title: 'Falta información requerida',
-        text: errorMsg,
-        background: '#111827',
-        color: '#fff',
-        confirmButtonText: 'Completar campo',
-        confirmButtonColor: '#8a2be2',
-      }).then(() => {
-        if (inp) {
-          try { inp.focus({ preventScroll: true }); } catch (_) {}
-        }
-      });
-    } else {
-      alert(errorMsg);
     }
     return;
   }
@@ -2745,20 +3077,11 @@ async function submitRegistration(isOmitido = false) {
   clearRegErrors();
 
   if (!isOmitido && selectedGoals.size === 0) {
-    if (typeof Swal !== 'undefined' && Swal?.fire) {
-      Swal.fire({
-        icon: 'warning',
-        title: 'Selecciona una meta',
-        text: 'Por favor selecciona al menos una meta o pulsa "Omitir por ahora".',
-        background: '#111827',
-        color: '#fff',
-        confirmButtonColor: '#8a2be2',
-      });
-    } else {
-      alert('Por favor selecciona al menos una meta o pulsa "Omitir por ahora".');
-    }
-    if (typeof anime !== 'undefined') {
-      anime({ targets: '#goalsGrid', translateX: [0, -8, 8, -5, 5, 0], duration: 450, easing: 'linear' });
+    const errGoals = document.getElementById('err_goals');
+    if (errGoals) {
+      errGoals.textContent = 'Selecciona al menos una meta o pulsa "Omitir por ahora".';
+      errGoals.style.display = 'inline-flex';
+      errGoals.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     }
     return;
   }
@@ -2773,20 +3096,12 @@ async function submitRegistration(isOmitido = false) {
   } else if (selectedGoals.has('otros')) {
     const customTxt = (document.getElementById('inputMetaOtros')?.value || '').trim();
     if (!customTxt) {
-      if (typeof Swal !== 'undefined' && Swal?.fire) {
-        Swal.fire({
-          icon: 'warning',
-          title: 'Meta personalizada',
-          text: 'Por favor escribe tu meta personalizada.',
-          background: '#111827',
-          color: '#fff',
-          confirmButtonColor: '#8a2be2',
-        }).then(() => {
-          document.getElementById('inputMetaOtros')?.focus();
-        });
-      } else {
-        alert('Por favor escribe tu meta personalizada.');
+      const errOtros = document.getElementById('err_meta_otros');
+      if (errOtros) {
+        errOtros.textContent = 'Escribe tu meta personalizada.';
+        errOtros.style.display = 'inline-flex';
       }
+      document.getElementById('inputMetaOtros')?.focus({ preventScroll: true });
       return;
     }
     metasData = {
@@ -2863,6 +3178,11 @@ async function submitRegistration(isOmitido = false) {
 
     if (data.ok || data.status === 'standby') {
       registerForm.reset();
+      resetEmailVerificationUI(true);
+      const otpBoxDone = document.getElementById('boxEmailOtp');
+      if (otpBoxDone) otpBoxDone.style.display = 'none';
+      const sendBtnDone = document.getElementById('btnEnviarCodigoEmail');
+      if (sendBtnDone) { sendBtnDone.disabled = false; sendBtnDone.innerHTML = '<i class="ti ti-mail-forward"></i> <span>Enviar código</span>'; }
       selectedGoals.clear();
       document.querySelectorAll('#goalsGrid .goal-chip').forEach(c => {
         c.classList.remove('selected');
@@ -3153,5 +3473,6 @@ if (recoveryForm) {
 }
 
 </script>
+<script src="<?= APP_URL ?>/assets/js/custom-select.js?v=<?= @filemtime(__DIR__ . '/../../assets/js/custom-select.js') ?: '1.0' ?>" defer></script>
 </body>
 </html>

@@ -1818,9 +1818,10 @@ async function verificarRapido(e, sesionId, btn) {
       method: 'POST',
       headers: { 
         'Content-Type': 'application/json',
-        'X-Requested-With': 'XMLHttpRequest'
+        'X-Requested-With': 'XMLHttpRequest',
+        'X-CSRF-TOKEN': window.CSRF || ''
       },
-      body: JSON.stringify({ sesion_id: sesionId })
+      body: JSON.stringify({ sesion_id: sesionId, csrf_token: window.CSRF || '' })
     });
     const data = await res.json().catch(() => null);
 
@@ -2022,6 +2023,62 @@ function generarSkeletonRutinaDrawer() {
 /* Cache en memoria de paneles por fecha y rutinas por atleta */
 const asistenciasFechaCache = new Map();
 let skPanelDelayTimer = null;
+let activeDrawerFetches = 0;
+
+function getRutinaCacheKey(clienteId, fecha = fechaGlobal, solicitudId = 0) {
+  return `${parseInt(clienteId || 0, 10)}_${fecha || fechaGlobal}_${parseInt(solicitudId || 0, 10)}`;
+}
+
+function capturarDrawersAbiertos(glass) {
+  const abiertos = new Map();
+  if (!glass) return abiertos;
+  glass.querySelectorAll('.cd-item-wrapper.is-open').forEach(el => {
+    if (!el.id) return;
+    const drawer = el.querySelector('.cd-rutina-drawer');
+    abiertos.set(el.id, {
+      id: el.id,
+      drawerEl: drawer || null,
+      solicitudId: parseInt(el.dataset.solicitudId || '0', 10)
+    });
+  });
+  return abiertos;
+}
+
+function restaurarDrawersAbiertos(abiertos, modoTab) {
+  if (!abiertos || abiertos.size === 0) return;
+  abiertos.forEach((saved, id) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.classList.add('is-open');
+    if (saved.solicitudId > 0) {
+      el.dataset.solicitudId = String(saved.solicitudId);
+    }
+    const card = el.querySelector('.cd-card');
+    const newDrawer = el.querySelector('.cd-rutina-drawer');
+    if (card) card.setAttribute('aria-expanded', 'true');
+
+    // Conservar el nodo DOM real del drawer si ya tenía ejercicios o un fetch en curso
+    if (saved.drawerEl && newDrawer && saved.drawerEl.childElementCount > 0) {
+      saved.drawerEl.setAttribute('aria-hidden', 'false');
+      newDrawer.replaceWith(saved.drawerEl);
+      return;
+    }
+
+    if (newDrawer) {
+      newDrawer.setAttribute('aria-hidden', 'false');
+      const m = id.match(/item-(?:pen|comp|sol)-(\d+)/);
+      if (m) {
+        const cid = parseInt(m[1], 10);
+        const keyExact = getRutinaCacheKey(cid, fechaGlobal, saved.solicitudId || 0);
+        const keyBase  = getRutinaCacheKey(cid, fechaGlobal, 0);
+        const cached = rutinaAtletaCache.get(keyExact) || rutinaAtletaCache.get(keyBase);
+        if (cached) {
+          renderRutinaDrawer(newDrawer, cached, modoTab);
+        }
+      }
+    }
+  });
+}
 
 function aplicarDatosPanelesAsistencias(data, appUrl) {
   renderPanelPendientes(data.pendientes || [], appUrl);
@@ -2115,11 +2172,12 @@ function iniciarPolling() {
   if (isPollingActive) return;
   isPollingActive = true;
   setInterval(() => {
-    // Evitar sondeo si la pestaña no es visible, o si el usuario está escribiendo o en un modal
+    // Evitar sondeo si la pestaña no es visible, si hay un drawer cargando o si el usuario está escribiendo/en modal
     if (document.hidden || document.visibilityState !== 'visible') return;
-    if (document.querySelector('.swal2-container, .drill-modal.open, input:focus, textarea:focus')) return;
+    if (activeDrawerFetches > 0) return;
+    if (document.querySelector('.swal2-container, .drill-modal.open, .cdd-bs-sheet.open, .cdd-modal-backdrop.open, input:focus, textarea:focus')) return;
     cargarDatosPorFecha(fechaGlobal, true);
-  }, 10000);
+  }, 12000);
 }
 
 /* Paleta de colores para avatares */
@@ -2149,29 +2207,37 @@ let prevPendientesJson = '';
 let prevCompletadasJson = '';
 let prevAlertasJson = '';
 
-/* Pre-carga silenciosa de las rutinas de los atletas del día para que abran en 0ms al tocarlas */
+/* Pre-carga silenciosa en lotes paralelos de las rutinas de los atletas del día (apertura en 0ms) */
 function prefetchRutinasDelDia(data, fecha) {
   if (!data || !navigator.onLine) return;
-  const lista = [...(data.pendientes || []), ...(data.verificar || [])].slice(0, 8);
+  const lista = [...(data.pendientes || []), ...(data.verificar || [])]
+    .map(item => parseInt(item.cliente_id || item.id || 0, 10))
+    .filter((cid, idx, arr) => cid > 0 && arr.indexOf(cid) === idx)
+    .slice(0, 8);
+  if (!lista.length) return;
+
   setTimeout(async () => {
-    for (const item of lista) {
-      const cid = item.cliente_id || item.id;
-      if (!cid || fechaGlobal !== fecha) break;
-      const cacheKey = `${cid}_${fecha}_0`;
-      if (rutinaAtletaCache.has(cacheKey)) continue;
-      try {
-        const url = `<?= APP_URL ?>/entrenador/api-dia-detalle?cliente_id=${cid}&fecha=${encodeURIComponent(fecha)}`;
-        const r = await fetch(url, { headers: { 'X-Requested-With': 'XMLHttpRequest' } });
-        if (r.ok) {
-          const d = await r.json();
-          if (d && d.ok) {
-            d.cliente_id = cid;
-            rutinaAtletaCache.set(cacheKey, d);
+    const batchSize = 3;
+    for (let i = 0; i < lista.length; i += batchSize) {
+      if (fechaGlobal !== fecha || !navigator.onLine) break;
+      const chunk = lista.slice(i, i + batchSize);
+      await Promise.all(chunk.map(async (cid) => {
+        const cacheKey = getRutinaCacheKey(cid, fecha, 0);
+        if (rutinaAtletaCache.has(cacheKey)) return;
+        try {
+          const url = `<?= APP_URL ?>/entrenador/api-dia-detalle?cliente_id=${cid}&fecha=${encodeURIComponent(fecha)}`;
+          const r = await fetch(url, { headers: { 'X-Requested-With': 'XMLHttpRequest' } });
+          if (r.ok) {
+            const d = await r.json();
+            if (d && d.ok) {
+              d.cliente_id = cid;
+              rutinaAtletaCache.set(cacheKey, d);
+            }
           }
-        }
-      } catch (_) {}
+        } catch (_) {}
+      }));
     }
-  }, 180);
+  }, 120);
 }
 
 // Precalentar las rutinas de los atletas de hoy al iniciar la vista
@@ -2202,11 +2268,13 @@ async function toggleRutinaAtleta(cardEl, clienteId, modoTab, solicitudId = 0) {
   }
 
   wrapper.classList.add('is-open');
+  wrapper.dataset.solicitudId = String(solicitudId || 0);
   cardEl.setAttribute('aria-expanded', 'true');
   drawer.setAttribute('aria-hidden', 'false');
 
-  const cacheKey = `${clienteId}_${fechaGlobal}_${solicitudId || 0}`;
-  const baseCacheKey = `${clienteId}_${fechaGlobal}_0`;
+  const fechaFetch = fechaGlobal;
+  const cacheKey = getRutinaCacheKey(clienteId, fechaFetch, solicitudId || 0);
+  const baseCacheKey = getRutinaCacheKey(clienteId, fechaFetch, 0);
   if (!solicitudId && rutinaAtletaCache.has(cacheKey)) {
     renderRutinaDrawer(drawer, rutinaAtletaCache.get(cacheKey), modoTab);
     return;
@@ -2219,19 +2287,25 @@ async function toggleRutinaAtleta(cardEl, clienteId, modoTab, solicitudId = 0) {
     hasInstantRender = true;
   }
 
+  const reqSeq = parseInt(wrapper.dataset.fetchSeq || '0', 10) + 1;
+  wrapper.dataset.fetchSeq = String(reqSeq);
+
   // Solo mostrar el esqueleto si realmente tarda más de 260ms en responder
   let skDrawerTimer = null;
   if (!hasInstantRender) {
     skDrawerTimer = setTimeout(() => {
       skDrawerTimer = null;
-      if (wrapper.classList.contains('is-open')) {
-        drawer.innerHTML = generarSkeletonRutinaDrawer();
+      const liveWrap = (wrapper.id && document.getElementById(wrapper.id)) || wrapper;
+      const liveDraw = liveWrap.querySelector('.cd-rutina-drawer');
+      if (liveDraw && liveWrap.classList.contains('is-open') && liveWrap.dataset.fetchSeq === String(reqSeq) && !liveDraw.querySelector('.cdd-grupos-container, .cdd-empty')) {
+        liveDraw.innerHTML = generarSkeletonRutinaDrawer();
       }
     }, 260);
   }
 
+  activeDrawerFetches++;
   try {
-    let url = `<?= APP_URL ?>/entrenador/api-dia-detalle?cliente_id=${clienteId}&fecha=${encodeURIComponent(fechaGlobal)}`;
+    let url = `<?= APP_URL ?>/entrenador/api-dia-detalle?cliente_id=${clienteId}&fecha=${encodeURIComponent(fechaFetch)}`;
     if (solicitudId > 0) url += `&solicitud_id=${solicitudId}`;
     const res = await fetch(url, {
       headers: { 'X-Requested-With': 'XMLHttpRequest' }
@@ -2244,21 +2318,30 @@ async function toggleRutinaAtleta(cardEl, clienteId, modoTab, solicitudId = 0) {
     const data = await res.json();
     data.cliente_id = clienteId;
     rutinaAtletaCache.set(cacheKey, data);
-    renderRutinaDrawer(drawer, data, modoTab);
+
+    const liveWrap = (wrapper.id && document.getElementById(wrapper.id)) || wrapper;
+    const liveDraw = liveWrap.querySelector('.cd-rutina-drawer') || drawer;
+    if (liveWrap.dataset.fetchSeq === String(reqSeq) && fechaGlobal === fechaFetch) {
+      renderRutinaDrawer(liveDraw, data, modoTab);
+    }
   } catch (err) {
     if (skDrawerTimer) {
       clearTimeout(skDrawerTimer);
       skDrawerTimer = null;
     }
     console.error('[toggleRutinaAtleta]', err);
-    if (!hasInstantRender) {
-      drawer.innerHTML = `
-        <div class="cdd-error">
+    const liveWrap = (wrapper.id && document.getElementById(wrapper.id)) || wrapper;
+    const liveDraw = liveWrap.querySelector('.cd-rutina-drawer') || drawer;
+    if (!hasInstantRender && liveWrap.dataset.fetchSeq === String(reqSeq)) {
+      liveDraw.innerHTML = `
+        <div class="cdd-error" role="button" tabindex="0" onclick="event.stopPropagation(); const w=this.closest('.cd-item-wrapper'); if(w){w.classList.remove('is-open'); toggleRutinaAtleta(w.querySelector('.cd-card'), ${parseInt(clienteId,10)}, '${esc(modoTab)}', ${parseInt(solicitudId||0,10)});}">
           <i class="ti ti-alert-triangle"></i>
           <span>No se pudo cargar la rutina. Toca para reintentar.</span>
         </div>`;
     }
     rutinaAtletaCache.delete(cacheKey);
+  } finally {
+    activeDrawerFetches = Math.max(0, activeDrawerFetches - 1);
   }
 }
 
@@ -2306,8 +2389,8 @@ async function resolverSolicitudRutinaInline(solicitudId, clienteId, accion, btn
           color: '#fff'
         });
       }
-      if (typeof cargarDatosFecha === 'function') {
-        cargarDatosFecha(fechaGlobal, false);
+      if (typeof cargarDatosPorFecha === 'function') {
+        cargarDatosPorFecha(fechaGlobal, false);
       } else {
         setTimeout(() => window.location.reload(), 900);
       }
@@ -3236,9 +3319,7 @@ function renderPanelPendientes(items, appUrl) {
   if (currentJson === prevPendientesJson) return;
   prevPendientesJson = currentJson;
 
-  const openIds = new Set(
-    Array.from(glass.querySelectorAll('.cd-item-wrapper.is-open')).map(el => el.id)
-  );
+  const abiertos = capturarDrawersAbiertos(glass);
 
   if (!items.length) {
     glass.innerHTML = `
@@ -3324,27 +3405,7 @@ function renderPanelPendientes(items, appUrl) {
   }
 
   glass.innerHTML = html;
-
-  openIds.forEach(id => {
-    const el = document.getElementById(id);
-    if (el) {
-      el.classList.add('is-open');
-      const card = el.querySelector('.cd-card');
-      const drawer = el.querySelector('.cd-rutina-drawer');
-      if (card) card.setAttribute('aria-expanded', 'true');
-      if (drawer) {
-        drawer.setAttribute('aria-hidden', 'false');
-        const m = id.match(/item-pen-(\d+)/);
-        if (m) {
-          const cid = parseInt(m[1]);
-          const cacheKey = `${cid}_${fechaGlobal}`;
-          if (rutinaAtletaCache.has(cacheKey)) {
-            renderRutinaDrawer(drawer, rutinaAtletaCache.get(cacheKey), 'pendiente');
-          }
-        }
-      }
-    }
-  });
+  restaurarDrawersAbiertos(abiertos, 'pendiente');
 }
 
 /* Renderiza Panel 2: Completadas (Rutinas terminadas pendientes de verificación) */
@@ -3356,9 +3417,7 @@ function renderPanelCompletadas(items, appUrl) {
   if (currentJson === prevCompletadasJson) return;
   prevCompletadasJson = currentJson;
 
-  const openIds = new Set(
-    Array.from(glass.querySelectorAll('.cd-item-wrapper.is-open')).map(el => el.id)
-  );
+  const abiertos = capturarDrawersAbiertos(glass);
 
   if (!items.length) {
     glass.innerHTML = `
@@ -3415,27 +3474,7 @@ function renderPanelCompletadas(items, appUrl) {
   }).join('');
 
   glass.innerHTML = html;
-
-  openIds.forEach(id => {
-    const el = document.getElementById(id);
-    if (el) {
-      el.classList.add('is-open');
-      const card = el.querySelector('.cd-card');
-      const drawer = el.querySelector('.cd-rutina-drawer');
-      if (card) card.setAttribute('aria-expanded', 'true');
-      if (drawer) {
-        drawer.setAttribute('aria-hidden', 'false');
-        const m = id.match(/item-comp-(\d+)/);
-        if (m) {
-          const cid = parseInt(m[1]);
-          const cacheKey = `${cid}_${fechaGlobal}`;
-          if (rutinaAtletaCache.has(cacheKey)) {
-            renderRutinaDrawer(drawer, rutinaAtletaCache.get(cacheKey), 'completada');
-          }
-        }
-      }
-    }
-  });
+  restaurarDrawersAbiertos(abiertos, 'completada');
 }
 
 /* Renderiza Panel 3: Alertas (Sin Asignar + Modificaciones Pendientes) */
@@ -3506,7 +3545,9 @@ function renderPanelAlertas(sinAsignar, modificaciones, appUrl) {
       </a>`).join('');
   }
 
+  const abiertosAlertas = capturarDrawersAbiertos(glass);
   glass.innerHTML = html;
+  restaurarDrawersAbiertos(abiertosAlertas, 'solicitud');
 }
 
 /* Actualiza badges numéricos en las 3 pestañas y el stat pill */
@@ -3871,7 +3912,7 @@ async function ejecutarEliminarEjercicio() {
 }
 
 function actualizarEjercicioEnCache(clienteId, ejId, camposNuevos) {
-  const cacheKey = `${clienteId}_${fechaGlobal}`;
+  const cacheKey = getRutinaCacheKey(clienteId, fechaGlobal, 0);
   if (!rutinaAtletaCache.has(cacheKey)) return;
   const data = rutinaAtletaCache.get(cacheKey);
   if (!data || !Array.isArray(data.ejercicios)) return;
@@ -3904,7 +3945,7 @@ function actualizarEjercicioEnCache(clienteId, ejId, camposNuevos) {
 }
 
 function eliminarEjercicioDeCache(clienteId, ejId) {
-  const cacheKey = `${clienteId}_${fechaGlobal}`;
+  const cacheKey = getRutinaCacheKey(clienteId, fechaGlobal, 0);
   if (!rutinaAtletaCache.has(cacheKey)) return;
   const data = rutinaAtletaCache.get(cacheKey);
   if (!data || !Array.isArray(data.ejercicios)) return;

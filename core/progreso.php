@@ -75,7 +75,7 @@ function obtenerProgresoEjercicios(PDO $db, int $clienteId, string $grupo): arra
          ) ec ON ec.nom_key = LOWER(TRIM(COALESCE(ss.ejercicio_nombre, e.nombre)))
          LEFT JOIN (
              SELECT LOWER(TRIM(nombre)) AS nom_key, MAX(grupo_muscular) AS grupo_muscular
-             FROM catalogo_ejercicios GROUP BY LOWER(TRIM(nombre))
+             FROM catalogo_ejercicios WHERE COALESCE(oculto, 0) = 0 GROUP BY LOWER(TRIM(nombre))
          ) ce ON ce.nom_key = LOWER(TRIM(COALESCE(ss.ejercicio_nombre, e.nombre)))
          WHERE ss.cliente_id = ? 
            AND ss.completado = 1
@@ -611,8 +611,10 @@ function inferirEquipamientoProgreso(string $nombre, ?string $equipActual = null
 
 /**
  * Auto-registro limpio y seguro de ejercicios en catalogo_ejercicios.
+ * Si se indica $entrenadorId > 0, crea el ejercicio en el catálogo privado de ese entrenador.
  */
-function asegurarEjercicioEnCatalogo(PDO $db, string $nombre, ?string $grupo = null, ?string $imp = null, ?string $uni = null, ?string $equip = null): int {
+function asegurarEjercicioEnCatalogo(PDO $db, string $nombre, ?string $grupo = null, ?string $imp = null, ?string $uni = null, ?string $equip = null, ?int $entrenadorId = null): int {
+    CatalogoService::asegurarColumnasScope($db);
     $cleanNom = trim($nombre);
     if ($cleanNom === '') return 0;
 
@@ -621,11 +623,10 @@ function asegurarEjercicioEnCatalogo(PDO $db, string $nombre, ?string $grupo = n
     $cleanNom = preg_replace('/\s+/', ' ', $cleanNom);
     $cleanNom = mb_convert_case($cleanNom, MB_CASE_TITLE, 'UTF-8');
 
-    $stCheck = $db->prepare("SELECT id FROM catalogo_ejercicios WHERE LOWER(TRIM(nombre)) = LOWER(TRIM(?)) LIMIT 1");
-    $stCheck->execute([$cleanNom]);
-    $exId = $stCheck->fetchColumn();
-    if ($exId) {
-        return (int)$exId;
+    $entScope = ($entrenadorId !== null && $entrenadorId > 0) ? $entrenadorId : null;
+    $existente = CatalogoService::obtenerMetaPorNombre($db, $cleanNom, $entScope);
+    if ($existente) {
+        return (int)$existente['id'];
     }
 
     if (!$grupo || $grupo === '' || $grupo === 'General' || $grupo === 'Sin grupo') {
@@ -686,12 +687,13 @@ function asegurarEjercicioEnCatalogo(PDO $db, string $nombre, ?string $grupo = n
     }
     $catId = $catMapCache[mb_strtolower($grupo, 'UTF-8')] ?? 9;
 
+    $esPublico = ($entScope === null) ? 1 : 0;
     $stIns = $db->prepare(
         "INSERT INTO catalogo_ejercicios 
-         (nombre, grupo_muscular, categoria_id, tipo_implemento, unidad_carga, equipamiento, nota_default, es_publico)
-         VALUES (?, ?, ?, ?, ?, ?, '', 1)"
+         (nombre, grupo_muscular, categoria_id, tipo_implemento, unidad_carga, equipamiento, nota_default, es_publico, entrenador_id, origen_global_id, oculto)
+         VALUES (?, ?, ?, ?, ?, ?, '', ?, ?, NULL, 0)"
     );
-    $stIns->execute([$cleanNom, $grupo, $catId, $imp, $uni, $equip]);
+    $stIns->execute([$cleanNom, $grupo, $catId, $imp, $uni, $equip, $esPublico, $entScope]);
     return (int)$db->lastInsertId();
 }
 
@@ -709,7 +711,10 @@ function obtenerHistorialDia(PDO $db, int $clienteId, string $fecha): array {
                        FROM catalogo_ejercicios c 
                        LEFT JOIN categorias_musculares cm ON cm.id = c.categoria_id 
                       WHERE LOWER(TRIM(c.nombre)) = LOWER(TRIM(COALESCE(ss.ejercicio_nombre, e.nombre))) 
+                        AND COALESCE(c.oculto, 0) = 0
+                        AND (c.entrenador_id = r.entrenador_id OR c.entrenador_id IS NULL)
                         AND (c.grupo_muscular IS NOT NULL OR cm.nombre IS NOT NULL) 
+                      ORDER BY (c.entrenador_id = r.entrenador_id) DESC, c.id DESC
                       LIMIT 1)
                 ) AS grupo_muscular,
                 COALESCE(ss.rutina_id, e.rutina_id) AS rutina_id,
@@ -717,7 +722,11 @@ function obtenerHistorialDia(PDO $db, int $clienteId, string $fecha): array {
                 COALESCE(ss.equipamiento,
                          (SELECT c.equipamiento FROM catalogo_ejercicios c
                            WHERE LOWER(TRIM(c.nombre)) = LOWER(TRIM(COALESCE(ss.ejercicio_nombre, e.nombre)))
-                             AND c.equipamiento IS NOT NULL LIMIT 1)) AS equipamiento
+                             AND COALESCE(c.oculto, 0) = 0
+                             AND (c.entrenador_id = r.entrenador_id OR c.entrenador_id IS NULL)
+                             AND c.equipamiento IS NOT NULL
+                           ORDER BY (c.entrenador_id = r.entrenador_id) DESC, c.id DESC
+                           LIMIT 1)) AS equipamiento
            FROM sesion_series ss
            LEFT JOIN ejercicios e ON e.id = ss.ejercicio_id
            LEFT JOIN rutinas    r ON r.id = COALESCE(ss.rutina_id, e.rutina_id)
@@ -1190,7 +1199,7 @@ function construirSnapshotEstadisticasOffline(PDO $db, int $clienteId, string $r
          LEFT JOIN ejercicios e ON e.rutina_id = r.id
          LEFT JOIN (
              SELECT LOWER(TRIM(nombre)) AS nom_key, MAX(grupo_muscular) AS grupo_muscular, MAX(equipamiento) AS equipamiento
-             FROM catalogo_ejercicios GROUP BY LOWER(TRIM(nombre))
+             FROM catalogo_ejercicios WHERE COALESCE(oculto, 0) = 0 GROUP BY LOWER(TRIM(nombre))
          ) ce ON ce.nom_key = LOWER(TRIM(e.nombre))
          WHERE r.cliente_id = ?
          ORDER BY r.id ASC, e.orden ASC, e.id ASC"
@@ -1313,7 +1322,7 @@ function construirSnapshotEstadisticasOffline(PDO $db, int $clienteId, string $r
          ) ec ON ec.nom_key = LOWER(TRIM(COALESCE(ss.ejercicio_nombre, e.nombre)))
          LEFT JOIN (
              SELECT LOWER(TRIM(nombre)) AS nom_key, MAX(grupo_muscular) AS grupo_muscular, MAX(equipamiento) AS equipamiento
-             FROM catalogo_ejercicios GROUP BY LOWER(TRIM(nombre))
+             FROM catalogo_ejercicios WHERE COALESCE(oculto, 0) = 0 GROUP BY LOWER(TRIM(nombre))
          ) ce ON ce.nom_key = LOWER(TRIM(COALESCE(ss.ejercicio_nombre, e.nombre)))
          WHERE ss.cliente_id = ? AND ss.completado = 1
          ORDER BY ss.fecha ASC, COALESCE(e.orden, 255) ASC, ss.ejercicio_id ASC, ss.numero_serie ASC, ss.id ASC"

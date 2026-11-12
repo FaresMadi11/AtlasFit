@@ -374,8 +374,8 @@ function gestionarSolicitud(usuarioId, accion) {
   
   fetch('<?= APP_URL ?>/entrenador/api-aprobar-atleta', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ usuario_id: usuarioId, accion: accion })
+    headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': window.CSRF || '' },
+    body: JSON.stringify({ csrf_token: window.CSRF || '', usuario_id: usuarioId, accion: accion })
   })
   .then(res => res.json())
   .then(data => {

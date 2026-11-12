@@ -639,9 +639,9 @@ document.addEventListener('DOMContentLoaded', () => {
       // NUNCA poner opacity:0 para evitar que el contenido quede invisible si el usuario cambia rápido de módulo
       anime({
         targets: animatedTargets,
-        translateY: [isMobile ? 8 : 14, 0],
-        delay: anime.stagger(isMobile ? 22 : 45),
-        duration: isMobile ? 240 : 420,
+        translateY: [isMobile ? 6 : 10, 0],
+        delay: anime.stagger(isMobile ? 12 : 28),
+        duration: isMobile ? 160 : 280,
         easing: 'easeOutCubic'
       });
     }
@@ -649,9 +649,9 @@ document.addEventListener('DOMContentLoaded', () => {
     // Animación del header principal
     anime({
       targets: '.sys-top-header > div',
-      translateX: [isMobile ? -8 : -14, 0],
-      delay: anime.stagger(isMobile ? 30 : 70),
-      duration: isMobile ? 220 : 400,
+      translateX: [isMobile ? -6 : -10, 0],
+      delay: anime.stagger(isMobile ? 15 : 40),
+      duration: isMobile ? 150 : 260,
       easing: 'easeOutCubic'
     });
 

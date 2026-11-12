@@ -247,7 +247,7 @@ $unread_hdr = function_exists('contarNotificacionesNoLeidas')
         </button>
       </div>
 
-      <!-- Botón de acceso directo "Atletas Asignados [N]" + Mensualidad compacta -->
+      <!-- Botón de acceso directo "Atletas Asignados [N]" -->
       <div class="sa-meta-bar">
         <button type="button"
                 class="sa-btn-athletes-shortcut"
@@ -256,16 +256,6 @@ $unread_hdr = function_exists('contarNotificacionesNoLeidas')
           <span>Atletas Asignados</span>
           <span class="sa-athlete-count-box"><?= (int)$ent['total_atletas'] ?></span>
         </button>
-
-        <div class="sa-mensualidad-inline" title="Mensualidad en USD">
-          <span class="sa-mensualidad-lbl">$</span>
-          <input type="number"
-                 step="0.01"
-                 min="0"
-                 id="inpMonto_<?= $eid ?>"
-                 value="<?= e((string)$mem['monto_mensualidad']) ?>"
-                 aria-label="Mensualidad en dólares">
-        </div>
       </div>
 
       <!-- Código y Link de Invitación -->
@@ -283,6 +273,9 @@ $unread_hdr = function_exists('contarNotificacionesNoLeidas')
                  maxlength="32"
                  aria-label="Código de entrenador">
           <div class="sa-ref-btns">
+            <button type="button" class="sa-mini-btn" onclick="regenerarCodigoAdmin(<?= $eid ?>)" title="Generar nuevo código único">
+              <i class="ti ti-refresh"></i>
+            </button>
             <button type="button" class="sa-mini-btn" onclick="copiarCodigoEntrenador(<?= $eid ?>)" title="Copiar código">
               <i class="ti ti-copy"></i> <span>Código</span>
             </button>
@@ -913,13 +906,13 @@ $unread_hdr = function_exists('contarNotificacionesNoLeidas')
   }
 
   .sa-btn-athletes-shortcut {
-    width: fit-content;
+    width: 100%;
     max-width: 100%;
     display: inline-flex;
     align-items: center;
-    gap: 7px;
-    padding: 6px 11px;
-    border-radius: 10px;
+    gap: 8px;
+    padding: 8px 12px;
+    border-radius: 11px;
     background: rgba(255, 255, 255, 0.04);
     border: 1px solid rgba(255, 255, 255, 0.1);
     color: #e2e8f0;
@@ -939,6 +932,7 @@ $unread_hdr = function_exists('contarNotificacionesNoLeidas')
   }
 
   .sa-athlete-count-box {
+    margin-left: auto;
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -952,33 +946,6 @@ $unread_hdr = function_exists('contarNotificacionesNoLeidas')
     font-size: 0.72rem;
     font-weight: 800;
     line-height: 1;
-  }
-
-  .sa-mensualidad-inline {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    background: rgba(15, 16, 26, 0.85);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    border-radius: 10px;
-    padding: 4px 8px;
-    height: 32px;
-  }
-  .sa-mensualidad-lbl {
-    font-size: 0.74rem;
-    font-weight: 800;
-    color: #a855f7;
-  }
-  .sa-mensualidad-inline input {
-    width: 54px;
-    background: transparent;
-    border: none;
-    color: #ffffff;
-    font-size: 0.8rem;
-    font-weight: 800;
-    text-align: center;
-    outline: none;
-    padding: 0;
   }
 
   .sa-ref-box {
@@ -1612,14 +1579,16 @@ document.addEventListener('click', function(e) {
   }
 });
 
-// ── ABRIR SELECTOR NATIVO DE FECHA AL TOCAR CUALQUIER PARTE DE PAGO O CORTE ──
+// ── ABRIR CALENDARIO MINIMALISTA BENTO AL TOCAR CUALQUIER CAMPO DE FECHA ──
 function abrirDatePicker(inp) {
   if (!inp) return;
+  if (window.XpDatePicker && typeof window.XpDatePicker.open === 'function') {
+    window.XpDatePicker.open(inp);
+    return;
+  }
   inp.focus();
   if (typeof inp.showPicker === 'function') {
-    try {
-      inp.showPicker();
-    } catch (e) {}
+    try { inp.showPicker(); } catch (e) {}
   }
 }
 
@@ -1812,7 +1781,6 @@ async function sincronizarCodigoSiCambio(eid) {
     try {
       const fecha = document.getElementById('inpFecha_' + eid)?.value || '';
       const corte = document.getElementById('inpCorte_' + eid)?.value || '';
-      const monto = document.getElementById('inpMonto_' + eid)?.value || '25';
       const res = await fetch(APP + '/admin/api-actualizar-membresia', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': CSRF },
@@ -1821,8 +1789,7 @@ async function sincronizarCodigoSiCambio(eid) {
           entrenador_id: eid,
           codigo_referido: code,
           fecha_proximo_pago: fecha,
-          fecha_corte: corte,
-          monto_mensualidad: monto
+          fecha_corte: corte
         })
       });
       const d = await res.json();
@@ -1849,6 +1816,33 @@ async function copiarTextoPortapapeles(texto) {
   ta.select();
   document.execCommand('copy');
   document.body.removeChild(ta);
+}
+
+async function regenerarCodigoAdmin(eid) {
+  try {
+    const res = await fetch(APP + '/admin/api-generar-codigo', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': CSRF },
+      body: JSON.stringify({ csrf_token: CSRF, entrenador_id: eid })
+    });
+    const d = await res.json();
+    if (d && d.ok && d.codigo_referido) {
+      const inp = document.getElementById('inpCodigo_' + eid);
+      if (inp) {
+        inp.value = d.codigo_referido;
+        inp.setAttribute('data-saved-code', d.codigo_referido);
+      }
+      Swal.fire({
+        toast: true, position: 'top-end', icon: 'success',
+        title: 'Código regenerado: ' + d.codigo_referido,
+        timer: 2000, showConfirmButton: false, background: '#12131f', color: '#fff'
+      });
+    } else {
+      Swal.fire({ icon: 'error', title: 'Error', text: (d && d.msg) || 'No se pudo generar.', background: '#12131f', color: '#fff' });
+    }
+  } catch (err) {
+    Swal.fire({ icon: 'error', title: 'Error', text: err.message, background: '#12131f', color: '#fff' });
+  }
 }
 
 async function copiarCodigoEntrenador(eid) {
@@ -1886,7 +1880,6 @@ async function guardarMembresia(eid) {
   const codigo = document.getElementById('inpCodigo_' + eid)?.value || '';
   const fecha  = document.getElementById('inpFecha_' + eid)?.value || '';
   const corte  = document.getElementById('inpCorte_' + eid)?.value || '';
-  const monto  = document.getElementById('inpMonto_' + eid)?.value || '25';
 
   try {
     const res = await fetch(APP + '/admin/api-actualizar-membresia', {
@@ -1897,8 +1890,7 @@ async function guardarMembresia(eid) {
         entrenador_id: eid,
         codigo_referido: codigo,
         fecha_proximo_pago: fecha,
-        fecha_corte: corte,
-        monto_mensualidad: monto
+        fecha_corte: corte
       })
     });
     const data = await res.json();

@@ -3133,7 +3133,7 @@ async function actualizarVistaRutinaSinRecarga(targetUrl, pushState = true) {
       headers: { 'X-Requested-With': 'XMLHttpRequest' }
     });
     if (!res.ok) {
-      window.location.href = targetUrl;
+      if (pushState) window.location.href = targetUrl;
       return;
     }
 
@@ -3143,7 +3143,7 @@ async function actualizarVistaRutinaSinRecarga(targetUrl, pushState = true) {
     const newContainer = doc.querySelector('.xp-client-container');
 
     if (!newContainer) {
-      window.location.href = targetUrl;
+      if (pushState) window.location.href = targetUrl;
       return;
     }
 
@@ -3538,8 +3538,8 @@ async function ejecutarAccionCambiosRutina() {
         hayCambiosPendientes = false;
         if (window.XpSync) {
           XpSync.enqueue({
-            url: APP + '/cliente/solicitar-modificacion-rutina',
-            data: { rutina_id: RUTINA_ID, tipo_modificacion: formaEdicion, descripcion: 'Modificación de rutina offline', cambios_json: JSON.stringify(ejerciciosPayload) },
+            url: APP + '/cliente/solicitar-modificacion-atleta',
+            data: { rutina_id: RUTINA_ID, tipo_modificacion: formaEdicion, ejercicios: JSON.stringify(ejerciciosPayload) },
             label: 'Solicitud de modificación de rutina'
           });
         }
@@ -3560,8 +3560,8 @@ async function ejecutarAccionCambiosRutina() {
       hayCambiosPendientes = false;
       if (window.XpSync) {
         XpSync.enqueue({
-          url: APP + '/cliente/solicitar-modificacion-rutina',
-          data: { rutina_id: RUTINA_ID, tipo_modificacion: formaEdicion, descripcion: 'Modificación de rutina offline', cambios_json: JSON.stringify(ejerciciosPayload) },
+          url: APP + '/cliente/solicitar-modificacion-atleta',
+          data: { rutina_id: RUTINA_ID, tipo_modificacion: formaEdicion, ejercicios: JSON.stringify(ejerciciosPayload) },
           label: 'Solicitud de modificación de rutina'
         });
       }
@@ -4078,6 +4078,7 @@ async function verificarCambiosRutinaEnRed() {
   if (isSyncingRutinaLive || isUpdatingViewAjax) return;
   if (!navigator.onLine || document.hidden) return;
   if (window.modoEdicionActivo || window.hayCambiosPendientes) return;
+  if (window.XpSync && typeof window.XpSync.getQueue === 'function' && window.XpSync.getQueue().length > 0) return;
 
   // No interrumpir si el atleta está escribiendo o tiene un modal abierto
   const activeTag = document.activeElement ? document.activeElement.tagName : '';
@@ -4137,7 +4138,7 @@ async function verificarCambiosRutinaEnRed() {
   }
 }
 
-setInterval(verificarCambiosRutinaEnRed, 5000);
+setInterval(verificarCambiosRutinaEnRed, 20000);
 window.addEventListener('online', () => setTimeout(verificarCambiosRutinaEnRed, 600));
 document.addEventListener('visibilitychange', () => {
   if (!document.hidden && navigator.onLine) setTimeout(verificarCambiosRutinaEnRed, 400);

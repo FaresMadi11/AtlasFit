@@ -388,11 +388,12 @@ a:focus:not(:focus-visible) {
   outline: none !important;
 }
 
-/* Autofill 100% transparente global: elimina cualquier rectángulo o fondo gris del navegador */
+/* Autofill integrado al tema: elimina rectángulos blancos/azules del navegador */
 input:-webkit-autofill,
-input:-webkit-autofill:hover, 
+input:-webkit-autofill:hover,
 input:-webkit-autofill:focus,
 input:-webkit-autofill:active,
+input:-internal-autofill-selected,
 textarea:-webkit-autofill,
 textarea:-webkit-autofill:hover,
 textarea:-webkit-autofill:focus,
@@ -401,13 +402,11 @@ select:-webkit-autofill,
 select:-webkit-autofill:hover,
 select:-webkit-autofill:focus,
 select:-webkit-autofill:active {
-  -webkit-text-fill-color: #ffffff !important;
-  caret-color: #ffffff !important;
-  -webkit-box-shadow: 0 0 0 1000px transparent inset !important;
-  box-shadow: 0 0 0 1000px transparent inset !important;
-  background-color: transparent !important;
-  background: transparent !important;
-  transition: background-color 5000000s ease-in-out 0s, color 5000000s ease-in-out 0s !important;
+  -webkit-text-fill-color: var(--text, #ffffff) !important;
+  caret-color: var(--text, #ffffff) !important;
+  -webkit-box-shadow: 0 0 0 1000px var(--input-bg, #1A1A22) inset !important;
+  box-shadow: 0 0 0 1000px var(--input-bg, #1A1A22) inset !important;
+  transition: background-color 9999999s step-end 0s, color 9999999s step-end 0s !important;
 }
 
 body {
@@ -2043,7 +2042,7 @@ html[data-theme="light"] .dash-metas-section {
 
   .xp-main {
     padding: 12px;
-    padding-bottom: 20px;
+    padding-bottom: calc(104px + env(safe-area-inset-bottom, 0px));
     width: 100%;
     max-width: 100%;
     overflow-x: hidden;
@@ -3111,12 +3110,13 @@ html[data-theme="light"] .dash-metas-section {
   }
 }
 
-/* ── Custom Form Container (Ajustes de Tienda) ── */
+/* ── Custom Form Container (Ajustes Bento con acento del tema) ── */
 .form-container {
   width: 100%;
-  background: linear-gradient(#212121, #212121) padding-box,
-    linear-gradient(145deg, transparent 35%, #e81cff, #40c9ff) border-box;
-  border: 2px solid transparent;
+  background: rgba(18, 18, 24, 0.9);
+  background: linear-gradient(160deg, color-mix(in srgb, var(--accent-primary, #8a2be2) 10%, #121218) 0%, rgba(15, 15, 21, 0.96) 70%);
+  border: 1px solid rgba(138, 43, 226, 0.22);
+  border-color: color-mix(in srgb, var(--accent-primary, #8a2be2) 26%, rgba(255, 255, 255, 0.08));
   padding: 20px 16px;
   font-size: 14px;
   font-family: inherit;
@@ -3125,7 +3125,8 @@ html[data-theme="light"] .dash-metas-section {
   flex-direction: column;
   gap: 12px;
   box-sizing: border-box;
-  border-radius: 16px;
+  border-radius: 18px;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.26);
 }
 
 .form-container button:active {
@@ -3147,19 +3148,20 @@ html[data-theme="light"] .dash-metas-section {
 .form-container .form-group label {
   display: block;
   margin-bottom: 5px;
-  color: #717171;
+  color: #94a3b8;
   font-weight: 600;
   font-size: 12px;
 }
 
 .form-container .form-group input {
   width: 100%;
-  padding: 8px 12px;
-  border-radius: 8px;
+  padding: 9px 12px;
+  border-radius: 10px;
   color: #fff;
   font-family: inherit;
-  background-color: transparent;
-  border: 1px solid #414141;
+  background-color: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  transition: border-color 0.2s, box-shadow 0.2s;
 }
 
 .form-container .form-group input::placeholder {
@@ -3168,7 +3170,8 @@ html[data-theme="light"] .dash-metas-section {
 
 .form-container .form-group input:focus {
   outline: none;
-  border-color: #e81cff;
+  border-color: var(--accent-primary, #8a2be2);
+  box-shadow: 0 0 0 3px rgba(138, 43, 226, 0.18);
 }
 
 .form-container .form-submit-btn {
@@ -3177,40 +3180,42 @@ html[data-theme="light"] .dash-metas-section {
   justify-content: center;
   align-self: flex-start;
   font-family: inherit;
-  color: #717171;
+  color: #e2e8f0;
   font-weight: 600;
-  background: #313131;
-  border: 1px solid #414141;
-  padding: 8px 16px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  padding: 9px 16px;
   font-size: inherit;
   gap: 8px;
   margin-top: 4px;
   cursor: pointer;
-  border-radius: 8px;
+  border-radius: 10px;
   transition: all 0.2s;
 }
 
 .form-container .form-submit-btn:hover {
-  background-color: #fff;
-  border-color: #fff;
-  color: #000;
+  background-color: var(--accent-primary, #8a2be2);
+  border-color: var(--accent-primary, #8a2be2);
+  color: #fff;
 }
 
 .form-container .form-group textarea {
   width: 100%;
-  padding: 8px 12px;
-  border-radius: 8px;
+  padding: 9px 12px;
+  border-radius: 10px;
   resize: none;
   color: #fff;
   height: 96px;
-  border: 1px solid #414141;
-  background-color: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background-color: rgba(255, 255, 255, 0.04);
   font-family: inherit;
+  transition: border-color 0.2s, box-shadow 0.2s;
 }
 
 .form-container .form-group textarea:focus {
   outline: none;
-  border-color: #e81cff;
+  border-color: var(--accent-primary, #8a2be2);
+  box-shadow: 0 0 0 3px rgba(138, 43, 226, 0.18);
 }
 
 /* ── Notificaciones Dropdown ── */
@@ -6361,6 +6366,7 @@ html[data-theme="light"] .dash-metas-section {
 }
 
 .swal2-popup.swal2-toast .swal2-icon {
+  position: relative !important;
   margin: 0 !important;
   width: 24px !important;
   height: 24px !important;
@@ -6371,6 +6377,40 @@ html[data-theme="light"] .dash-metas-section {
   display: flex !important;
   align-items: center !important;
   justify-content: center !important;
+}
+
+.swal2-popup.swal2-toast .swal2-icon.swal2-success {
+  border-color: rgba(34, 197, 94, 0.55) !important;
+  background: rgba(34, 197, 94, 0.14) !important;
+}
+
+.swal2-popup.swal2-toast .swal2-icon.swal2-success [class^="swal2-success-circular-line"],
+.swal2-popup.swal2-toast .swal2-icon.swal2-success .swal2-success-fix,
+.swal2-popup.swal2-toast .swal2-icon.swal2-success .swal2-success-ring {
+  display: none !important;
+}
+
+.swal2-popup.swal2-toast .swal2-icon.swal2-success .swal2-success-line-tip {
+  width: 5.5px !important;
+  height: 2px !important;
+  left: 3.8px !important;
+  top: 10.55px !important;
+  border-radius: 2px !important;
+  background-color: #22c55e !important;
+  transform: rotate(45deg) !important;
+  animation: none !important;
+}
+
+.swal2-popup.swal2-toast .swal2-icon.swal2-success .swal2-success-line-long {
+  width: 10px !important;
+  height: 2px !important;
+  left: 7.05px !important;
+  right: auto !important;
+  top: 8.95px !important;
+  border-radius: 2px !important;
+  background-color: #22c55e !important;
+  transform: rotate(-45deg) !important;
+  animation: none !important;
 }
 
 .swal2-popup.swal2-toast .swal2-icon.swal2-error {

@@ -137,13 +137,9 @@ function googleCallback(): void {
             if (!$clRow) {
                 $refCodeOAuth = (string)($_SESSION['ref_codigo'] ?? ($_COOKIE['xp_ref_code'] ?? ''));
                 $refEntOAuth  = $refCodeOAuth !== '' ? resolverEntrenadorPorCodigo($refCodeOAuth) : null;
-                $tr = $refEntOAuth
-                    ? (int)$refEntOAuth['entrenador_id']
-                    : (int)($db->query("SELECT id FROM usuarios WHERE rol='entrenador' AND activo=1 ORDER BY id LIMIT 1")->fetchColumn() ?: 0);
-                if ($tr > 0) {
-                    $db->prepare("INSERT INTO clientes (usuario_id, entrenador_id) VALUES (?, ?)")
-                       ->execute([$uid, (int)$tr]);
-                }
+                $tr = $refEntOAuth ? (int)$refEntOAuth['entrenador_id'] : null;
+                $db->prepare("INSERT INTO clientes (usuario_id, entrenador_id) VALUES (?, ?)")
+                   ->execute([$uid, $tr]);
             }
 
             // Pre-cargar nombre, apellido, correo y cédula (si existe) para el Onboarding Wizard

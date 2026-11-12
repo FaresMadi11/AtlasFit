@@ -73,7 +73,7 @@ $fraseDelDia = $frasesMotivadoras[$indiceFrase];
 
 <style>
 /* ── Reset general de la pagina ── */
-.xp-main { padding: 0 !important; }
+.xp-main { padding: 0 !important; padding-bottom: calc(108px + env(safe-area-inset-bottom, 0px)) !important; }
 
 /* ── HERO WORKOUT CARD (UI-UX-PRO-MAX) ── */
 .hero-workout-card {
@@ -1027,8 +1027,9 @@ $fraseDelDia = $frasesMotivadoras[$indiceFrase];
   transition: max-height 0.45s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.35s ease;
 }
 #tiendaSection.open .t-collapsible-body {
-  max-height: 4000px;
+  max-height: none;
   opacity: 1;
+  overflow: visible;
 }
 
 .t-filters {
@@ -1146,11 +1147,12 @@ $fraseDelDia = $frasesMotivadoras[$indiceFrase];
 .t-card-glass-btn span { position: relative; z-index: 3; text-decoration: none; border: none; background-color: transparent; color: #fff; }
 </style>
 
-<div id="tiendaSection" class="open reveal-bento bento-hover-lift">
+<?php if (!empty($tiendaActiva)): ?>
+<div id="tiendaSection" class="open bento-hover-lift">
   <div class="t-header" onclick="toggleTiendaSection()" title="Toca para abrir o cerrar">
     <div class="t-header-left">
       <i class="ti ti-bolt"></i>
-      <span style="letter-spacing: 1px;">SUPLEMENTOS</span>
+      <span style="letter-spacing: 1px;"><?= e($tiendaNombre ?? 'SUPLEMENTOS') ?></span>
     </div>
     <div class="t-header-right">
       <i class="ti ti-chevron-down t-chevron" id="tiendaChevron"></i>
@@ -1176,13 +1178,7 @@ $fraseDelDia = $frasesMotivadoras[$indiceFrase];
       foreach($productos as $prod):
         $img = $prod['imagen_path'] ? APP_URL . '/' . $prod['imagen_path'] : '';
         $desc = $prod['descripcion'] ?: 'Sin descripción disponible.';
-        $waNum = $ajustesGlobales['whatsapp_numero'] ?? '';
-        
-        $baseMsg = str_replace('{producto}', $prod['nombre'], $ajustesGlobales['whatsapp_mensaje'] ?? 'Hola, me interesa: {producto}');
-        $publicUrl = APP_URL . "/public/producto?id=" . $prod['id'];
-        $baseMsg .= "\n\n" . $publicUrl;
-        $waMsg = urlencode($baseMsg);
-        $waLink = "https://wa.me/{$waNum}?text={$waMsg}";
+        $waLink = construirUrlWhatsAppProducto($tiendaWaNumero ?? '', $tiendaWaMensaje ?? '', (string)$prod['nombre'], (int)$prod['id']);
     ?>
     <div class="t-card bento-hover-lift" data-seccion="<?= $sec['id'] ?>" onclick="toggleCard(this)">
       <!-- Imagen normal (fondo claro) -->
@@ -1206,9 +1202,15 @@ $fraseDelDia = $frasesMotivadoras[$indiceFrase];
       <!-- Overlay Cristal (Solo en Hover) -->
       <div class="t-card-glass">
         <div class="t-card-glass-desc"><?= e($desc) ?></div>
-        <a href="<?= $waLink ?>" target="_blank" class="t-card-glass-btn" onclick="event.stopPropagation()">
+        <?php if ($waLink !== null): ?>
+        <a href="<?= e($waLink) ?>" target="_blank" rel="noopener noreferrer" class="t-card-glass-btn" onclick="event.stopPropagation()">
           <span>Adquirir</span>
         </a>
+        <?php else: ?>
+        <button type="button" class="t-card-glass-btn" onclick="event.stopPropagation(); (typeof Xp!=='undefined'&&Xp.toast)?Xp.toast('warning','Tu entrenador aún no ha configurado su número de WhatsApp.'):alert('Tu entrenador aún no ha configurado su número de WhatsApp.');">
+          <span>Adquirir</span>
+        </button>
+        <?php endif; ?>
       </div>
     </div>
     <?php 
@@ -1222,6 +1224,7 @@ $fraseDelDia = $frasesMotivadoras[$indiceFrase];
   </div>
   </div>
 </div>
+<?php endif; ?>
 </div><!-- end xp-client-container -->
 
 <!-- ── PANEL DETALLE DE META ── -->

@@ -183,8 +183,8 @@ function cliDashboard(): void {
     $stObj->execute([$clienteId]);
     $objetivos = $stObj->fetchAll();
 
-    // Peso actual y meta_detalle
-    $stPeso = $db->prepare("SELECT peso_kg, altura_cm, objetivo, meta_detalle FROM clientes WHERE id = ?");
+    // Peso actual, meta_detalle y entrenador asignado
+    $stPeso = $db->prepare("SELECT peso_kg, altura_cm, objetivo, meta_detalle, entrenador_id FROM clientes WHERE id = ?");
     $stPeso->execute([$clienteId]);
     $medidas = $stPeso->fetch();
 
@@ -207,20 +207,32 @@ function cliDashboard(): void {
     $stHist->execute([$clienteId]);
     $pesoInicial = (float)($stHist->fetchColumn() ?: ($medidas['peso_kg'] ?? 0));
 
-    // Tienda: secciones y productos activos (optimizada sin N+1)
-    $stSecs = $db->query("SELECT id, nombre FROM tienda_secciones ORDER BY orden, nombre");
-    $tiendaSecciones = $stSecs->fetchAll(PDO::FETCH_ASSOC);
+    // Tienda: controlada por el entrenador del atleta (si tienda_activa == 1)
+    $entAsignadoId   = (int)($medidas['entrenador_id'] ?? 0);
+    $memEntCliente   = $entAsignadoId > 0 ? obtenerEstadoMembresiaEntrenador($entAsignadoId) : null;
+    $tiendaActiva    = !empty($memEntCliente['tienda_activa']) ? 1 : 0;
+    $tiendaNombre    = (string)($memEntCliente['tienda_nombre'] ?? 'SUPLEMENTOS');
+    $tiendaWaNumero  = (string)($memEntCliente['whatsapp_numero'] ?? '');
+    $tiendaWaMensaje = (string)($memEntCliente['whatsapp_mensaje'] ?? 'Hola, me interesa adquirir: {producto}');
+
+    $tiendaSecciones = [];
     $tiendaProductos = [];
-    if (!empty($tiendaSecciones)) {
-        $secIds = array_column($tiendaSecciones, 'id');
-        $phSec = implode(',', array_fill(0, count($secIds), '?'));
-        $stProd = $db->prepare(
-            "SELECT id, seccion_id, nombre, descripcion, precio, imagen_path FROM tienda_productos
-             WHERE seccion_id IN ($phSec) AND activo = 1 ORDER BY seccion_id, orden, id"
-        );
-        $stProd->execute($secIds);
-        foreach ($stProd->fetchAll(PDO::FETCH_ASSOC) as $p) {
-            $tiendaProductos[$p['seccion_id']][] = $p;
+    if ($tiendaActiva === 1 && $entAsignadoId > 0) {
+        $stSecs = $db->prepare("SELECT id, nombre FROM tienda_secciones WHERE entrenador_id = ? ORDER BY orden, nombre");
+        $stSecs->execute([$entAsignadoId]);
+        $tiendaSecciones = $stSecs->fetchAll(PDO::FETCH_ASSOC);
+        if (!empty($tiendaSecciones)) {
+            $secIds = array_column($tiendaSecciones, 'id');
+            $phSec = implode(',', array_fill(0, count($secIds), '?'));
+            $params = array_merge([$entAsignadoId], $secIds);
+            $stProd = $db->prepare(
+                "SELECT id, seccion_id, nombre, descripcion, precio, imagen_path FROM tienda_productos
+                 WHERE entrenador_id = ? AND seccion_id IN ($phSec) AND activo = 1 ORDER BY seccion_id, orden, id"
+            );
+            $stProd->execute($params);
+            foreach ($stProd->fetchAll(PDO::FETCH_ASSOC) as $p) {
+                $tiendaProductos[$p['seccion_id']][] = $p;
+            }
         }
     }
 
@@ -275,7 +287,7 @@ function cliApiRutinaSync(): void {
         }
 
         $stRut = $db->prepare("
-            SELECT id, descripcion, dias_semana, estado, plantilla_id, cardio_activo, cardio_tiempo, cardio_indicaciones
+            SELECT id, entrenador_id, descripcion, dias_semana, estado, plantilla_id, cardio_activo, cardio_tiempo, cardio_indicaciones
             FROM rutinas
             WHERE id = ? AND cliente_id = ?
             LIMIT 1
@@ -286,7 +298,7 @@ function cliApiRutinaSync(): void {
         // Si la rutina fue reemplazada (ej. entrenador aprobó modificación o reasignó rutina)
         if ($rutRow && $rutRow['estado'] !== 'en_progreso') {
             $stNew = $db->prepare("
-                SELECT id, descripcion, dias_semana, estado, plantilla_id, cardio_activo, cardio_tiempo, cardio_indicaciones
+                SELECT id, entrenador_id, descripcion, dias_semana, estado, plantilla_id, cardio_activo, cardio_tiempo, cardio_indicaciones
                 FROM rutinas
                 WHERE cliente_id = ? AND estado = 'en_progreso'
                   AND (es_modificacion IS NULL OR es_modificacion = 0 OR estado_modificacion = 'aprobada')
@@ -303,17 +315,27 @@ function cliApiRutinaSync(): void {
 
         $stEj = $db->prepare("
             SELECT e.id, e.nombre, e.series, e.repeticiones, e.rir, e.nota_biomecanica,
-                   e.tipo_implemento, e.unidad_carga, e.orden,
-                   ce.descripcion AS cat_desc, ce.indicaciones AS cat_ind,
-                   ce.imagen_path, ce.imagen_demo_path, ce.video_url,
-                   ce.configuracion_maquina, ce.tipo_implemento AS cat_imp, ce.unidad_carga AS cat_uni
+                   e.tipo_implemento, e.unidad_carga, e.orden
             FROM ejercicios e
-            LEFT JOIN catalogo_ejercicios ce ON LOWER(TRIM(ce.nombre)) = LOWER(TRIM(e.nombre))
             WHERE e.rutina_id = ?
             ORDER BY e.orden ASC, e.id ASC
         ");
         $stEj->execute([$rutinaId]);
         $ejsRows = $stEj->fetchAll(PDO::FETCH_ASSOC);
+        $entScopeRut = !empty($rutRow['entrenador_id']) ? (int)$rutRow['entrenador_id'] : null;
+        $catMapa = CatalogoService::obtenerMapaPorNombre($db, $entScopeRut);
+        foreach ($ejsRows as &$er) {
+            $meta = $catMapa[mb_strtolower(trim((string)($er['nombre'] ?? '')), 'UTF-8')] ?? null;
+            $er['cat_desc']              = $meta['descripcion'] ?? null;
+            $er['cat_ind']               = $meta['indicaciones'] ?? null;
+            $er['imagen_path']           = $meta['imagen_path'] ?? null;
+            $er['imagen_demo_path']      = $meta['imagen_demo_path'] ?? null;
+            $er['video_url']             = $meta['video_url'] ?? null;
+            $er['configuracion_maquina'] = $meta['configuracion_maquina'] ?? null;
+            $er['cat_imp']               = $meta['tipo_implemento'] ?? null;
+            $er['cat_uni']               = $meta['unidad_carga'] ?? null;
+        }
+        unset($er);
 
         $psRows = [];
         $plantillaId = (int)($rutRow['plantilla_id'] ?? 0);
@@ -514,7 +536,7 @@ function cliRutinaDia(): void {
 
     if ($rutinaId) {
         $stRut = $db->prepare(
-            "SELECT r.id, r.descripcion, r.dias_semana, r.estado, r.cardio_activo, r.cardio_tiempo, r.cardio_indicaciones, u.nombre AS entrenador
+            "SELECT r.id, r.entrenador_id, r.descripcion, r.dias_semana, r.estado, r.cardio_activo, r.cardio_tiempo, r.cardio_indicaciones, u.nombre AS entrenador
              FROM rutinas r
              JOIN usuarios u ON r.entrenador_id = u.id
              WHERE r.id = ? AND r.cliente_id = ?"
@@ -528,22 +550,27 @@ function cliRutinaDia(): void {
                 "SELECT e.id, e.nombre, e.series, e.repeticiones, e.rir, e.nota_biomecanica, e.orden,
                         COALESCE(e.tipo_implemento, 'barra') AS tipo_implemento,
                         COALESCE(e.unidad_carga, 'kg')       AS unidad_carga,
-                        COALESCE(ce.categoria_id, 0)         AS categoria_id,
-                        COALESCE(ce.grupo_muscular, '')      AS grupo_muscular,
                         COALESCE(s.completado, 0) AS completado, COALESCE(s.reps_realizadas, 0) AS reps_realizadas,
                         s.peso_usado,
-                        COALESCE(e.imagen_path, ce.imagen_path) AS imagen_path,
-                        COALESCE(e.video_path, ce.video_path)   AS video_path,
-                        COALESCE(e.video_url, ce.video_url)     AS video_url
+                        e.imagen_path, e.video_path, e.video_url
                  FROM ejercicios e
                  LEFT JOIN sesiones s ON s.ejercicio_id = e.id
                    AND s.cliente_id = ? AND s.fecha = CURDATE()
-                 LEFT JOIN catalogo_ejercicios ce ON LOWER(TRIM(e.nombre)) = LOWER(TRIM(ce.nombre))
                  WHERE e.rutina_id = ?
                  ORDER BY e.orden"
             );
             $stEj->execute([$clienteId, $rutinaId]);
             $ejercicios = $stEj->fetchAll();
+            $catMapaEnt = CatalogoService::obtenerMapaPorNombre($db, !empty($rutina['entrenador_id']) ? (int)$rutina['entrenador_id'] : null);
+            foreach ($ejercicios as &$ejItem) {
+                $meta = $catMapaEnt[mb_strtolower(trim((string)($ejItem['nombre'] ?? '')), 'UTF-8')] ?? null;
+                $ejItem['categoria_id']   = (int)($meta['categoria_id'] ?? 0);
+                $ejItem['grupo_muscular'] = (string)($meta['grupo_muscular'] ?? '');
+                if (empty($ejItem['imagen_path']) && !empty($meta['imagen_path'])) $ejItem['imagen_path'] = $meta['imagen_path'];
+                if (empty($ejItem['video_path']) && !empty($meta['video_path']))   $ejItem['video_path']  = $meta['video_path'];
+                if (empty($ejItem['video_url']) && !empty($meta['video_url']))     $ejItem['video_url']   = $meta['video_url'];
+            }
+            unset($ejItem);
 
             // Cargar series individuales guardadas HOY para cada ejercicio
             $stSeries = $db->prepare(
@@ -643,15 +670,20 @@ function cliRutinaDia(): void {
         }
     }
 
-    $catalogo = $db->query("
-        SELECT c.id, c.nombre, c.categoria_id, c.grupo_muscular,
-               COALESCE(c.tipo_implemento, 'barra') AS tipo_implemento,
-               COALESCE(c.unidad_carga, 'kg')       AS unidad_carga,
-               COALESCE(cm.nombre, c.grupo_muscular, 'General') AS categoria_nombre
-        FROM catalogo_ejercicios c
-        LEFT JOIN categorias_musculares cm ON cm.id = c.categoria_id
-        ORDER BY categoria_nombre, c.nombre
-    ")->fetchAll();
+    $stEntCli = $db->prepare("SELECT entrenador_id FROM clientes WHERE id = ? LIMIT 1");
+    $stEntCli->execute([$clienteId]);
+    $entScopeCli = (int)($stEntCli->fetchColumn() ?: 0);
+    $catalogoVis = CatalogoService::obtenerEjerciciosVisibles($db, $entScopeCli > 0 ? $entScopeCli : null);
+    $catalogo = array_map(static fn(array $c): array => [
+        'id'               => (int)$c['id'],
+        'nombre'           => (string)$c['nombre'],
+        'categoria_id'     => $c['categoria_id'],
+        'grupo_muscular'   => $c['grupo_muscular'],
+        'tipo_implemento'  => $c['tipo_implemento'] ?: 'barra',
+        'unidad_carga'     => $c['unidad_carga'] ?: 'kg',
+        'categoria_nombre' => $c['categoria_nombre'] ?: ($c['grupo_muscular'] ?: 'General'),
+    ], $catalogoVis);
+    usort($catalogo, static fn(array $a, array $b): int => [$a['categoria_nombre'], $a['nombre']] <=> [$b['categoria_nombre'], $b['nombre']]);
 
     // Construir los próximos días disponibles para el carrusel de aplazamiento
     $proximosDiasDisponibles = [];
@@ -863,7 +895,10 @@ function cliGuardarSerie(): void {
                  tipo_implemento, unidad_carga, peso_por_lado, kg_real)
              SELECT e.id, r.id, " . cliSqlNombreRutina('r') . ", e.nombre,
                     (SELECT c.equipamiento FROM catalogo_ejercicios c
-                      WHERE c.nombre = e.nombre AND c.equipamiento IS NOT NULL LIMIT 1),
+                      WHERE c.nombre = e.nombre AND c.equipamiento IS NOT NULL
+                        AND COALESCE(c.oculto, 0) = 0
+                        AND (c.entrenador_id = r.entrenador_id OR c.entrenador_id IS NULL)
+                      ORDER BY (c.entrenador_id = r.entrenador_id) DESC, c.id DESC LIMIT 1),
                     r.cliente_id, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?
                FROM ejercicios e
                JOIN rutinas r ON r.id = e.rutina_id
@@ -1461,6 +1496,7 @@ function cliEstadisticas(): void {
   API: CAMBIAR CONTRASEÃA DEL CLIENTE
 âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ*/
 function cliApiCambiarPassword(): void {
+    csrfCheck();
     header('Content-Type: application/json');
 
     $body = json_decode(file_get_contents('php://input'), true);
@@ -1502,12 +1538,13 @@ function cliApiCambiarPassword(): void {
   API: SUBIR FOTO DE PERFIL (base64 â JPEG)
 âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ*/
 function cliApiSubirFoto(): void {
+    csrfCheck();
     header('Content-Type: application/json');
     $body     = json_decode(file_get_contents('php://input'), true);
     $dataUrl  = $body['imagen'] ?? '';
 
     if (!preg_match('/^data:image\/(jpeg|png|webp);base64,/', $dataUrl, $m)) {
-        echo json_encode(['ok' => false, 'msg' => 'Formato invÃ¡lido.']); exit;
+        echo json_encode(['ok' => false, 'msg' => 'Formato inválido.']); exit;
     }
 
     $base64  = preg_replace('/^data:image\/[a-z]+;base64,/', '', $dataUrl);
@@ -1527,7 +1564,6 @@ function cliApiSubirFoto(): void {
 
     // Delete old photo if any
     $db  = getDB();
-    $old = $db->prepare("SELECT foto FROM clientes WHERE id = ?")->execute([$clienteId]);
     $st  = $db->prepare("SELECT foto FROM clientes WHERE id = ?");
     $st->execute([$clienteId]);
     $oldFoto = $st->fetchColumn();
@@ -1543,6 +1579,7 @@ function cliApiSubirFoto(): void {
   API: EDITAR DATOS DEL PERFIL
 âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ*/
 function cliApiEditarPerfil(): void {
+    csrfCheck();
     header('Content-Type: application/json');
     try {
         $body      = json_decode(file_get_contents('php://input'), true) ?? [];
@@ -1632,6 +1669,7 @@ function cliApiEditarPerfil(): void {
   API: GUARDAR PREGUNTA DE SEGURIDAD
 âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ*/
 function cliApiGuardarPregunta(): void {
+    csrfCheck();
     header('Content-Type: application/json');
     $body      = json_decode(file_get_contents('php://input'), true);
     $userId    = $_SESSION['user_id'] ?? null;
@@ -1644,12 +1682,12 @@ function cliApiGuardarPregunta(): void {
     }
 
     $db = getDB();
-    $st = $db->prepare("SELECT password FROM usuarios WHERE id = ?");
+    $st = $db->prepare("SELECT password_hash FROM usuarios WHERE id = ?");
     $st->execute([$userId]);
     $hash = $st->fetchColumn();
 
     if (!$hash || !password_verify($password, $hash)) {
-        echo json_encode(['ok' => false, 'msg' => 'ContraseÃ±a incorrecta.']); exit;
+        echo json_encode(['ok' => false, 'msg' => 'Contraseña incorrecta.']); exit;
     }
 
     // Store as hashed answer for security
@@ -1979,7 +2017,7 @@ function cliModificarRutina(): void {
     $rutinaId  = (int)($_GET['rutina'] ?? 0);
 
     $stRut = $db->prepare(
-        "SELECT r.id, r.descripcion, r.dias_semana
+        "SELECT r.id, r.entrenador_id, r.descripcion, r.dias_semana
          FROM rutinas r WHERE r.id = ? AND r.cliente_id = ?"
     );
     $stRut->execute([$rutinaId, $clienteId]);
@@ -1993,7 +2031,13 @@ function cliModificarRutina(): void {
     $stEj->execute([$rutinaId]);
     $rutina['ejercicios'] = $stEj->fetchAll();
 
-    $catalogo = $db->query("SELECT id, nombre, nota_default FROM catalogo_ejercicios ORDER BY nombre")->fetchAll();
+    $entScopeMod = !empty($rutina['entrenador_id']) ? (int)$rutina['entrenador_id'] : null;
+    $catalogo = array_map(static fn(array $c): array => [
+        'id'           => (int)$c['id'],
+        'nombre'       => (string)$c['nombre'],
+        'nota_default' => (string)($c['nota_default'] ?? ''),
+    ], CatalogoService::obtenerEjerciciosVisibles($db, $entScopeMod));
+    usort($catalogo, static fn(array $a, array $b): int => strcasecmp($a['nombre'], $b['nombre']));
 
     $pageTitle = 'Modificar Rutina';
     require BASE_DIR . '/views/cliente/modificar_rutina.php';
@@ -2228,7 +2272,10 @@ function cliHistorialDia(PDO $db, int $clienteId, string $fecha): array {
                 COALESCE(ss.equipamiento,
                          (SELECT c.equipamiento FROM catalogo_ejercicios c
                            WHERE c.nombre = COALESCE(ss.ejercicio_nombre, e.nombre)
-                             AND c.equipamiento IS NOT NULL LIMIT 1)) AS equipamiento
+                             AND COALESCE(c.oculto, 0) = 0
+                             AND (c.entrenador_id = r.entrenador_id OR c.entrenador_id IS NULL)
+                             AND c.equipamiento IS NOT NULL
+                           ORDER BY (c.entrenador_id = r.entrenador_id) DESC, c.id DESC LIMIT 1)) AS equipamiento
            FROM sesion_series ss
            LEFT JOIN ejercicios e ON e.id = ss.ejercicio_id
            LEFT JOIN rutinas    r ON r.id = COALESCE(ss.rutina_id, e.rutina_id)
@@ -2290,8 +2337,12 @@ function cliEjerciciosProgramados(PDO $db, int $rutinaId): array {
     $st = $db->prepare(
         "SELECT e.nombre, e.grupo_muscular, e.series, e.repeticiones, e.rir,
                 (SELECT c.equipamiento FROM catalogo_ejercicios c
-                  WHERE c.nombre = e.nombre AND c.equipamiento IS NOT NULL LIMIT 1) AS equipamiento
+                  WHERE c.nombre = e.nombre AND c.equipamiento IS NOT NULL
+                    AND COALESCE(c.oculto, 0) = 0
+                    AND (c.entrenador_id = r.entrenador_id OR c.entrenador_id IS NULL)
+                  ORDER BY (c.entrenador_id = r.entrenador_id) DESC, c.id DESC LIMIT 1) AS equipamiento
            FROM ejercicios e
+           JOIN rutinas r ON r.id = e.rutina_id
           WHERE e.rutina_id = ?
           ORDER BY e.orden, e.id"
     );
@@ -2542,16 +2593,28 @@ function cliApiNuevoPeso(): void {
 âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ*/
 function cliApiTiendaGet(): void {
     $db = getDB();
-    $secs = $db->query("SELECT id, nombre FROM tienda_secciones ORDER BY orden, nombre")->fetchAll(PDO::FETCH_ASSOC);
+    $clienteId = (int)($_SESSION['cliente_id'] ?? 0);
+    $stEnt = $db->prepare("SELECT entrenador_id FROM clientes WHERE id = ? LIMIT 1");
+    $stEnt->execute([$clienteId]);
+    $entAsignadoId = (int)($stEnt->fetchColumn() ?: 0);
+    $mem = $entAsignadoId > 0 ? obtenerEstadoMembresiaEntrenador($entAsignadoId) : null;
+    if (!$mem || empty($mem['tienda_activa'])) {
+        jsonResponse(['ok' => true, 'tienda_activa' => 0, 'secciones' => []]);
+    }
+
+    $stSecs = $db->prepare("SELECT id, nombre FROM tienda_secciones WHERE entrenador_id = ? ORDER BY orden, nombre");
+    $stSecs->execute([$entAsignadoId]);
+    $secs = $stSecs->fetchAll(PDO::FETCH_ASSOC);
     $result = [];
     if (!empty($secs)) {
         $secIds = array_column($secs, 'id');
         $phSec = implode(',', array_fill(0, count($secIds), '?'));
+        $params = array_merge([$entAsignadoId], $secIds);
         $stProds = $db->prepare(
             "SELECT id, seccion_id, nombre, descripcion, precio, imagen_path FROM tienda_productos
-             WHERE seccion_id IN ($phSec) AND activo = 1 ORDER BY seccion_id, orden, id"
+             WHERE entrenador_id = ? AND seccion_id IN ($phSec) AND activo = 1 ORDER BY seccion_id, orden, id"
         );
-        $stProds->execute($secIds);
+        $stProds->execute($params);
         $prodsBySec = [];
         foreach ($stProds->fetchAll(PDO::FETCH_ASSOC) as $p) {
             $prodsBySec[$p['seccion_id']][] = $p;
@@ -2564,7 +2627,12 @@ function cliApiTiendaGet(): void {
             ];
         }
     }
-    jsonResponse(['ok' => true, 'secciones' => $result]);
+    jsonResponse([
+        'ok'            => true,
+        'tienda_activa' => 1,
+        'tienda_nombre' => $mem['tienda_nombre'] ?? 'SUPLEMENTOS',
+        'secciones'     => $result,
+    ]);
 }
 
 

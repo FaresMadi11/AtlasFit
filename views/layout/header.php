@@ -11,17 +11,14 @@ $route   = $route ?? (($segment[0] ?? '') . '/' . ($segment[1] ?? ''));
 // Añadir security headers (antes de cualquier output HTML)
 addSecurityHeaders();
 
-$temaGlobalDefecto = 'classic';
+$temaInfoUser = ['tema' => 'classic', 'tema_global' => 'classic', 'global_ver' => 1, 'global_activo' => false];
 try {
-    if (function_exists('getAjustesGlobales')) {
-        $ajustesGlobalesTmp = getAjustesGlobales();
-        $temaGlobalDefecto = $ajustesGlobalesTmp['tema_sistema'] ?? 'classic';
-    } elseif (function_exists('getDB')) {
-        $dbTmp = getDB();
-        $stTmp = $dbTmp->query("SELECT valor FROM ajustes_globales WHERE clave = 'tema_sistema' LIMIT 1");
-        $temaGlobalDefecto = $stTmp->fetchColumn() ?: 'classic';
+    if (function_exists('xpResolverTemaWeb') && function_exists('getDB')) {
+        $temaInfoUser = xpResolverTemaWeb(getDB(), (int)($_SESSION['user_id'] ?? 0));
     }
 } catch (\Throwable $e) {}
+$temaGlobalDefecto = $temaInfoUser['tema'] ?? 'classic';
+$temaGlobalVer     = (int)($temaInfoUser['global_ver'] ?? 1);
 ?><?php // No añadir salto de línea antes del DOCTYPE ?><!DOCTYPE html>
 <html lang="es" data-theme="<?= e($temaGlobalDefecto) ?>" id="htmlRoot">
 <head>
@@ -76,14 +73,20 @@ try {
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css">
   <!-- App CSS (versionado con filemtime para cache inteligente sin descargas repetidas) -->
   <link rel="stylesheet" href="<?= APP_URL ?>/assets/css/style.css?v=<?= @filemtime(__DIR__ . '/../../assets/css/style.css') ?: '2.6' ?>">
+  <link rel="stylesheet" href="<?= APP_URL ?>/assets/css/custom-select.css?v=<?= @filemtime(__DIR__ . '/../../assets/css/custom-select.css') ?: '1.0' ?>">
+  <link rel="stylesheet" href="<?= APP_URL ?>/assets/css/custom-date.css?v=<?= @filemtime(__DIR__ . '/../../assets/css/custom-date.css') ?: '1.0' ?>">
 
   <!-- ── JavaScript no crítico: diferido para no bloquear render ── -->
   <!-- Bootstrap JS -->
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js" defer></script>
+  <!-- Custom Searchable Select -->
+  <script src="<?= APP_URL ?>/assets/js/custom-select.js?v=<?= @filemtime(__DIR__ . '/../../assets/js/custom-select.js') ?: '1.0' ?>" defer></script>
+  <!-- Custom Minimalist Date Picker -->
+  <script src="<?= APP_URL ?>/assets/js/custom-date.js?v=<?= @filemtime(__DIR__ . '/../../assets/js/custom-date.js') ?: '1.0' ?>" defer></script>
   <!-- SweetAlert2 (Local Vendor - Cero bloqueos de CDN) -->
   <script src="<?= APP_URL ?>/assets/vendor/sweetalert2/sweetalert2.all.min.js"></script>
-  <!-- Anime.js -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/animejs/3.2.2/anime.min.js" defer></script>
+  <!-- Anime.js (Local Vendor - 0ms online y offline) -->
+  <script src="<?= APP_URL ?>/assets/vendor/animejs/anime.min.js" defer></script>
   <!-- SortableJS (Touch & Drag Reordering) -->
   <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js" defer></script>
   <!-- PWA & Offline Sync Manager -->
@@ -92,15 +95,32 @@ try {
   <!-- ── Variables globales JS (inline, no bloquea render) ── -->
   <script>
     // Constantes globales disponibles para todos los scripts
-    window.APP       = '<?= APP_URL ?>';
-    window.BASE_PATH = '<?= BASE_PATH ?>';
-    window.CSRF      = '<?= $csrf ?>';
-    const APP        = window.APP;
-    const CSRF       = window.CSRF;
+    window.APP           = '<?= APP_URL ?>';
+    window.BASE_PATH     = '<?= BASE_PATH ?>';
+    window.CSRF          = '<?= $csrf ?>';
+    window.XP_CACHE_NAME = 'xprod-fit-v4.2';
+    window.XP_SW_URL     = window.APP + '/sw.js?v=4.2';
+    const APP            = window.APP;
+    const CSRF           = window.CSRF;
 
-    // Aplicar tema guardado ANTES de que se pinte el DOM (evita flash)
+    // Aplicar tema efectivo del usuario/web ANTES de pintar el DOM (evita flash y sincroniza cambios globales)
     (function() {
-      const t = localStorage.getItem('xp_theme') || '<?= e($temaGlobalDefecto) ?>';
+      const ssrTheme = <?= json_encode($temaGlobalDefecto) ?>;
+      const ssrUid   = <?= json_encode((string)((int)($_SESSION['user_id'] ?? 0))) ?>;
+      const ssrGVer  = <?= (int)$temaGlobalVer ?>;
+      let t = ssrTheme;
+      try {
+        const lsTheme = localStorage.getItem('xp_theme');
+        const lsUid   = localStorage.getItem('xp_theme_uid');
+        const lsGVer  = Number(localStorage.getItem('xp_theme_gver') || '0');
+        if (navigator.onLine === false && lsTheme && lsUid === ssrUid && lsGVer >= ssrGVer) {
+          t = lsTheme;
+        } else {
+          localStorage.setItem('xp_theme', ssrTheme);
+          localStorage.setItem('xp_theme_uid', ssrUid);
+          localStorage.setItem('xp_theme_gver', String(ssrGVer));
+        }
+      } catch (_) {}
       const rootEl = document.getElementById('htmlRoot');
       rootEl.setAttribute('data-theme', t);
       // Bloquear la altura inicial del fondo para que el teclado móvil nunca lo achique ni cambie su escala
@@ -109,12 +129,17 @@ try {
       <?php if ($rolUser): $homePathJs = $rolUser === 'admin' ? 'admin/dashboard' : ($rolUser === 'entrenador' ? 'entrenador/dashboard' : 'cliente/dashboard'); ?>try { localStorage.setItem('xp_auth_active', '1'); localStorage.setItem('xp_auth_role', '<?= e($rolUser) ?>'); localStorage.setItem('xp_auth_home', window.APP + '/<?= $homePathJs ?>'); } catch (_) {}<?php endif; ?>
       if ('caches' in window) {
         caches.keys().then(function(ks) {
-          ks.forEach(function(k) { if (k !== 'xprod-fit-v4.1') caches.delete(k); });
+          ks.forEach(function(k) { if (k !== window.XP_CACHE_NAME) caches.delete(k); });
         }).catch(function(){});
       }
       if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.register(window.APP + '/sw.js?v=4.1', { scope: window.APP + '/', updateViaCache: 'none' })
-          .then(function(r) { r.update().catch(function(){}); })
+        navigator.serviceWorker.register(window.XP_SW_URL, { scope: window.APP + '/', updateViaCache: 'none' })
+          .then(function(r) {
+            if (!sessionStorage.getItem('xp_sw_checked')) {
+              sessionStorage.setItem('xp_sw_checked', '1');
+              r.update().catch(function(){});
+            }
+          })
           .catch(function(){});
       }
     })();

@@ -293,9 +293,6 @@ $apellidoAtleta = $partesNombre[1] ?? '';
           <button class="profile-hero-btn btn-hero-install" type="button" onclick="instalarXprodApp()" title="Descargar e instalar App">
             <i class="ti ti-device-mobile-down"></i><span>Instalar App</span>
           </button>
-          <button class="profile-hero-btn" onclick="typeof window.Xp!=='undefined'?Xp.toast('info','Manual pr&oacute;ximamente'):alert('Pr&oacute;ximamente')">
-            <i class="ti ti-book"></i> Manual de Usuario
-          </button>
           <button class="profile-hero-btn" id="btnAbrirCambiarPwd">
             <i class="ti ti-shield-lock"></i><span>Seguridad</span>
           </button>
@@ -839,7 +836,7 @@ document.getElementById('btnGuardarPwd').addEventListener('click', async () => {
   const btn = document.getElementById('btnGuardarPwd');
   btn.disabled = true; btn.innerHTML = '<i class="ti ti-loader ti-spin"></i> Guardando…';
   try {
-    const res  = await fetch('<?= APP_URL ?>/cliente/api-cambiar-password', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({actual, nueva}) });
+    const res  = await fetch('<?= APP_URL ?>/cliente/api-cambiar-password', { method:'POST', headers:{'Content-Type':'application/json', 'X-CSRF-TOKEN': window.CSRF || ''}, body:JSON.stringify({actual, nueva, csrf_token: window.CSRF || ''}) });
     const data = await res.json();
     if (data.ok) {
       segOverlay.classList.remove('active');
@@ -863,7 +860,7 @@ document.getElementById('btnGuardarPregunta').addEventListener('click', async ()
   const btn = document.getElementById('btnGuardarPregunta');
   btn.disabled = true; btn.innerHTML = '<i class="ti ti-loader ti-spin"></i> Guardando…';
   try {
-    const res  = await fetch('<?= APP_URL ?>/cliente/api-guardar-pregunta', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({pregunta, respuesta, password: pwdConf}) });
+    const res  = await fetch('<?= APP_URL ?>/cliente/api-guardar-pregunta', { method:'POST', headers:{'Content-Type':'application/json', 'X-CSRF-TOKEN': window.CSRF || ''}, body:JSON.stringify({pregunta, respuesta, password: pwdConf, csrf_token: window.CSRF || ''}) });
     const data = await res.json();
     if (data.ok) {
       segOverlay.classList.remove('active');
@@ -1200,7 +1197,7 @@ document.getElementById('btnEditarFoto').addEventListener('click', () => documen
     btn.disabled=true; btn.innerHTML='<i class="ti ti-loader ti-spin"></i> Guardando&hellip;';
     const dataUrl = can.toDataURL('image/jpeg', 0.9);
     try {
-      const r = await fetch('<?= APP_URL ?>/cliente/api-subir-foto',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({imagen:dataUrl})});
+      const r = await fetch('<?= APP_URL ?>/cliente/api-subir-foto',{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-TOKEN':window.CSRF||''},body:JSON.stringify({imagen:dataUrl,csrf_token:window.CSRF||''})});
       const d = await r.json();
       if(d.ok){
         const prev = document.getElementById('avatarPreview');
@@ -1390,8 +1387,8 @@ document.getElementById('btnEditarFoto').addEventListener('click', () => documen
     try {
       const res = await fetch('<?= APP_URL ?>/cliente/api-editar-perfil', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
+        headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': window.CSRF || '' },
+        body: JSON.stringify({ ...payload, csrf_token: window.CSRF || '' })
       });
       const data = await res.json();
 

@@ -1,0 +1,342 @@
+/* ═══════════════════════════════════════════════════════════════
+   ATLAS FIT — Minimalist Searchable Custom Select (Bento UI)
+   Progressive enhancement sobre <select> nativos del sistema
+═══════════════════════════════════════════════════════════════ */
+
+.xp-cs {
+  position: relative;
+  display: inline-flex;
+  align-items: stretch;
+  width: 100%;
+  min-width: 0;
+  vertical-align: middle;
+}
+
+.xp-cs-native {
+  position: absolute !important;
+  width: 1px !important;
+  height: 1px !important;
+  padding: 0 !important;
+  margin: -1px !important;
+  overflow: hidden !important;
+  clip: rect(0, 0, 0, 0) !important;
+  white-space: nowrap !important;
+  border: 0 !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+
+.xp-cs-trigger {
+  width: 100%;
+  min-height: 40px;
+  padding: 8px 34px 8px 12px;
+  background: var(--bg-input, rgba(16, 17, 26, 0.88));
+  border: 1px solid rgba(255, 255, 255, 0.13);
+  border-radius: 12px;
+  color: var(--text, #f8fafc);
+  font-family: inherit;
+  font-size: 0.86rem;
+  font-weight: 500;
+  line-height: 1.35;
+  text-align: left;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  cursor: pointer;
+  position: relative;
+  transition: border-color 0.18s ease, box-shadow 0.18s ease, background 0.18s ease;
+  outline: none;
+  box-sizing: border-box;
+  margin: 0;
+}
+
+.xp-cs-trigger:hover {
+  border-color: rgba(168, 85, 247, 0.45);
+  background: rgba(24, 25, 38, 0.94);
+}
+
+.xp-cs-trigger:focus-visible,
+.xp-cs-trigger.is-open {
+  border-color: rgba(168, 85, 247, 0.72);
+  box-shadow: 0 0 0 3px rgba(138, 43, 226, 0.22);
+  background: rgba(22, 23, 36, 0.98);
+}
+
+.xp-cs-trigger.is-disabled {
+  opacity: 0.52;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+.xp-cs-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.xp-cs-trigger.is-placeholder .xp-cs-label {
+  color: #94a3b8;
+}
+
+.xp-cs-caret {
+  position: absolute;
+  right: 11px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 15px;
+  height: 15px;
+  color: #a78bfa;
+  pointer-events: none;
+  transition: transform 0.2s cubic-bezier(0.22, 1, 0.36, 1);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.xp-cs-trigger.is-open .xp-cs-caret {
+  transform: translateY(-50%) rotate(180deg);
+}
+
+/* Integración limpia dentro de wrappers especializados existentes */
+.input-box-group .xp-cs-trigger {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  padding: 2px 28px 2px 0 !important;
+  min-height: 26px;
+  border-radius: 0 !important;
+  font-size: 0.95rem;
+}
+.input-box-group .xp-cs-caret {
+  right: 2px;
+}
+
+.mp-field .xp-cs-trigger {
+  padding: 20px 36px 8px 16px !important;
+  background: rgba(26, 26, 34, 0.85);
+  border-radius: 14px;
+  min-height: 50px;
+}
+.mp-field .xp-cs-caret {
+  top: 62%;
+}
+.mp-field .xp-cs-trigger.is-open ~ label,
+.mp-field .xp-cs-trigger:focus ~ label {
+  color: var(--accent-light, #b388ff);
+}
+
+.sa-field .xp-cs-trigger {
+  min-height: 40px;
+  border-radius: 11px;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.xp-form .xp-cs-trigger {
+  background: rgba(15, 16, 24, 0.85);
+}
+
+/* Panel flotante del selector (Portaled al body / Swal container) */
+.xp-cs-dropdown {
+  position: fixed;
+  z-index: 100080;
+  background: rgba(15, 16, 26, 0.98);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  border: 1px solid rgba(168, 85, 247, 0.36);
+  border-radius: 14px;
+  box-shadow: 0 20px 48px rgba(0, 0, 0, 0.72), 0 0 0 1px rgba(255, 255, 255, 0.05) inset;
+  padding: 6px;
+  box-sizing: border-box;
+  display: none;
+  flex-direction: column;
+  gap: 5px;
+  font-family: 'Inter', system-ui, sans-serif;
+  animation: xpCsFadeIn 0.14s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.xp-cs-dropdown.is-visible {
+  display: flex;
+}
+
+@keyframes xpCsFadeIn {
+  from { opacity: 0; transform: translateY(-4px) scale(0.985); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.xp-cs-dropdown.is-top {
+  animation-name: xpCsFadeInTop;
+}
+
+@keyframes xpCsFadeInTop {
+  from { opacity: 0; transform: translateY(4px) scale(0.985); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.xp-cs-search-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.xp-cs-search-icon {
+  position: absolute;
+  left: 9px;
+  width: 13px;
+  height: 13px;
+  color: #94a3b8;
+  pointer-events: none;
+}
+
+.xp-cs-search {
+  width: 100%;
+  height: 31px;
+  padding: 4px 26px 4px 27px;
+  background: rgba(255, 255, 255, 0.055);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 9px;
+  color: #f8fafc;
+  font-family: inherit;
+  font-size: 0.78rem;
+  font-weight: 500;
+  outline: none;
+  transition: border-color 0.15s ease, background 0.15s ease;
+  box-sizing: border-box;
+}
+
+.xp-cs-search::placeholder {
+  color: #64748b;
+}
+
+.xp-cs-search:focus {
+  border-color: rgba(168, 85, 247, 0.65);
+  background: rgba(138, 43, 226, 0.09);
+}
+
+.xp-cs-search::-webkit-search-cancel-button {
+  display: none;
+}
+
+.xp-cs-search-clear {
+  position: absolute;
+  right: 6px;
+  width: 18px;
+  height: 18px;
+  border: none;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.09);
+  color: #cbd5e1;
+  font-size: 0.72rem;
+  line-height: 1;
+  cursor: pointer;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+}
+
+.xp-cs-search-clear.is-shown {
+  display: inline-flex;
+}
+
+.xp-cs-list {
+  max-height: 204px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-right: 2px;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(168, 85, 247, 0.45) transparent;
+}
+
+.xp-cs-list::-webkit-scrollbar {
+  width: 5px;
+}
+.xp-cs-list::-webkit-scrollbar-track {
+  background: transparent;
+}
+.xp-cs-list::-webkit-scrollbar-thumb {
+  background: rgba(168, 85, 247, 0.42);
+  border-radius: 999px;
+}
+.xp-cs-list::-webkit-scrollbar-thumb:hover {
+  background: rgba(168, 85, 247, 0.68);
+}
+
+.xp-cs-group-label {
+  padding: 5px 9px 3px;
+  font-size: 0.66rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: #94a3b8;
+}
+
+.xp-cs-opt {
+  width: 100%;
+  border: none;
+  background: transparent;
+  padding: 7px 9px;
+  border-radius: 8px;
+  color: #e2e8f0;
+  font-family: inherit;
+  font-size: 0.81rem;
+  font-weight: 500;
+  line-height: 1.3;
+  text-align: left;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  cursor: pointer;
+  transition: background 0.12s ease, color 0.12s ease;
+  box-sizing: border-box;
+}
+
+.xp-cs-opt-text {
+  flex: 1;
+  min-width: 0;
+  word-break: break-word;
+}
+
+.xp-cs-opt-check {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  color: #c084fc;
+  opacity: 0;
+}
+
+.xp-cs-opt:hover,
+.xp-cs-opt.is-highlighted {
+  background: rgba(138, 43, 226, 0.19);
+  color: #ffffff;
+}
+
+.xp-cs-opt.is-selected {
+  background: rgba(138, 43, 226, 0.28);
+  color: #f3e8ff;
+  font-weight: 600;
+}
+
+.xp-cs-opt.is-selected .xp-cs-opt-check {
+  opacity: 1;
+}
+
+.xp-cs-opt.is-disabled {
+  opacity: 0.42;
+  cursor: not-allowed;
+}
+
+.xp-cs-empty {
+  padding: 12px 10px;
+  text-align: center;
+  font-size: 0.78rem;
+  color: #64748b;
+}
+

@@ -136,9 +136,132 @@ function releaseSessionLockIfReadOnly(): void {
  *  - Período de gracia: desde 1 hasta 7 días después de fecha_proximo_pago.
  *  - Suspensión: a partir del día 8 después de fecha_proximo_pago, o si pausado_manualmente = 1.
  */
-function obtenerEstadoMembresiaEntrenador(int $entrenadorId): array {
+function ensureStoreAndMembershipSchema(PDO $db): void {
+    static $ensured = false;
+    if ($ensured) return;
+    $ensured = true;
+
+    try {
+        $colsMem = [];
+        $stMem = $db->query("SHOW COLUMNS FROM entrenadores_membresias");
+        if ($stMem) {
+            foreach ($stMem->fetchAll(PDO::FETCH_ASSOC) as $c) {
+                $colsMem[$c['Field']] = true;
+            }
+        }
+        if (!isset($colsMem['mensaje_aviso'])) {
+            $db->exec("ALTER TABLE entrenadores_membresias ADD COLUMN mensaje_aviso VARCHAR(255) NULL DEFAULT NULL");
+        }
+        $addedTiendaActiva = false;
+        if (!isset($colsMem['tienda_activa'])) {
+            $db->exec("ALTER TABLE entrenadores_membresias ADD COLUMN tienda_activa TINYINT(1) NOT NULL DEFAULT 0");
+            $addedTiendaActiva = true;
+        }
+        if (!isset($colsMem['tienda_nombre'])) {
+            $db->exec("ALTER TABLE entrenadores_membresias ADD COLUMN tienda_nombre VARCHAR(80) NOT NULL DEFAULT 'SUPLEMENTOS'");
+        }
+        if (!isset($colsMem['whatsapp_numero'])) {
+            $db->exec("ALTER TABLE entrenadores_membresias ADD COLUMN whatsapp_numero VARCHAR(30) NULL DEFAULT NULL");
+            // Migrar el WhatsApp legado al entrenador principal (#1) normalizado sin '+'
+            try {
+                $legacyNum = (string)($db->query("SELECT valor FROM ajustes_globales WHERE clave = 'whatsapp_numero' LIMIT 1")->fetchColumn() ?: '');
+                $normNum = normalizarTelefonoWhatsApp($legacyNum);
+                if ($normNum !== '') {
+                    $db->prepare("UPDATE entrenadores_membresias SET whatsapp_numero = ? WHERE entrenador_id = 1 AND (whatsapp_numero IS NULL OR whatsapp_numero = '')")
+                       ->execute([$normNum]);
+                }
+            } catch (\Throwable $e) {}
+        }
+        if (!isset($colsMem['whatsapp_mensaje'])) {
+            $db->exec("ALTER TABLE entrenadores_membresias ADD COLUMN whatsapp_mensaje VARCHAR(255) NULL DEFAULT NULL");
+            try {
+                $legacyMsg = trim((string)($db->query("SELECT valor FROM ajustes_globales WHERE clave = 'whatsapp_mensaje' LIMIT 1")->fetchColumn() ?: ''));
+                if ($legacyMsg !== '') {
+                    $db->prepare("UPDATE entrenadores_membresias SET whatsapp_mensaje = ? WHERE entrenador_id = 1 AND (whatsapp_mensaje IS NULL OR whatsapp_mensaje = '')")
+                       ->execute([$legacyMsg]);
+                }
+            } catch (\Throwable $e) {}
+        }
+        if ($addedTiendaActiva) {
+            $db->exec("UPDATE entrenadores_membresias SET tienda_activa = 0");
+        }
+
+        foreach (['tienda_secciones', 'tienda_productos'] as $tbl) {
+            $stT = $db->query("SHOW COLUMNS FROM {$tbl} LIKE 'entrenador_id'");
+            if ($stT && !$stT->fetch()) {
+                $db->exec("ALTER TABLE {$tbl} ADD COLUMN entrenador_id INT UNSIGNED NULL DEFAULT NULL AFTER id");
+                $db->exec("UPDATE {$tbl} SET entrenador_id = 1 WHERE entrenador_id IS NULL");
+            }
+        }
+    } catch (\Throwable $e) {
+        error_log('[ensureStoreAndMembershipSchema] ' . $e->getMessage());
+    }
+}
+
+function normalizarTelefonoWhatsApp(?string $num): string {
+    $digits = preg_replace('/\D+/', '', trim((string)$num)) ?? '';
+    if ($digits === '') return '';
+    if (str_starts_with($digits, '00')) {
+        $digits = substr($digits, 2);
+    }
+    if (preg_match('/^0(4\d{9})$/', $digits, $m)) {
+        $digits = '58' . $m[1];
+    }
+    return $digits;
+}
+
+function construirUrlWhatsAppProducto(?string $numeroRaw, ?string $template, string $productoNombre, int $productoId): ?string {
+    $digits = normalizarTelefonoWhatsApp($numeroRaw);
+    if (strlen($digits) < 7) {
+        return null;
+    }
+    $tpl = trim((string)$template);
+    if ($tpl === '') {
+        $tpl = 'Hola, me interesa adquirir: {producto}';
+    }
+    $baseMsg = str_contains($tpl, '{producto}')
+        ? str_replace('{producto}', $productoNombre, $tpl)
+        : ($tpl . ' ' . $productoNombre);
+    $publicUrl = url('public/producto?id=' . $productoId);
+    $fullMsg   = trim($baseMsg) . "\n\n" . $publicUrl;
+    return 'https://wa.me/' . $digits . '?text=' . rawurlencode($fullMsg);
+}
+
+function generarCodigoEntrenadorUnico(PDO $db, string $nombre, int $excludeEntId = 0, bool $aleatorio = false, string $evitarCodigo = ''): string {
+    $clean = strtoupper(preg_replace('/[^A-Za-z0-9]/', '', sinAcentos($nombre)) ?? '');
+    $prefix = substr($clean !== '' ? $clean : 'COACH', 0, 6);
+    $alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    $evitarUpper = strtoupper(trim($evitarCodigo));
+
+    $stCheck = $db->prepare("SELECT 1 FROM entrenadores_membresias WHERE UPPER(codigo_referido) = ? AND entrenador_id != ? LIMIT 1");
+    if (!$aleatorio) {
+        $candidato = $prefix . '-FIT';
+        $stCheck->execute([$candidato, $excludeEntId]);
+        if ($candidato !== $evitarUpper && !$stCheck->fetchColumn()) {
+            return $candidato;
+        }
+    }
+
+    for ($i = 0; $i < 25; $i++) {
+        $suf = '';
+        for ($j = 0; $j < 4; $j++) {
+            $suf .= $alphabet[random_int(0, strlen($alphabet) - 1)];
+        }
+        $candidato = $prefix . '-' . $suf;
+        if ($evitarUpper !== '' && $candidato === $evitarUpper) {
+            continue;
+        }
+        $stCheck->execute([$candidato, $excludeEntId]);
+        if (!$stCheck->fetchColumn()) {
+            return $candidato;
+        }
+    }
+    return $prefix . '-' . strtoupper(substr(bin2hex(random_bytes(3)), 0, 5));
+}
+
+function obtenerEstadoMembresiaEntrenador(int $entrenadorId, bool $forceRefresh = false): array {
     static $cache = [];
-    if (isset($cache[$entrenadorId])) {
+    if (!$forceRefresh && isset($cache[$entrenadorId])) {
         return $cache[$entrenadorId];
     }
 
@@ -160,6 +283,10 @@ function obtenerEstadoMembresiaEntrenador(int $entrenadorId): array {
         'tipo_banner'          => null,
         'titulo_alerta'        => null,
         'mensaje_alerta'       => null,
+        'tienda_activa'        => 0,
+        'tienda_nombre'        => 'SUPLEMENTOS',
+        'whatsapp_numero'      => '',
+        'whatsapp_mensaje'     => 'Hola, me interesa adquirir: {producto}',
     ];
 
     if ($entrenadorId <= 0) {
@@ -172,19 +299,23 @@ function obtenerEstadoMembresiaEntrenador(int $entrenadorId): array {
         $st->execute([$entrenadorId]);
         $row = $st->fetch(PDO::FETCH_ASSOC);
 
+        if (!$row || !array_key_exists('tienda_activa', $row)) {
+            ensureStoreAndMembershipSchema($db);
+            $st->execute([$entrenadorId]);
+            $row = $st->fetch(PDO::FETCH_ASSOC);
+        }
+
         if (!$row) {
             $stU = $db->prepare("SELECT nombre FROM usuarios WHERE id = ? LIMIT 1");
             $stU->execute([$entrenadorId]);
             $nom = (string)($stU->fetchColumn() ?: 'COACH');
-            $clean = strtoupper(preg_replace('/[^A-Za-z0-9]/', '', sinAcentos($nom)));
-            if ($clean === '') $clean = 'COACH';
-            $code = substr($clean, 0, 10) . '-' . $entrenadorId;
+            $code = generarCodigoEntrenadorUnico($db, $nom, $entrenadorId, false);
 
             $fechaInit = date('Y-m-d', strtotime('+30 days'));
             $db->prepare("
                 INSERT IGNORE INTO entrenadores_membresias 
-                (entrenador_id, codigo_referido, monto_mensualidad, moneda, fecha_proximo_pago, dias_gracia, estado_suscripcion, pausado_manualmente)
-                VALUES (?, ?, 25.00, 'USD', ?, 7, 'activa', 0)
+                (entrenador_id, codigo_referido, monto_mensualidad, moneda, fecha_proximo_pago, dias_gracia, estado_suscripcion, pausado_manualmente, tienda_activa, tienda_nombre)
+                VALUES (?, ?, 25.00, 'USD', ?, 7, 'activa', 0, 0, 'SUPLEMENTOS')
             ")->execute([$entrenadorId, $code, $fechaInit]);
 
             $st->execute([$entrenadorId]);
@@ -267,7 +398,19 @@ function obtenerEstadoMembresiaEntrenador(int $entrenadorId): array {
             $mostrarBanner   = true;
             $tipoBanner      = 'recordatorio';
             $tituloAlerta    = 'Recordatorio de Membresía';
-            if ($diasParaPago === 0) {
+            $msgAvisoCustom  = trim((string)($row['mensaje_aviso'] ?? ''));
+            if ($msgAvisoCustom === '') {
+                try {
+                    $stGlobalAv = $db->query("SELECT valor FROM ajustes_globales WHERE clave = 'mensaje_aviso_entrenadores' LIMIT 1");
+                    $valGlobalAv = $stGlobalAv ? trim((string)$stGlobalAv->fetchColumn()) : '';
+                    if ($valGlobalAv !== '') {
+                        $msgAvisoCustom = $valGlobalAv;
+                    }
+                } catch (\Throwable $e) {}
+            }
+            if ($msgAvisoCustom !== '') {
+                $mensajeAlerta = $msgAvisoCustom;
+            } elseif ($diasParaPago === 0) {
                 $mensajeAlerta = "Hoy ({$fechaPagoFmt}) es tu fecha de pago de membresía mensual. Recuerda que cuentas con 7 días de chance hasta el {$fechaLimiteFmt}.";
             } else {
                 $dTxt = $diasParaPago === 1 ? 'mañana' : "en {$diasParaPago} días";
@@ -312,7 +455,12 @@ function obtenerEstadoMembresiaEntrenador(int $entrenadorId): array {
             'titulo_alerta'         => $tituloAlerta,
             'mensaje_alerta'        => $mensajeAlerta,
             'mensaje_bloqueo'       => trim((string)($row['mensaje_bloqueo'] ?? '')),
+            'mensaje_aviso'         => trim((string)($row['mensaje_aviso'] ?? '')),
             'notas_admin'           => $row['notas_admin'] ?? null,
+            'tienda_activa'         => (int)($row['tienda_activa'] ?? 0),
+            'tienda_nombre'         => ($tn = trim((string)($row['tienda_nombre'] ?? ''))) !== '' ? $tn : 'SUPLEMENTOS',
+            'whatsapp_numero'       => normalizarTelefonoWhatsApp($row['whatsapp_numero'] ?? ''),
+            'whatsapp_mensaje'      => ($wm = trim((string)($row['whatsapp_mensaje'] ?? ''))) !== '' ? $wm : 'Hola, me interesa adquirir: {producto}',
         ];
         $cache[$entrenadorId] = $res;
         return $res;
@@ -400,33 +548,125 @@ function getFlash(): ?array {
     return null;
 }
 
-/** Envía un correo usando PHPMailer */
+/** Envía un correo vía API HTTPS transaccional (puerto 443, inmune a bloqueos SMTP en cloud). */
+function _sendEmailViaHttpsApi(string $to, string $subject, string $body, string $fromEmail, string $fromName): ?bool {
+    if (!function_exists('curl_init')) {
+        return null;
+    }
+
+    $brevoKey  = trim((string)env('BREVO_API_KEY', ''));
+    $resendKey = trim((string)env('RESEND_API_KEY', ''));
+
+    if ($brevoKey === '' && $resendKey === '') {
+        return null;
+    }
+
+    if ($brevoKey !== '') {
+        $endpoint = 'https://api.brevo.com/v3/smtp/email';
+        $headers  = [
+            'api-key: ' . $brevoKey,
+            'Content-Type: application/json',
+            'Accept: application/json',
+        ];
+        $payload  = json_encode([
+            'sender'      => ['name' => $fromName, 'email' => $fromEmail],
+            'to'          => [['email' => $to]],
+            'subject'     => $subject,
+            'htmlContent' => $body,
+        ], JSON_UNESCAPED_UNICODE);
+    } else {
+        $endpoint = 'https://api.resend.com/emails';
+        $headers  = [
+            'Authorization: Bearer ' . $resendKey,
+            'Content-Type: application/json',
+            'Accept: application/json',
+        ];
+        $payload  = json_encode([
+            'from'    => $fromName . ' <' . $fromEmail . '>',
+            'to'      => [$to],
+            'subject' => $subject,
+            'html'    => $body,
+        ], JSON_UNESCAPED_UNICODE);
+    }
+
+    $ch = curl_init($endpoint);
+    curl_setopt_array($ch, [
+        CURLOPT_POST           => true,
+        CURLOPT_HTTPHEADER     => $headers,
+        CURLOPT_POSTFIELDS     => $payload,
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_CONNECTTIMEOUT => 4,
+        CURLOPT_TIMEOUT        => 6,
+    ]);
+    $resp     = curl_exec($ch);
+    $httpCode = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    $curlErr  = curl_error($ch);
+    curl_close($ch);
+
+    if ($curlErr === '' && $httpCode >= 200 && $httpCode < 300) {
+        return true;
+    }
+
+    error_log('[Xprod Fit] Mail API Error (' . $httpCode . '): ' . ($curlErr ?: (string)$resp));
+    return false;
+}
+
+/** Envía un correo priorizando API HTTPS (Brevo/Resend) y con respaldo PHPMailer SMTP */
 function sendEmail(string $to, string $subject, string $body): bool {
+    $fromName  = trim((string)env('MAIL_FROM_NAME', 'Atlas Fit')) ?: 'Atlas Fit';
+    $mailHost  = trim((string)env('MAIL_HOST', 'smtp.gmail.com'));
+    $mailUser  = trim((string)env('MAIL_USER', ''));
+    $fromEmail = trim((string)env('MAIL_FROM', '')) ?: ($mailUser ?: 'noreply@atlasfit.com');
+
+    // Prioridad 1: API HTTPS transaccional (no bloqueada en Render/cloud PaaS)
+    $apiResult = _sendEmailViaHttpsApi($to, $subject, $body, $fromEmail, $fromName);
+    if ($apiResult === true) {
+        return true;
+    }
+
+    // Prioridad 2: Fallback PHPMailer SMTP con timeout corto
+    if ($mailUser === '' || trim((string)env('MAIL_PASS', '')) === '') {
+        return false;
+    }
+
     require_once BASE_DIR . '/libs/PHPMailer/Exception.php';
     require_once BASE_DIR . '/libs/PHPMailer/PHPMailer.php';
     require_once BASE_DIR . '/libs/PHPMailer/SMTP.php';
-    
+
     $mail = new PHPMailer\PHPMailer\PHPMailer(true);
     try {
         $mail->isSMTP();
-        $mail->Host = env('MAIL_HOST', 'smtp.gmail.com');
-        $mail->SMTPAuth = true;
-        $mail->Username = env('MAIL_USER', '');
-        $mail->Password = env('MAIL_PASS', '');
-        $mail->SMTPSecure = PHPMailer\PHPMailer\PHPMailer::ENCRYPTION_STARTTLS;
-        $mail->Port = env('MAIL_PORT', '587');
-        
-        $mail->setFrom(env('MAIL_FROM', 'noreply@atlasfit.com'), 'Atlas Fit');
+        $mail->Host       = $mailHost;
+        $mail->SMTPAuth   = true;
+        $mail->Username   = $mailUser;
+        $mail->Password   = env('MAIL_PASS', '');
+        $mailPort         = (int)env('MAIL_PORT', '587');
+        $mail->SMTPSecure = ($mailPort === 465)
+            ? PHPMailer\PHPMailer\PHPMailer::ENCRYPTION_SMTPS
+            : PHPMailer\PHPMailer\PHPMailer::ENCRYPTION_STARTTLS;
+        $mail->Port       = $mailPort;
+        $mail->Timeout    = 8;
+
+        // Alinear From con MAIL_USER en Gmail para evitar rechazos DMARC/SPF
+        $smtpFrom = $fromEmail;
+        if (str_contains(strtolower($mailHost), 'gmail.com') && filter_var($mailUser, FILTER_VALIDATE_EMAIL)) {
+            $smtpFrom = $mailUser;
+            if (strcasecmp($fromEmail, $mailUser) !== 0 && filter_var($fromEmail, FILTER_VALIDATE_EMAIL)) {
+                $mail->addReplyTo($fromEmail, $fromName);
+            }
+        }
+
+        $mail->setFrom($smtpFrom, $fromName);
         $mail->addAddress($to);
-        
+
         $mail->isHTML(true);
         $mail->Subject = $subject;
-        $mail->Body = $body;
+        $mail->Body    = $body;
         $mail->CharSet = 'UTF-8';
-        
+
         return $mail->send();
     } catch (Exception $e) {
-        error_log('[Xprod Fit] Mail Error: ' . $mail->ErrorInfo);
+        error_log('[Xprod Fit] Mail SMTP Error: ' . $mail->ErrorInfo);
         return false;
     }
 }
@@ -970,6 +1210,65 @@ function sincronizarSesionAsistencia(PDO $db, int $clienteId, int $rutinaId, str
         $stIns->execute([$rutinaId, $clienteId, $entrenadorId, $estadoFinal, $horaInicio, $finValor]);
         return (int)$db->lastInsertId();
     }
+}
+
+/**
+ * Resuelve la paleta visual efectiva para el usuario actual y el estado global del tema.
+ * - `tema_sistema`: paleta global para toda la web.
+ * - `tema_global_ver`: versión incremental cada vez que el Super Admin guarda un tema global.
+ * - `tema_usuario_{uid}`: preferencia privada `{tema}|{globalVer}` del usuario (entrenador o superadmin).
+ */
+function xpResolverTemaWeb(PDO $db, ?int $userId = null): array {
+    $validos = ['classic', 'obsidian', 'royal-plum', 'deep-ocean', 'nordic-frost', 'dark', 'light'];
+    $temaGlobal = 'classic';
+    $globalVer  = 1;
+    $alcance    = 'personal';
+    $userRaw    = '';
+
+    try {
+        $claves = ['tema_sistema', 'tema_global_ver', 'tema_superadmin_alcance'];
+        if ($userId !== null && $userId > 0) {
+            $claves[] = 'tema_usuario_' . $userId;
+        }
+        $ph = implode(',', array_fill(0, count($claves), '?'));
+        $st = $db->prepare("SELECT clave, valor FROM ajustes_globales WHERE clave IN ($ph)");
+        $st->execute($claves);
+        $kv = [];
+        while ($row = $st->fetch(PDO::FETCH_ASSOC)) {
+            $kv[$row['clave']] = (string)($row['valor'] ?? '');
+        }
+        if (!empty($kv['tema_sistema']) && in_array(trim($kv['tema_sistema']), $validos, true)) {
+            $temaGlobal = trim($kv['tema_sistema']);
+        }
+        if (!empty($kv['tema_global_ver']) && is_numeric($kv['tema_global_ver'])) {
+            $globalVer = max(1, (int)$kv['tema_global_ver']);
+        }
+        if (($kv['tema_superadmin_alcance'] ?? '') === 'global') {
+            $alcance = 'global';
+        }
+        if ($userId !== null && $userId > 0) {
+            $userRaw = trim((string)($kv['tema_usuario_' . $userId] ?? ''));
+        }
+    } catch (\Throwable $e) {
+        error_log('[xpResolverTemaWeb] ' . $e->getMessage());
+    }
+
+    $temaEfectivo = $temaGlobal;
+    if ($userRaw !== '') {
+        $partes = explode('|', $userRaw, 2);
+        $uTema  = trim($partes[0] ?? '');
+        $uVer   = isset($partes[1]) && is_numeric($partes[1]) ? (int)$partes[1] : $globalVer;
+        if (in_array($uTema, $validos, true) && $uVer >= $globalVer) {
+            $temaEfectivo = $uTema;
+        }
+    }
+
+    return [
+        'tema'          => $temaEfectivo,
+        'tema_global'   => $temaGlobal,
+        'global_ver'    => $globalVer,
+        'global_activo' => ($alcance === 'global'),
+    ];
 }
 
 // Cargar lógica de progreso y estadísticas de ejercicios

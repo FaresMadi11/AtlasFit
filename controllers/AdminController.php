@@ -21,10 +21,18 @@ match ($action) {
     'api-listar-plantillas-catalogo'     => adminApiListarPlantillasCatalogo(),
     'api-crear-entrenador'               => adminApiCrearEntrenador(),
     'api-actualizar-membresia'           => adminApiActualizarMembresia(),
+    'api-generar-codigo'                 => adminApiGenerarCodigo(),
     'api-toggle-pausa'                   => adminApiTogglePausa(),
     'api-reasignar-atleta'               => adminApiReasignarAtleta(),
     'api-revocar-entrenador'             => adminApiRevocarEntrenador(),
     'api-guardar-configuracion'          => adminApiGuardarConfiguracion(),
+    'api-catalogo-list'                  => adminApiCatalogoList(),
+    'api-catalogo-agregar'               => adminApiCatalogoAgregar(),
+    'api-catalogo-editar'                => adminApiCatalogoEditar(),
+    'api-catalogo-borrar'                => adminApiCatalogoBorrar(),
+    'api-importar-historial-analizar'    => adminApiImportarHistorialAnalizar(),
+    'api-importar-historial-guardar'     => adminApiImportarHistorialGuardar(),
+    'descargar-respaldo-db'              => adminDescargarRespaldoDb(),
     'api-notificaciones'                 => adminApiNotificaciones(),
     'api-marcar-notificacion'            => adminApiMarcarNotificacion(),
     'api-leer-notificaciones'            => adminApiLeerNotificaciones(),
@@ -107,15 +115,8 @@ function adminRutina(): void {
 
     $diasProgramados = adminObtenerDiasProgramados($db, $adminClienteId);
 
-    // Catálogo de ejercicios para el selector / autocompletado
-    $stCat = $db->query("
-        SELECT c.id, c.nombre, c.grupo_muscular, c.equipamiento, c.tipo_implemento, c.unidad_carga,
-               c.imagen_path, c.imagen_demo_path, cm.nombre AS categoria_nombre
-        FROM catalogo_ejercicios c
-        LEFT JOIN categorias_musculares cm ON cm.id = c.categoria_id
-        ORDER BY c.nombre ASC
-    ");
-    $catalogoEjercicios = $stCat ? $stCat->fetchAll(PDO::FETCH_ASSOC) : [];
+    // Catálogo de ejercicios globales para el selector / autocompletado
+    $catalogoEjercicios = CatalogoService::obtenerEjerciciosVisibles($db, null);
 
     // Plantillas guardadas (propias o del catálogo)
     $stPl = $db->prepare("
@@ -324,9 +325,7 @@ function adminApiCrearRutinaPropia(): void {
                 $desc = '';
             }
 
-            $stCat = $db->prepare("SELECT grupo_muscular, equipamiento, imagen_path, imagen_demo_path FROM catalogo_ejercicios WHERE LOWER(TRIM(nombre)) = LOWER(TRIM(?)) LIMIT 1");
-            $stCat->execute([$nombre]);
-            $cat = $stCat->fetch(PDO::FETCH_ASSOC);
+            $cat = CatalogoService::obtenerMetaPorNombre($db, $nombre, null);
 
             $grupo       = $cat['grupo_muscular'] ?? inferirGrupoMuscularProgreso($nombre);
             $equip       = $cat['equipamiento'] ?? inferirEquipamientoProgreso($nombre, $imp);
@@ -334,7 +333,7 @@ function adminApiCrearRutinaPropia(): void {
             $imgDemoPath = $cat['imagen_demo_path'] ?? null;
 
             if (!$cat) {
-                asegurarEjercicioEnCatalogo($db, $nombre, $grupo, $imp, $unidad, $equip);
+                asegurarEjercicioEnCatalogo($db, $nombre, $grupo, $imp, $unidad, $equip, null);
             }
 
             $stInsEj->execute([
@@ -522,9 +521,7 @@ function adminApiActualizarRutinaCompleta(): void {
             if ($eid > 0) {
                 $stUp->execute([$nombre, $series, $reps, $rirVal, $orden, $imp, $unidad, $desc, $eid, $rutinaId]);
             } else {
-                $stCat = $db->prepare("SELECT grupo_muscular, equipamiento, imagen_path, imagen_demo_path FROM catalogo_ejercicios WHERE LOWER(TRIM(nombre)) = LOWER(TRIM(?)) LIMIT 1");
-                $stCat->execute([$nombre]);
-                $cat = $stCat->fetch(PDO::FETCH_ASSOC);
+                $cat = CatalogoService::obtenerMetaPorNombre($db, $nombre, null);
 
                 $grupo       = $cat['grupo_muscular'] ?? inferirGrupoMuscularProgreso($nombre);
                 $equip       = $cat['equipamiento'] ?? inferirEquipamientoProgreso($nombre, $imp);
@@ -532,7 +529,7 @@ function adminApiActualizarRutinaCompleta(): void {
                 $imgDemoPath = $cat['imagen_demo_path'] ?? null;
 
                 if (!$cat) {
-                    asegurarEjercicioEnCatalogo($db, $nombre, $grupo, $imp, $unidad, $equip);
+                    asegurarEjercicioEnCatalogo($db, $nombre, $grupo, $imp, $unidad, $equip, null);
                 }
 
                 $stIns->execute([
@@ -1014,20 +1011,54 @@ function adminConfiguracion(): void {
     }
 
     $mensajePausaGlobal = 'La web ha sido pausada hasta que logres pagar la membresía.';
-    $temaActual = 'classic';
+    $mensajeAvisoGlobal = 'Recordatorio: Se acerca tu fecha de pago de la membresía mensual. Recuerda realizar tu abono a tiempo.';
     try {
-        $stAj = $db->query("SELECT clave, valor FROM ajustes_globales WHERE clave IN ('mensaje_pausa_entrenadores', 'tema_sistema')");
+        $stAj = $db->query("SELECT clave, valor FROM ajustes_globales WHERE clave IN ('mensaje_pausa_entrenadores', 'mensaje_aviso_entrenadores')");
         if ($stAj) {
             foreach ($stAj->fetchAll(PDO::FETCH_ASSOC) as $rowAj) {
                 if ($rowAj['clave'] === 'mensaje_pausa_entrenadores' && trim((string)$rowAj['valor']) !== '') {
                     $mensajePausaGlobal = trim((string)$rowAj['valor']);
                 }
-                if ($rowAj['clave'] === 'tema_sistema' && trim((string)$rowAj['valor']) !== '') {
-                    $temaActual = trim((string)$rowAj['valor']);
+                if ($rowAj['clave'] === 'mensaje_aviso_entrenadores' && trim((string)$rowAj['valor']) !== '') {
+                    $mensajeAvisoGlobal = trim((string)$rowAj['valor']);
                 }
             }
         }
     } catch (\Throwable $e) {}
+
+    $adminUserId      = (int)($_SESSION['user_id'] ?? 0);
+    $temaInfoAdmin    = xpResolverTemaWeb($db, $adminUserId);
+    $temaActual       = $temaInfoAdmin['tema'];
+    $temaGlobalActivo = !empty($temaInfoAdmin['global_activo']);
+
+    // Catálogo global de ejercicios (visible para todos los entrenadores)
+    $catalogoPorGrupo = CatalogoService::obtenerCatalogoAgrupado($db, null);
+
+    // Lista de atletas para el Importador IA (incluye perfil personal del Super Admin + atletas activos)
+    adminObtenerClienteIdPropio($db);
+    $atletasList = [];
+    try {
+        $stAtl = $db->prepare("
+            SELECT c.id AS cliente_id, u.nombre
+            FROM clientes c
+            JOIN usuarios u ON u.id = c.usuario_id
+            WHERE u.activo = 1
+            ORDER BY (u.id = ?) DESC, u.nombre ASC
+        ");
+        $stAtl->execute([$adminUserId]);
+        $atletasList = $stAtl->fetchAll(PDO::FETCH_ASSOC);
+    } catch (\Throwable $e) {}
+
+    // Métricas para Copia de Seguridad
+    try {
+        $dbName      = (string)$db->query("SELECT DATABASE()")->fetchColumn();
+        $totalTablas = (int)$db->query("SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE()")->fetchColumn();
+        $totalSeries = (int)$db->query("SELECT COUNT(*) FROM sesion_series")->fetchColumn();
+    } catch (\Throwable $e) {
+        $dbName      = 'xprod_fit';
+        $totalTablas = 0;
+        $totalSeries = 0;
+    }
 
     $pageTitle = 'Configuración — Superadmin';
     require BASE_DIR . '/views/admin/configuracion.php';
@@ -1038,50 +1069,149 @@ function adminApiGuardarConfiguracion(): void {
     $db = getDB();
     $in = array_merge($_POST, getJsonPayload());
 
-    $tipo = trim((string)($in['tipo'] ?? 'mensaje_pausa'));
+    $tipo        = trim((string)($in['tipo'] ?? 'mensaje_pausa'));
+    $adminUserId = (int)($_SESSION['user_id'] ?? 0);
+    $temasOk     = ['classic', 'obsidian', 'royal-plum', 'deep-ocean', 'nordic-frost', 'dark', 'light'];
 
     try {
+        $upsertAj = $db->prepare("
+            INSERT INTO ajustes_globales (clave, valor) VALUES (?, ?)
+            ON DUPLICATE KEY UPDATE valor = VALUES(valor)
+        ");
+
+        if ($tipo === 'tema_alcance') {
+            $alcanceTema = (($in['alcance'] ?? '') === 'global' || !empty($in['global'])) ? 'global' : 'personal';
+            $upsertAj->execute(['tema_superadmin_alcance', $alcanceTema]);
+
+            $curVer = (int)($db->query("SELECT valor FROM ajustes_globales WHERE clave = 'tema_global_ver' LIMIT 1")->fetchColumn() ?: 1);
+            $temaAplicar = trim((string)($in['tema'] ?? ''));
+
+            if ($alcanceTema === 'global' && in_array($temaAplicar, $temasOk, true)) {
+                $newVer = max($curVer + 1, time());
+                $upsertAj->execute(['tema_sistema', $temaAplicar]);
+                $upsertAj->execute(['tema_global_ver', (string)$newVer]);
+                if ($adminUserId > 0) {
+                    $upsertAj->execute(['tema_usuario_' . $adminUserId, $temaAplicar . '|' . $newVer]);
+                }
+                jsonOut(true, 'Modo Global activado y paleta aplicada a toda la web.', [
+                    'alcance'       => 'global',
+                    'global_activo' => true,
+                    'tema'          => $temaAplicar,
+                    'global_ver'    => $newVer,
+                ]);
+            }
+
+            jsonOut(true, $alcanceTema === 'global'
+                ? 'Modo Global activado: los cambios de paleta se aplicarán a toda la web.'
+                : 'Modo Solo Super Admin activado: los cambios de paleta solo afectarán tu vista.', [
+                'alcance'       => $alcanceTema,
+                'global_activo' => ($alcanceTema === 'global'),
+                'global_ver'    => $curVer,
+            ]);
+        }
+
         if ($tipo === 'tema_sistema') {
             $tema = trim((string)($in['tema'] ?? 'classic'));
-            if (!in_array($tema, ['classic', 'obsidian', 'royal-plum', 'deep-ocean', 'nordic-frost', 'dark', 'light'], true)) {
+            if (!in_array($tema, $temasOk, true)) {
                 jsonOut(false, 'Tema inválido.');
             }
-            $db->prepare("
-                INSERT INTO ajustes_globales (clave, valor) VALUES ('tema_sistema', ?)
-                ON DUPLICATE KEY UPDATE valor = VALUES(valor)
-            ")->execute([$tema]);
-            jsonOut(true, 'Tema del sistema actualizado.', ['tema' => $tema]);
+
+            $alcanceReq = trim((string)($in['alcance'] ?? ''));
+            if ($alcanceReq === 'global' || $alcanceReq === 'personal') {
+                $upsertAj->execute(['tema_superadmin_alcance', $alcanceReq]);
+                $esGlobal = ($alcanceReq === 'global');
+            } else {
+                $dbAlcance = (string)($db->query("SELECT valor FROM ajustes_globales WHERE clave = 'tema_superadmin_alcance' LIMIT 1")->fetchColumn() ?: 'personal');
+                $esGlobal = ($dbAlcance === 'global');
+            }
+
+            $curVer = (int)($db->query("SELECT valor FROM ajustes_globales WHERE clave = 'tema_global_ver' LIMIT 1")->fetchColumn() ?: 1);
+
+            if ($esGlobal) {
+                $newVer = max($curVer + 1, time());
+                $upsertAj->execute(['tema_sistema', $tema]);
+                $upsertAj->execute(['tema_global_ver', (string)$newVer]);
+                if ($adminUserId > 0) {
+                    $upsertAj->execute(['tema_usuario_' . $adminUserId, $tema . '|' . $newVer]);
+                }
+                jsonOut(true, 'Paleta aplicada de forma global a toda la web.', [
+                    'tema'          => $tema,
+                    'alcance'       => 'global',
+                    'global_activo' => true,
+                    'global_ver'    => $newVer,
+                ]);
+            }
+
+            if ($adminUserId > 0) {
+                $upsertAj->execute(['tema_usuario_' . $adminUserId, $tema . '|' . $curVer]);
+            }
+            jsonOut(true, 'Paleta aplicada solo para tu sesión de Super Admin.', [
+                'tema'          => $tema,
+                'alcance'       => 'personal',
+                'global_activo' => false,
+                'global_ver'    => $curVer,
+            ]);
         }
 
-        // Guardar mensaje de aviso al pausar (global o por entrenador)
+        // Guardar mensaje (aviso o suspensión/pausa) global o por entrenador
         $alcance = trim((string)($in['alcance'] ?? 'todos')); // 'todos' o ID de entrenador
-        $mensaje = trim(sanitizeInput((string)($in['mensaje_bloqueo'] ?? ''), 255));
+        $mensaje = trim(sanitizeInput((string)($in['mensaje'] ?? $in['mensaje_bloqueo'] ?? ''), 255));
+
+        $esAviso = ($tipo === 'mensaje_aviso' || $tipo === 'aviso');
+        $cfgTipo = $esAviso ? [
+            'claveGlobal' => 'mensaje_aviso_entrenadores',
+            'columna'     => 'mensaje_aviso',
+            'defaultMsg'  => 'Recordatorio: Se acerca tu fecha de pago de la membresía mensual. Recuerda realizar tu abono a tiempo.',
+            'tipoOut'     => 'aviso',
+            'etiqueta'    => 'Mensaje de aviso',
+        ] : [
+            'claveGlobal' => 'mensaje_pausa_entrenadores',
+            'columna'     => 'mensaje_bloqueo',
+            'defaultMsg'  => 'La web ha sido pausada hasta que logres pagar la membresía.',
+            'tipoOut'     => 'suspension',
+            'etiqueta'    => 'Mensaje de suspensión',
+        ];
+
         if ($mensaje === '') {
-            $mensaje = 'La web ha sido pausada hasta que logres pagar la membresía.';
+            $mensaje = $cfgTipo['defaultMsg'];
         }
 
-        // Guardar como mensaje predeterminado global
-        $db->prepare("
-            INSERT INTO ajustes_globales (clave, valor) VALUES ('mensaje_pausa_entrenadores', ?)
-            ON DUPLICATE KEY UPDATE valor = VALUES(valor)
-        ")->execute([$mensaje]);
+        // Garantizar que la columna exista en entornos remotos (ej. TiDB) sin migración manual previa
+        if ($cfgTipo['columna'] === 'mensaje_aviso') {
+            $stCol = $db->query("SHOW COLUMNS FROM entrenadores_membresias LIKE 'mensaje_aviso'");
+            if (!$stCol || !$stCol->fetch()) {
+                $db->exec("ALTER TABLE entrenadores_membresias ADD COLUMN mensaje_aviso TEXT NULL AFTER mensaje_bloqueo");
+            }
+        }
+
+        $col = $cfgTipo['columna'];
+        $outPayload = ['mensaje' => $mensaje, 'tipo' => $cfgTipo['tipoOut']];
+        if (!$esAviso) {
+            $outPayload['mensaje_bloqueo'] = $mensaje;
+        }
 
         if ($alcance === 'todos') {
+            // Solo actualizar el ajuste predeterminado global cuando el alcance es "todos"
+            $db->prepare("
+                INSERT INTO ajustes_globales (clave, valor) VALUES (?, ?)
+                ON DUPLICATE KEY UPDATE valor = VALUES(valor)
+            ")->execute([$cfgTipo['claveGlobal'], $mensaje]);
+
             $stIds = $db->query("SELECT id FROM usuarios WHERE rol = 'entrenador'");
             foreach ($stIds->fetchAll(PDO::FETCH_COLUMN) as $eid) {
                 obtenerEstadoMembresiaEntrenador((int)$eid);
             }
-            $db->prepare("UPDATE entrenadores_membresias SET mensaje_bloqueo = ?")->execute([$mensaje]);
-            jsonOut(true, 'Mensaje de aviso actualizado para todos los entrenadores.', ['mensaje_bloqueo' => $mensaje]);
+            $db->prepare("UPDATE entrenadores_membresias SET `{$col}` = ?")->execute([$mensaje]);
+            jsonOut(true, $cfgTipo['etiqueta'] . ' guardado para todos los entrenadores.', $outPayload);
         } else {
             $entId = (int)$alcance;
             if ($entId <= 0) {
                 jsonOut(false, 'Entrenador inválido.');
             }
             obtenerEstadoMembresiaEntrenador($entId);
-            $db->prepare("UPDATE entrenadores_membresias SET mensaje_bloqueo = ? WHERE entrenador_id = ?")
+            $db->prepare("UPDATE entrenadores_membresias SET `{$col}` = ? WHERE entrenador_id = ?")
                ->execute([$mensaje, $entId]);
-            jsonOut(true, 'Mensaje de aviso actualizado para el entrenador seleccionado.', ['mensaje_bloqueo' => $mensaje]);
+            jsonOut(true, $cfgTipo['etiqueta'] . ' guardado para el entrenador seleccionado.', $outPayload);
         }
     } catch (\Throwable $e) {
         error_log('[adminApiGuardarConfiguracion] ' . $e->getMessage());
@@ -1293,9 +1423,42 @@ function adminApiActualizarMembresia(): void {
         ]);
     }
 
-    $memNueva = obtenerEstadoMembresiaEntrenador($entrenadorId);
+    $memNueva = obtenerEstadoMembresiaEntrenador($entrenadorId, true);
     jsonOut(true, "Configuración de {$entRow['nombre']} actualizada correctamente.", [
         'membresia' => $memNueva,
+    ]);
+}
+
+function adminApiGenerarCodigo(): void {
+    csrfCheck();
+    $db = getDB();
+    $in = array_merge($_POST, getJsonPayload());
+    $entrenadorId = (int)($in['entrenador_id'] ?? 0);
+    $nombreHint   = trim((string)($in['nombre'] ?? 'COACH'));
+
+    if ($entrenadorId > 0) {
+        $stU = $db->prepare("SELECT nombre FROM usuarios WHERE id = ? AND rol = 'entrenador' LIMIT 1");
+        $stU->execute([$entrenadorId]);
+        $nom = (string)$stU->fetchColumn();
+        if (!$nom) {
+            jsonOut(false, 'Entrenador no encontrado.');
+        }
+        $memActual = obtenerEstadoMembresiaEntrenador($entrenadorId);
+        $nuevoCodigo = generarCodigoEntrenadorUnico($db, $nom, $entrenadorId, true, (string)($memActual['codigo_referido'] ?? ''));
+        $db->prepare("UPDATE entrenadores_membresias SET codigo_referido = ? WHERE entrenador_id = ?")
+           ->execute([$nuevoCodigo, $entrenadorId]);
+        $memNueva = obtenerEstadoMembresiaEntrenador($entrenadorId, true);
+        jsonOut(true, 'Nuevo código generado.', [
+            'codigo_referido' => $memNueva['codigo_referido'],
+            'link_referido'   => $memNueva['link_referido'],
+        ]);
+    }
+
+    $nuevoCodigo = generarCodigoEntrenadorUnico($db, $nombreHint, 0, true);
+    $baseAppUrl = str_replace(' ', '%20', rtrim((string)APP_URL, '/'));
+    jsonOut(true, 'Código disponible generado.', [
+        'codigo_referido' => $nuevoCodigo,
+        'link_referido'   => $baseAppUrl . '/auth/registro?ref=' . rawurlencode($nuevoCodigo),
     ]);
 }
 
@@ -1462,4 +1625,52 @@ function adminApiLeerNotificaciones(): void {
     csrfCheck();
     getDB()->prepare("UPDATE notificaciones SET leida = 1 WHERE destinatario_id = ?")->execute([(int)($_SESSION['user_id'] ?? 0)]);
     jsonOut(true, 'OK');
+}
+
+// ══════════════════════════════════════════════════════════════════
+//  CATÁLOGO GLOBAL DE EJERCICIOS, IMPORTADOR IA Y RESPALDO (SUPER ADMIN)
+// ══════════════════════════════════════════════════════════════════
+
+function adminApiCatalogoList(): void {
+    CatalogoService::apiList(getDB(), null);
+}
+
+function adminApiCatalogoAgregar(): void {
+    csrfCheck();
+    CatalogoService::apiAgregar(getDB(), null);
+}
+
+function adminApiCatalogoEditar(): void {
+    csrfCheck();
+    CatalogoService::apiEditar(getDB(), null);
+}
+
+function adminApiCatalogoBorrar(): void {
+    csrfCheck();
+    CatalogoService::apiBorrar(getDB(), null);
+}
+
+function adminApiImportarHistorialAnalizar(): void {
+    ImportadorService::analizar(getDB(), null);
+}
+
+function adminApiImportarHistorialGuardar(): void {
+    ImportadorService::guardar(getDB(), null);
+}
+
+function adminDescargarRespaldoDb(): void {
+    csrfCheck();
+    try {
+        $db = getDB();
+        $filename = 'xprod_fit_backup_' . date('Y-m-d_His') . '.sql.gz';
+        BackupService::descargarRespaldo($db, $filename);
+    } catch (\Throwable $e) {
+        http_response_code(500);
+        header('Content-Type: application/json; charset=utf-8');
+        echo json_encode([
+            'ok'  => false,
+            'msg' => 'Error al generar la copia de seguridad: ' . $e->getMessage()
+        ]);
+        exit;
+    }
 }

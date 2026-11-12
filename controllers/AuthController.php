@@ -22,6 +22,8 @@ match($action) {
     'registro'                    => authRegistro(),
     'do-registro'                 => authDoRegistro(),
     'api-validar-codigo'          => authApiValidarCodigo(),
+    'api-enviar-codigo-email'     => authApiEnviarCodigoEmail(),
+    'api-verificar-codigo-email'  => authApiVerificarCodigoEmail(),
     'logout'                      => authLogout(),
     'google'                      => authGoogleRedirect(),
     'google-callback'             => authGoogleCallback(),
@@ -101,6 +103,156 @@ function authApiValidarCodigo(): void {
         'codigo_referido'   => (string)$info['codigo_referido'],
         'entrenador_nombre' => (string)$info['entrenador_nombre'],
     ]);
+}
+
+/** Valida formato, bloquea dominios desechables/ficticios y verifica registro DNS MX/A del dominio. */
+function _validarDominioCorreoReal(string $email): ?string {
+    $email = strtolower(trim($email));
+    if ($email === '' || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
+        return 'El correo electrónico no es válido.';
+    }
+
+    $emailParts = explode('@', $email);
+    $emailDomain = strtolower(trim($emailParts[1] ?? ''));
+    if ($emailDomain === '' || str_ends_with($emailDomain, '.test') || str_ends_with($emailDomain, '.invalid') || str_ends_with($emailDomain, '.local')) {
+        return 'Ingresa un correo electrónico real y operativo.';
+    }
+
+    $disposableDomains = [
+        '10minutemail.com', 'tempmail.com', 'temp-mail.org', 'temp-mail.io', 'guerrillamail.com',
+        'guerrillamail.info', 'guerrillamail.net', 'yopmail.com', 'yopmail.fr', 'mailinator.com',
+        'trashmail.com', 'trash-mail.com', 'throwawaymail.com', 'dispostable.com', 'fakeinbox.com',
+        'mytemp.email', 'getairmail.com', 'sharklasers.com', 'nada.ltd', 'mohmal.com',
+        'crazymailing.com', 'maildrop.cc', 'mintemail.com', 'emailondeck.com', 'burnermail.io',
+        'anonbox.net', 'inboxkitten.com', 'harakirimail.com', 'spamgourmet.com', 'tempr.email',
+        'example.com', 'example.org', 'example.net', 'test.com', 'localhost'
+    ];
+    if (in_array($emailDomain, $disposableDomains, true)) {
+        return 'No se permiten correos electrónicos temporales, ficticios o desechables.';
+    }
+
+    $trustedDomains = ['gmail.com', 'hotmail.com', 'yahoo.com', 'outlook.com', 'icloud.com', 'live.com', 'proton.me', 'protonmail.com'];
+    if (!in_array($emailDomain, $trustedDomains, true) && function_exists('checkdnsrr')) {
+        try {
+            $hasMx = checkdnsrr($emailDomain, 'MX') || checkdnsrr($emailDomain, 'A');
+            if (!$hasMx) {
+                return "El dominio del correo (@{$emailDomain}) no existe o no puede recibir mensajes. Ingresa un correo real.";
+            }
+        } catch (\Throwable $dnsEx) {}
+    }
+
+    return null;
+}
+
+/** Envía un código OTP de 6 dígitos al correo para verificar propiedad real antes de registrarse. */
+function authApiEnviarCodigoEmail(): void {
+    csrfCheck();
+    rateLimitCheck('auth/email-otp');
+
+    $rawJson = json_decode(file_get_contents('php://input') ?: '', true);
+    $emailRaw = $_POST['email'] ?? ($rawJson['email'] ?? '');
+    $email = strtolower(trim((string)$emailRaw));
+
+    $errDom = _validarDominioCorreoReal($email);
+    if ($errDom !== null) {
+        jsonOut(false, $errDom);
+    }
+
+    try {
+        $um = new UsuarioModel();
+        if ($um->emailExists($email)) {
+            jsonOut(false, 'Este correo ya está registrado. Inicia sesión o utiliza otro correo.');
+        }
+    } catch (\Throwable $e) {
+        error_log('[authApiEnviarCodigoEmail] DB check error: ' . $e->getMessage());
+        jsonOut(false, 'Error al verificar disponibilidad del correo.');
+    }
+
+    $prev = $_SESSION['reg_email_otp'] ?? null;
+    $now = time();
+    if (is_array($prev) && ($prev['email'] ?? '') === $email && ($now - (int)($prev['sent_at'] ?? 0)) < 45) {
+        $wait = 45 - ($now - (int)($prev['sent_at'] ?? 0));
+        jsonOut(false, "Espera {$wait}s antes de solicitar otro código.", ['cooldown' => $wait]);
+    }
+
+    $otp = str_pad((string)random_int(0, 999999), 6, '0', STR_PAD_LEFT);
+    $_SESSION['reg_email_otp'] = [
+        'email'      => $email,
+        'hash'       => password_hash($otp, PASSWORD_DEFAULT),
+        'expires_at' => $now + 600,
+        'sent_at'    => $now,
+        'attempts'   => 0,
+    ];
+    unset($_SESSION['reg_email_verified']);
+
+    $body = '
+      <div style="font-family:Inter,Arial,sans-serif;background:#0b0b12;color:#f4f4f5;padding:28px;border-radius:16px;max-width:480px;margin:0 auto;border:1px solid #2b2142;">
+        <h2 style="margin:0 0 10px;color:#c084fc;font-size:20px;">Verifica tu correo en Atlas Fit</h2>
+        <p style="margin:0 0 16px;color:#cbd5e1;font-size:14px;line-height:1.5;">
+          Ingresa este código de 6 dígitos en la pantalla de registro para confirmar que este correo es real y te pertenece:
+        </p>
+        <div style="background:#171226;border:1px solid #7c3aed;border-radius:12px;padding:16px;text-align:center;font-size:30px;font-weight:800;letter-spacing:8px;color:#ffffff;margin-bottom:16px;">
+          ' . e($otp) . '
+        </div>
+        <p style="margin:0;color:#94a3b8;font-size:12px;">
+          El código expira en 10 minutos. Si no solicitaste este registro, ignora este mensaje.
+        </p>
+      </div>';
+
+    if (!sendEmail($email, 'Código de verificación — Atlas Fit', $body)) {
+        unset($_SESSION['reg_email_otp']);
+        jsonOut(false, 'No pudimos enviar el código a ese correo. Verifica que la dirección exista e inténtalo de nuevo.');
+    }
+
+    jsonOut(true, 'Código enviado a ' . $email . '. Revisa tu bandeja de entrada o spam.', ['cooldown' => 45]);
+}
+
+/** Verifica el código OTP ingresado en el registro local y sella la sesión como correo verificado. */
+function authApiVerificarCodigoEmail(): void {
+    csrfCheck();
+    rateLimitCheck('auth/email-otp-verify');
+
+    $rawJson = json_decode(file_get_contents('php://input') ?: '', true);
+    $email  = strtolower(trim((string)($_POST['email'] ?? ($rawJson['email'] ?? ''))));
+    $codigo = preg_replace('/\D+/', '', (string)($_POST['codigo'] ?? ($rawJson['codigo'] ?? ''))) ?? '';
+
+    if ($email === '' || strlen($codigo) !== 6) {
+        jsonOut(false, 'Ingresa un correo válido y el código de 6 dígitos.');
+    }
+
+    $otpData = $_SESSION['reg_email_otp'] ?? null;
+    if (!is_array($otpData) || ($otpData['email'] ?? '') !== $email) {
+        jsonOut(false, 'Primero solicita un código para este correo electrónico.');
+    }
+
+    if (time() > (int)($otpData['expires_at'] ?? 0)) {
+        unset($_SESSION['reg_email_otp']);
+        jsonOut(false, 'El código ha expirado. Solicita uno nuevo.');
+    }
+
+    $attempts = (int)($otpData['attempts'] ?? 0);
+    if ($attempts >= 5) {
+        unset($_SESSION['reg_email_otp']);
+        jsonOut(false, 'Demasiados intentos fallidos. Solicita un nuevo código.');
+    }
+
+    if (!password_verify($codigo, (string)($otpData['hash'] ?? ''))) {
+        $_SESSION['reg_email_otp']['attempts'] = $attempts + 1;
+        rateLimitFail('auth/email-otp-verify');
+        $restantes = 4 - $attempts;
+        jsonOut(false, $restantes > 0
+            ? "Código incorrecto. Te quedan {$restantes} intentos."
+            : 'Demasiados intentos fallidos. Solicita un nuevo código.');
+    }
+
+    $_SESSION['reg_email_verified'] = [
+        'email'       => $email,
+        'verified_at' => time(),
+    ];
+    unset($_SESSION['reg_email_otp']);
+    rateLimitReset('auth/email-otp-verify');
+
+    jsonOut(true, 'Correo verificado correctamente.', ['email' => $email]);
 }
 
 /** /auth/registro: mismo documento que el login, abierto directamente en la vista de registro. */
@@ -239,9 +391,17 @@ function authDoRegistro(): void {
         $nombres   = preg_replace('/\s+/u', ' ', sanitizeInput($in('nombres'),   50)) ?? '';
         $apellidos = preg_replace('/\s+/u', ' ', sanitizeInput($in('apellidos'), 50)) ?? '';
         $cedula    = UsuarioModel::normalizarCedula($in('cedula'));
-        $email     = sanitizeEmail($in('email'));
+        $email        = sanitizeEmail($in('email'));
         $authProvider = sanitizeInput($in('auth_provider') ?: 'local', 20);
-        $isGoogle     = ($authProvider === 'google' || !empty($_SESSION['google_onboarding']));
+        $hasGoogleSess = !empty($_SESSION['google_onboarding']) && !empty($_SESSION['google_onboarding']['email']);
+        if ($authProvider === 'google' && !$hasGoogleSess) {
+            authRegistroError('Tu sesión verificada con Google expiró o no es válida. Vuelve a continuar con Google.', 'email', 403);
+        }
+        $isGoogle     = $hasGoogleSess;
+        if ($isGoogle) {
+            // En onboarding con Google, el correo verificado por OAuth en sesión es la única fuente de verdad
+            $email = sanitizeEmail((string)$_SESSION['google_onboarding']['email']);
+        }
         $pass         = $in('password');
         $pregunta     = sanitizeInput($in('pregunta_seguridad'),  100);
         $respuesta    = sanitizeInput($in('respuesta_seguridad'), 100);
@@ -351,33 +511,20 @@ function authDoRegistro(): void {
             authRegistroError('El correo electrónico no es válido.', 'email');
         }
 
-        // ── Validación de Dominio de Correo Real y Anti-Desechables ──
-        $emailParts = explode('@', $email);
-        $emailDomain = strtolower(trim($emailParts[1] ?? ''));
-
-        $disposableDomains = [
-            '10minutemail.com', 'tempmail.com', 'guerrillamail.com', 'yopmail.com', 'mailinator.com',
-            'trashmail.com', 'throwawaymail.com', 'dispostable.com', 'fakeinbox.com', 'mytemp.email',
-            'getairmail.com', 'sharklasers.com', 'nada.ltd', 'mohmal.com', 'crazymailing.com'
-        ];
-        if (in_array($emailDomain, $disposableDomains, true)) {
-            authRegistroError('No se permiten correos electrónicos temporales o desechables.', 'email');
+        // ── Validación de Dominio Real, Anti-Desechables y Propiedad de Buzón ──
+        $errDom = _validarDominioCorreoReal($email);
+        if ($errDom !== null) {
+            authRegistroError($errDom, 'email');
         }
 
-        $trustedDomains = ['gmail.com', 'hotmail.com', 'yahoo.com', 'outlook.com', 'icloud.com', 'live.com'];
-        if (!in_array($emailDomain, $trustedDomains, true)) {
-            $hasMx = false;
-            try {
-                if (function_exists('checkdnsrr')) {
-                    $hasMx = checkdnsrr($emailDomain, 'MX') || checkdnsrr($emailDomain, 'A');
-                } else {
-                    $hasMx = true;
-                }
-            } catch (\Throwable $dnsEx) {
-                $hasMx = true;
-            }
-            if (!$hasMx) {
-                authRegistroError("El dominio del correo (@{$emailDomain}) no existe o no puede recibir mensajes. Ingresa un correo real.", 'email');
+        if (!$isGoogle) {
+            $verifEmail = $_SESSION['reg_email_verified'] ?? null;
+            $emailLower = strtolower(trim($email));
+            $correoVerificadoOk = is_array($verifEmail)
+                && ($verifEmail['email'] ?? '') === $emailLower
+                && (time() - (int)($verifEmail['verified_at'] ?? 0)) <= 1800;
+            if (!$correoVerificadoOk) {
+                authRegistroError('Debes verificar tu correo electrónico real con el código de 6 dígitos enviado a tu bandeja.', 'email', 422);
             }
         }
 
@@ -389,14 +536,16 @@ function authDoRegistro(): void {
         $codigoFallback = strtoupper(trim((string)($_SESSION['ref_codigo'] ?? ($_COOKIE['xp_ref_code'] ?? ''))));
         $codigoEntrenador = $codigoInput !== '' ? $codigoInput : $codigoFallback;
 
-        $refEnt = $codigoEntrenador !== '' ? resolverEntrenadorPorCodigo($codigoEntrenador) : null;
-        if ($codigoInput !== '' && !$refEnt) {
+        if ($codigoEntrenador === '') {
+            authRegistroError('Debes ingresar el código o usar el link de invitación de tu entrenador para registrarte.', 'codigo_entrenador');
+        }
+
+        $refEnt = resolverEntrenadorPorCodigo($codigoEntrenador);
+        if (!$refEnt) {
             authRegistroError('El código de entrenador ingresado no existe o no está activo.', 'codigo_entrenador');
         }
 
-        $entrenadorId = $refEnt
-            ? (int)$refEnt['entrenador_id']
-            : (int)($db->query("SELECT id FROM usuarios WHERE rol='entrenador' AND activo=1 ORDER BY id LIMIT 1")->fetchColumn() ?: 0);
+        $entrenadorId = (int)$refEnt['entrenador_id'];
 
         if (!$isGoogle) {
             if (strlen($pass) < 8) {
@@ -553,7 +702,7 @@ function authDoRegistro(): void {
         }
 
         // SEGURIDAD ESTRICTA: PROHIBIDO iniciar variables de sesión ($_SESSION) o redirigir al dashboard tras registrarse
-        unset($_SESSION['google_onboarding']);
+        unset($_SESSION['google_onboarding'], $_SESSION['reg_email_otp'], $_SESSION['reg_email_verified']);
         unset($_SESSION['user_id'], $_SESSION['nombre'], $_SESSION['email'], $_SESSION['rol'], $_SESSION['_login_at'], $_SESSION['_via']);
 
         jsonOut(true, UsuarioModel::MSG_PENDIENTE, [

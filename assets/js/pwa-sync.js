@@ -9,21 +9,17 @@
   let isSyncing = false;
 
   const XpSync = {
-    // Registrar el Service Worker (con ?v=3.2 y updateViaCache:'none' para evadir caché inmutable antiguo)
+    // Reutilizar el registro único de Service Worker para evitar colisiones de versión entre vistas
     initSW() {
-      if ('serviceWorker' in navigator) {
+      const swUrl = window.XP_SW_URL || ((window.APP || '') + '/sw.js?v=4.2');
+      if ('serviceWorker' in navigator && !window.XP_SW_URL) {
         window.addEventListener('load', () => {
-          const swPath = (window.APP || '') + '/sw.js?v=3.4';
-          navigator.serviceWorker.register(swPath, {
+          navigator.serviceWorker.register(swUrl, {
             scope: (window.APP || '') + '/',
             updateViaCache: 'none'
-          })
-            .then(reg => {
-              reg.update().catch(() => { });
-            })
-            .catch(err => {
-              console.warn('[PWA] Error registrando Service Worker:', err);
-            });
+          }).catch(err => {
+            console.warn('[PWA] Error registrando Service Worker:', err);
+          });
         });
       }
 
@@ -65,7 +61,7 @@
       if (navigator.onLine && 'caches' in window) {
         const runPrewarm = async () => {
           try {
-            const CACHE_NAME = 'xprod-fit-v4.0';
+            const CACHE_NAME = window.XP_CACHE_NAME || 'xprod-fit-v4.2';
             const cache = await caches.open(CACHE_NAME);
             const base = (window.APP || window.location.origin).replace(/\/+$/, '');
             const curPath = window.location.pathname;

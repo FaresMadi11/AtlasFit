@@ -37,58 +37,6 @@
   </div>
 </div>
 
-<?php
-  $membresiaDash = $membresiaEntrenador ?? obtenerEstadoMembresiaEntrenador((int)($_SESSION['user_id'] ?? 0));
-  $codRefDash    = (string)($membresiaDash['codigo_referido'] ?? '');
-  $linkRefDash   = (string)($membresiaDash['link_referido'] ?? (APP_URL . '/auth/registro?ref=' . urlencode($codRefDash)));
-?>
-<!-- Tarjeta Bento: Código y Link de Invitación de Entrenador -->
-<div class="trainer-ref-bento" style="background: linear-gradient(135deg, rgba(138,43,226,0.16) 0%, rgba(18,18,24,0.92) 100%); border: 1px solid rgba(138,43,226,0.32); border-radius: 20px; padding: 14px 18px; margin-bottom: 18px; display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap; box-shadow: 0 8px 26px rgba(0,0,0,0.22);">
-  <div style="display:flex; align-items:center; gap:12px; min-width:220px; flex:1;">
-    <div style="width:42px; height:42px; border-radius:12px; background:rgba(138,43,226,0.22); border:1px solid rgba(138,43,226,0.45); color:#d8b4fe; display:flex; align-items:center; justify-content:center; font-size:1.35rem; flex-shrink:0;">
-      <i class="ti ti-qrcode"></i>
-    </div>
-    <div style="display:flex; flex-direction:column; gap:2px; min-width:0;">
-      <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
-        <span style="font-size:0.72rem; font-weight:700; text-transform:uppercase; letter-spacing:0.6px; color:#c084fc;">Tu Código de Entrenador</span>
-        <span style="font-size:0.78rem; font-weight:800; padding:2px 9px; border-radius:8px; background:rgba(138,43,226,0.28); color:#fff; border:1px solid rgba(179,136,255,0.4); letter-spacing:0.8px;"><?= e($codRefDash) ?></span>
-      </div>
-      <span style="font-size:0.8rem; color:#94a3b8; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:460px;" title="<?= e($linkRefDash) ?>">
-        Comparte tu link o código para que tus atletas queden asignados a tu perfil automáticamente.
-      </span>
-    </div>
-  </div>
-  <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
-    <button type="button" onclick="copiarTextoEntrenador(<?= htmlspecialchars(json_encode($codRefDash), ENT_QUOTES) ?>, 'Código copiado')" style="padding:8px 13px; border-radius:12px; background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.14); color:#e2e8f0; font-size:0.78rem; font-weight:700; cursor:pointer; display:inline-flex; align-items:center; gap:6px; transition:all 0.2s;">
-      <i class="ti ti-copy"></i> Copiar Código
-    </button>
-    <button type="button" onclick="copiarTextoEntrenador(<?= htmlspecialchars(json_encode($linkRefDash), ENT_QUOTES) ?>, 'Link de registro copiado')" style="padding:8px 14px; border-radius:12px; background:linear-gradient(135deg,#8a2be2,#6d28d9); border:none; color:#fff; font-size:0.78rem; font-weight:700; cursor:pointer; display:inline-flex; align-items:center; gap:6px; box-shadow:0 4px 14px rgba(138,43,226,0.38); transition:all 0.2s;">
-      <i class="ti ti-link"></i> Copiar Link de Atleta
-    </button>
-  </div>
-</div>
-<script>
-function copiarTextoEntrenador(texto, titulo) {
-  if (navigator.clipboard && navigator.clipboard.writeText) {
-    navigator.clipboard.writeText(texto).then(function() {
-      if (typeof Swal !== 'undefined') {
-        Swal.fire({ toast: true, position: 'top-end', icon: 'success', title: titulo, text: texto, showConfirmButton: false, timer: 2400, background: '#111827', color: '#fff' });
-      }
-    });
-  } else {
-    var ta = document.createElement('textarea');
-    ta.value = texto;
-    document.body.appendChild(ta);
-    ta.select();
-    document.execCommand('copy');
-    document.body.removeChild(ta);
-    if (typeof Swal !== 'undefined') {
-      Swal.fire({ toast: true, position: 'top-end', icon: 'success', title: titulo, text: texto, showConfirmButton: false, timer: 2400, background: '#111827', color: '#fff' });
-    }
-  }
-}
-</script>
-
 <!-- Stats rápidas -->
 <div class="dash-stat-grid">
   <a href="<?= APP_URL ?>/entrenador/asistencias?tab=alertas#modificar"
@@ -165,8 +113,58 @@ function copiarTextoEntrenador(texto, titulo) {
   transition: max-height 0.45s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.35s ease;
 }
 #tiendaSection.open .t-collapsible-body {
-  max-height: 4000px;
+  max-height: none;
   opacity: 1;
+  overflow: visible;
+}
+.tienda-name-edit-bar {
+  display: none;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 14px;
+  padding: 10px 12px;
+  background: rgba(138, 43, 226, 0.12);
+  border: 1px solid rgba(168, 85, 247, 0.35);
+  border-radius: 14px;
+}
+.tienda-name-edit-bar.is-visible {
+  display: flex;
+}
+.tienda-name-input {
+  flex: 1;
+  min-width: 0;
+  height: 36px;
+  padding: 6px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(255,255,255,0.16);
+  background: rgba(12, 13, 20, 0.9);
+  color: #fff;
+  font-size: 0.86rem;
+  font-weight: 700;
+  outline: none;
+}
+.tienda-name-input:focus {
+  border-color: #a855f7;
+}
+.tienda-name-save-btn {
+  height: 36px;
+  padding: 0 14px;
+  border-radius: 10px;
+  border: none;
+  background: linear-gradient(135deg, #8a2be2, #6d28d9);
+  color: #fff;
+  font-size: 0.8rem;
+  font-weight: 700;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  white-space: nowrap;
+}
+@media(max-width:768px) {
+  .xp-main {
+    padding-bottom: calc(140px + env(safe-area-inset-bottom, 0px)) !important;
+  }
 }
 
 .t-filters {
@@ -273,17 +271,18 @@ function copiarTextoEntrenador(texto, titulo) {
 .btn-circular-delete:hover { background: rgba(220, 38, 38, 1); transform: scale(1.1); }
 </style>
 
+<?php if (!empty($tiendaActiva)): ?>
 <div id="tiendaSection" class="open">
   <div class="t-header" onclick="toggleTiendaSection()" title="Toca para abrir o cerrar">
     <div class="t-header-left">
       <i class="ti ti-bolt"></i>
-      <span style="letter-spacing: 1px;">SUPLEMENTOS</span>
+      <span id="tiendaNombreTexto" style="letter-spacing: 1px;"><?= e($tiendaNombre ?? 'SUPLEMENTOS') ?></span>
     </div>
     <div class="t-header-right">
       <button type="button" class="btn-tienda-admin" onclick="event.stopPropagation(); abrirModalProducto()" title="Agregar nuevo producto">
         <i class="ti ti-plus"></i>
       </button>
-      <button type="button" class="btn-tienda-admin" onclick="event.stopPropagation(); document.getElementById('tiendaGrid').classList.toggle('edit-mode')" title="Modo edición de productos">
+      <button type="button" id="btnToggleEditTienda" class="btn-tienda-admin" onclick="event.stopPropagation(); toggleModoEdicionTienda()" title="Editar tienda y productos">
         <i class="ti ti-pencil"></i>
       </button>
       <i class="ti ti-chevron-down t-chevron" id="tiendaChevron"></i>
@@ -291,6 +290,13 @@ function copiarTextoEntrenador(texto, titulo) {
   </div>
 
   <div class="t-collapsible-body" id="tiendaBody">
+    <!-- Editor inline de nombre de tienda (visible al pulsar editar) -->
+    <div id="tiendaNameEditBar" class="tienda-name-edit-bar" onclick="event.stopPropagation()">
+      <input type="text" id="inputTiendaNombre" class="tienda-name-input" value="<?= e($tiendaNombre ?? 'SUPLEMENTOS') ?>" maxlength="60" placeholder="Nombre de tu tienda" onkeydown="if(event.key==='Enter'){event.preventDefault();guardarNombreTienda();}">
+      <button type="button" id="btnGuardarTiendaNombre" class="tienda-name-save-btn" onclick="guardarNombreTienda()">
+        <i class="ti ti-check"></i> Guardar
+      </button>
+    </div>
     <!-- Filtros -->
     <div class="t-filters">
       <button class="t-filter-btn active" onclick="filtrarTienda('todos', this)">Todos</button>
@@ -363,6 +369,7 @@ function copiarTextoEntrenador(texto, titulo) {
     </div>
     <div class="sys-modal-body">
       <form id="formProducto" onsubmit="guardarProducto(event)">
+        <input type="hidden" name="csrf_token" value="<?= e($csrf) ?>">
         <input type="hidden" id="prod_id" name="id" value="">
         
         <div class="sys-input-group">
@@ -409,6 +416,7 @@ function copiarTextoEntrenador(texto, titulo) {
     </div>
   </div>
 </div>
+<?php endif; ?>
 
 
 
@@ -735,9 +743,58 @@ async function guardarProducto(e) {
   }
 }
 
+function toggleModoEdicionTienda() {
+  const sec = document.getElementById('tiendaSection');
+  if (sec && !sec.classList.contains('open')) {
+    sec.classList.add('open');
+  }
+  const grid = document.getElementById('tiendaGrid');
+  const bar = document.getElementById('tiendaNameEditBar');
+  const isEditing = grid ? grid.classList.toggle('edit-mode') : false;
+  if (bar) bar.classList.toggle('is-visible', isEditing);
+  if (isEditing) {
+    setTimeout(() => {
+      const inp = document.getElementById('inputTiendaNombre');
+      if (inp) inp.focus({ preventScroll: true });
+    }, 40);
+  }
+}
+
+async function guardarNombreTienda() {
+  const inp = document.getElementById('inputTiendaNombre');
+  const btn = document.getElementById('btnGuardarTiendaNombre');
+  if (!inp) return;
+  const nuevo = inp.value.trim();
+  if (nuevo.length < 2) {
+    Swal.fire({ icon: 'warning', title: 'Nombre muy corto', text: 'Ingresa al menos 2 caracteres.', background: '#0f1219', color: '#fff' });
+    return;
+  }
+  if (btn) btn.disabled = true;
+  try {
+    const r = await fetch(appUrl + '/entrenador/api-tienda-nombre', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': window.CSRF || '' },
+      body: JSON.stringify({ csrf_token: window.CSRF || '', nombre: nuevo })
+    });
+    const d = await r.json();
+    if (d && d.ok) {
+      const lbl = document.getElementById('tiendaNombreTexto');
+      if (lbl) lbl.textContent = d.tienda_nombre || nuevo;
+      Swal.fire({ toast: true, position: 'top-end', icon: 'success', title: 'Nombre actualizado', showConfirmButton: false, timer: 1800, background: '#0f1219', color: '#fff' });
+    } else {
+      Swal.fire({ icon: 'error', title: 'Error', text: (d && d.msg) || 'No se pudo actualizar.', background: '#0f1219', color: '#fff' });
+    }
+  } catch (err) {
+    Swal.fire({ icon: 'error', title: 'Error', text: err.message, background: '#0f1219', color: '#fff' });
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
 async function borrarProducto(id) {
   if(!confirm('¿Estás seguro de borrar este producto?')) return;
   const fd = new FormData();
+  fd.append('csrf_token', window.CSRF || '');
   fd.append('id', id);
   try {
     const r = await fetch(appUrl + '/entrenador/api-tienda-borrar', { method: 'POST', body: fd });
@@ -751,6 +808,7 @@ async function nuevaSeccion() {
   const nombre = prompt('Nombre de la nueva sección:');
   if(!nombre) return;
   const fd = new FormData();
+  fd.append('csrf_token', window.CSRF || '');
   fd.append('nombre', nombre);
   
   try {
