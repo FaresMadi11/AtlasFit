@@ -9,7 +9,7 @@
       <i class="ti ti-users"></i>
     </div>
     <div class="user-text-wrap">
-      <h1 class="sys-top-title user-name-gradient" title="Mis Atletas" style="font-size: 1.12rem !important; font-weight: 800; color: #fff; margin: 0; line-height: 1.25;">
+      <h1 class="sys-top-title user-name-gradient" title="Mis Atletas" style="font-size: 1.12rem !important; font-weight: 800; color: var(--text, #fff); margin: 0; line-height: 1.25;">
         <span class="user-name-text">Mis Atletas</span>
         <span class="cl-count-badge" style="font-size: 0.72rem; padding: 2px 8px; border-radius: 10px; background: rgba(138,43,226,0.25); color: #d8b4fe; border: 1px solid rgba(138,43,226,0.4);"><?= count($clientes) ?></span>
       </h1>
@@ -228,9 +228,9 @@
 
 /* Info text */
 .ig-info { display:flex; flex-direction:column; align-items:center; text-align:center; gap:3px; width:100%; }
-.ig-name { font-size:0.82rem; font-weight:700; color:#fff; display:flex; align-items:center; gap:4px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:100%; }
+.ig-name { font-size:0.82rem; font-weight:700; color:var(--text, #fff); display:flex; align-items:center; gap:4px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:100%; }
 .ig-mod-icon { font-size:0.65rem; color:var(--warn); }
-.ig-micro { font-size:0.68rem; color:rgba(255,255,255,0.38); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:100%; }
+.ig-micro { font-size:0.68rem; color:var(--text2, rgba(255,255,255,0.45)); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:100%; }
 
 /* Status dot + btn */
 .ig-dot { width:8px; height:8px; border-radius:50%; background:rgba(255,255,255,0.2); margin-top:2px; }
@@ -304,7 +304,7 @@
   .ig-name {
     font-size: 1rem;
     font-weight: 600;
-    color: #fff;
+    color: var(--text, #fff);
     letter-spacing: -0.01em;
     white-space: nowrap;
     overflow: hidden;

@@ -23,20 +23,34 @@ $metaColorLogin = $mapaMetaColorLogin[$temaGlobalLogin] ?? '#02040a';
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <title>Acceso – Atlas Fit</title>
+<?php $icoVer = @filemtime(__DIR__ . '/../../assets/img/icon-512.png') ?: time(); ?>
+<meta name="description" content="Atlas Fit: plataforma profesional para entrenadores personales y atletas con rutinas interactivas, métricas biométricas y seguimiento diario.">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Atlas Fit — Plataforma de Entrenamiento Inteligente">
+<meta property="og:description" content="Gestión integral para entrenadores personales y atletas: rutinas personalizadas, progreso por ejercicio, control diario y seguimiento biométrico.">
+<meta property="og:url" content="<?= e(APP_URL . '/auth/login') ?>">
+<meta property="og:image" content="<?= e(APP_URL . '/assets/img/icon-512.png?v=' . $icoVer) ?>">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="Atlas Fit — Plataforma de Entrenamiento">
+<meta name="twitter:description" content="Control profesional de rutinas, métricas de fuerza y seguimiento atleta-entrenador.">
+<meta name="twitter:image" content="<?= e(APP_URL . '/assets/img/icon-512.png?v=' . $icoVer) ?>">
 <meta name="theme-color" id="loginThemeColorMeta" content="<?= e($metaColorLogin) ?>">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Atlas Fit">
 <meta name="mobile-web-app-capable" content="yes">
-<?php $icoVer = @filemtime(__DIR__ . '/../../assets/img/icon-192.png') ?: time(); ?>
 <link rel="manifest" href="<?= APP_URL ?>/manifest.webmanifest?v=<?= $icoVer ?>">
 <link rel="shortcut icon" href="<?= APP_URL ?>/favicon.ico?v=<?= $icoVer ?>">
 <link rel="icon" type="image/png" sizes="32x32" href="<?= APP_URL ?>/assets/img/favicon-32.png?v=<?= $icoVer ?>">
 <link rel="icon" type="image/png" sizes="192x192" href="<?= APP_URL ?>/assets/img/icon-192.png?v=<?= $icoVer ?>">
 <link rel="icon" type="image/svg+xml" href="<?= APP_URL ?>/assets/img/favicon.svg?v=<?= $icoVer ?>">
 <link rel="apple-touch-icon" href="<?= APP_URL ?>/assets/img/apple-touch-icon.png?v=<?= $icoVer ?>">
-<link rel="stylesheet" href="<?= APP_URL ?>/assets/vendor/tabler-icons/tabler-icons.min.css">
-<link rel="stylesheet" href="<?= APP_URL ?>/assets/css/custom-select.css?v=<?= @filemtime(__DIR__ . '/../../assets/css/custom-select.css') ?: '1.0' ?>">
+<link rel="preload" href="<?= APP_URL ?>/assets/vendor/tabler-icons/tabler-icons.min.css" as="style" onload="this.onload=null;this.rel='stylesheet'">
+<link rel="preload" href="<?= APP_URL ?>/assets/css/custom-select.css?v=<?= @filemtime(__DIR__ . '/../../assets/css/custom-select.css') ?: '1.0' ?>" as="style" onload="this.onload=null;this.rel='stylesheet'">
+<noscript>
+  <link rel="stylesheet" href="<?= APP_URL ?>/assets/vendor/tabler-icons/tabler-icons.min.css">
+  <link rel="stylesheet" href="<?= APP_URL ?>/assets/css/custom-select.css?v=<?= @filemtime(__DIR__ . '/../../assets/css/custom-select.css') ?: '1.0' ?>">
+</noscript>
 <script>
 (function() {
   var dbTheme = <?= json_encode($temaGlobalLogin) ?>;
@@ -92,7 +106,7 @@ $metaColorLogin = $mapaMetaColorLogin[$temaGlobalLogin] ?? '#02040a';
     } catch (_) {}
   }
   if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register(appBase + '/sw.js?v=3.9', { scope: appBase + '/', updateViaCache: 'none' }).catch(function(){});
+    navigator.serviceWorker.register(appBase + '/sw.js?v=4.3', { scope: appBase + '/', updateViaCache: 'none' }).catch(function(){});
   }
 })();
 
@@ -2103,8 +2117,8 @@ document.addEventListener('DOMContentLoaded', () => {
 </script>
 <?php endif; ?>
 
-<script src="<?= APP_URL ?>/assets/vendor/sweetalert2/sweetalert2.all.min.js"></script>
-<script src="<?= APP_URL ?>/assets/vendor/animejs/anime.min.js"></script>
+<script src="<?= APP_URL ?>/assets/vendor/sweetalert2/sweetalert2.all.min.js" defer></script>
+<script src="<?= APP_URL ?>/assets/vendor/animejs/anime.min.js" defer></script>
 <script>
 window.APP       = '<?= APP_URL ?>';
 window.BASE_PATH = '<?= BASE_PATH ?>';
@@ -2114,13 +2128,12 @@ const CSRF       = window.CSRF;
 const API        = APP + '/api';
 
 // ── Fallback Defensivo para Anime.js (asegura que ninguna llamada lance error) ──
-if (typeof window.anime === 'undefined') {
-  window.anime = function() { return { finished: Promise.resolve() }; };
-}
-const safeAnime = window.anime;
+const safeAnime = (opts) => (typeof window.anime === 'function' ? window.anime(opts) : { finished: Promise.resolve() });
 
-// Entrance
-safeAnime({ targets:'#authBox', opacity:[0,1], translateY:[20,0], duration:800, easing:'easeOutExpo' });
+// Entrance sutil sin ocultar #authBox al arranque (preserva LCP inmediato)
+document.addEventListener('DOMContentLoaded', () => {
+  safeAnime({ targets:'#authBox', translateY:[8,0], duration:260, easing:'easeOutExpo' });
+});
 
 // ── Toast Defensivo ──
 const Toast = {

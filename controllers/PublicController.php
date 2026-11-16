@@ -26,14 +26,27 @@ if ($action === 'producto') {
     }
 
     $db = getDB();
-    $stmt = $db->prepare("SELECT id, seccion_id, nombre, descripcion, precio, imagen_path, activo FROM tienda_productos WHERE id = ? AND activo = 1");
+    $stmt = $db->prepare(
+        "SELECT p.id, p.seccion_id, p.nombre, p.descripcion, p.precio, p.imagen_path, p.activo, s.entrenador_id
+         FROM tienda_productos p
+         JOIN tienda_secciones s ON s.id = p.seccion_id
+         WHERE p.id = ? AND p.activo = 1"
+    );
     $stmt->execute([$id]);
     $producto = $stmt->fetch();
-
 
     if (!$producto) {
         http_response_code(404);
         exit('Producto no encontrado.');
+    }
+
+    $entStoreId = (int)($producto['entrenador_id'] ?? 0);
+    if ($entStoreId > 0) {
+        $memStore = obtenerEstadoMembresiaEntrenador($entStoreId);
+        if (empty($memStore['tienda_activa']) || !empty($memStore['bloqueado'])) {
+            http_response_code(404);
+            exit('Esta tienda no se encuentra disponible.');
+        }
     }
 
     require BASE_DIR . '/views/public/producto.php';

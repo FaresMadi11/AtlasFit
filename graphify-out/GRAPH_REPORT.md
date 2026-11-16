@@ -1,17 +1,17 @@
-# Graph Report - Xprod Fit  (2026-11-12)
+# Graph Report - Xprod Fit  (2026-11-16)
 
 ## Corpus Check
-- 125 files · ~311,006 words
+- 125 files · ~311,758 words
 - Verdict: corpus is large enough that graph structure adds value.
 - Unclassified: 14 file(s) not represented in the graph (top: (none) 7, .css 4, .conf 1)
 
 ## Summary
-- 1400 nodes · 3105 edges · 106 communities (49 shown, 57 thin omitted)
-- Extraction: 76% EXTRACTED · 24% INFERRED · 0% AMBIGUOUS · INFERRED: 740 edges (avg confidence: 0.85)
+- 1401 nodes · 3109 edges · 106 communities (49 shown, 57 thin omitted)
+- Extraction: 76% EXTRACTED · 24% INFERRED · 0% AMBIGUOUS · INFERRED: 741 edges (avg confidence: 0.85)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `7cdc257c`
+- Built from commit: `49bc8a2b`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -188,7 +188,7 @@ Nodes (5): animate(), drawFrame(), getActiveLoginThemeColors(), initParticles(),
 
 ### Community 29 - "views/entrenador/asistencias.php"
 Cohesion: 0.09
-Nodes (42): abrirModalEjercicioAsistencias(), abrirOpcionesEjercicioDrawer(), abrirSolicitudRutinaAtleta(), actualizarBadges(), actualizarEjercicioEnCache(), actualizarTrackCarrusel(), aplicarDatosPanelesAsistencias(), asistenciasFechaCache (+34 more)
+Nodes (43): abrirModalEjercicioAsistencias(), abrirOpcionesEjercicioDrawer(), abrirSolicitudRutinaAtleta(), actualizarBadges(), actualizarEjercicioEnCache(), actualizarTrackCarrusel(), aplicarDatosPanelesAsistencias(), asistenciasFechaCache (+35 more)
 
 ### Community 30 - "renderizarRutinaInline"
 Cohesion: 0.17
@@ -333,4 +333,4 @@ _Questions this graph is uniquely positioned to answer:_
 - **Should `PHPMailer` be split into smaller, more focused modules?**
   _Cohesion score 0.05429864253393665 - nodes in this community are weakly interconnected._
 - **Why does `e()` connect `views/cliente/estadisticas.php` to `EntrenadorController.php`, `AuthController.php`, `core/helpers.php`?**
-  _High betweenness centrality (0.031) - this node is a cross-community bridge._
+  _High betweenness centrality (0.035) - this node is a cross-community bridge._

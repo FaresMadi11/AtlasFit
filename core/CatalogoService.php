@@ -648,11 +648,15 @@ class CatalogoService {
                 $db->prepare("
                     UPDATE plantilla_ejercicios pe
                     JOIN plantillas_rutinas p ON p.id = pe.plantilla_id
-                    SET pe.nombre = ?, pe.tipo_implemento = ?, pe.unidad_carga = ?,
-                        pe.nota_biomecanica = CASE WHEN ? != '' THEN ? ELSE pe.nota_biomecanica END
+                    LEFT JOIN catalogo_ejercicios ce ON ce.id = pe.catalogo_id
+                    SET pe.nombre_override = ?, pe.tipo_implemento = ?, pe.unidad_carga = ?,
+                        pe.nota_entrenador = CASE WHEN ? != '' THEN ? ELSE pe.nota_entrenador END
                     WHERE p.entrenador_id = ?
-                      AND LOWER(TRIM(pe.nombre)) = LOWER(TRIM(?))
-                ")->execute([$nombre, $tipoImp, $unidadCarga, $indicaciones, $indicaciones, $ownerEntId, $nombreAnterior]);
+                      AND (
+                          LOWER(TRIM(COALESCE(pe.nombre_override, ''))) = LOWER(TRIM(?))
+                          OR LOWER(TRIM(COALESCE(ce.nombre, ''))) = LOWER(TRIM(?))
+                      )
+                ")->execute([$nombre, $tipoImp, $unidadCarga, $indicaciones, $indicaciones, $ownerEntId, $nombreAnterior, $nombreAnterior]);
             } else {
                 // Global: no sobrescribir a entrenadores que ya personalizaron u ocultaron ese ejercicio
                 $db->prepare("
@@ -671,14 +675,18 @@ class CatalogoService {
                 $db->prepare("
                     UPDATE plantilla_ejercicios pe
                     JOIN plantillas_rutinas p ON p.id = pe.plantilla_id
-                    SET pe.nombre = ?, pe.tipo_implemento = ?, pe.unidad_carga = ?,
-                        pe.nota_biomecanica = CASE WHEN ? != '' THEN ? ELSE pe.nota_biomecanica END
-                    WHERE LOWER(TRIM(pe.nombre)) = LOWER(TRIM(?))
+                    LEFT JOIN catalogo_ejercicios ce ON ce.id = pe.catalogo_id
+                    SET pe.nombre_override = ?, pe.tipo_implemento = ?, pe.unidad_carga = ?,
+                        pe.nota_entrenador = CASE WHEN ? != '' THEN ? ELSE pe.nota_entrenador END
+                    WHERE (
+                          LOWER(TRIM(COALESCE(pe.nombre_override, ''))) = LOWER(TRIM(?))
+                          OR LOWER(TRIM(COALESCE(ce.nombre, ''))) = LOWER(TRIM(?))
+                      )
                       AND NOT EXISTS (
                           SELECT 1 FROM catalogo_ejercicios ov
                           WHERE ov.entrenador_id = p.entrenador_id AND ov.origen_global_id = ?
                       )
-                ")->execute([$nombre, $tipoImp, $unidadCarga, $indicaciones, $indicaciones, $nombreAnterior, $globalOriginId]);
+                ")->execute([$nombre, $tipoImp, $unidadCarga, $indicaciones, $indicaciones, $nombreAnterior, $nombreAnterior, $globalOriginId]);
             }
         } catch (\Throwable $e) {
             error_log('[CatalogoService::propagar] ' . $e->getMessage());

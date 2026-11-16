@@ -139,13 +139,17 @@ function agregarEjercicio(defaultData = null) {
   if(defaultData) {
     if(isCatalog) {
       sel.value = defaultData.nombre;
+      txt.required = false;
       txt.value = defaultData.nombre;
     } else {
       sel.value = '__custom__';
       txt.style.display = 'block';
+      txt.required = true;
       txt.value = defaultData.nombre;
     }
     note.value = defaultData.nota_biomecanica || '';
+  } else {
+    txt.required = false;
   }
 }
 

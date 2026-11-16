@@ -1,8 +1,8 @@
 // ══════════════════════════════════════════════════════════════
-//  Xprod Fit — Service Worker (PWA & Offline-First Core v2.0)
+//  Atlas Fit — Service Worker (PWA & Offline-First Core v2.1)
 // ══════════════════════════════════════════════════════════════
 
-const CACHE_NAME = 'xprod-fit-v4.2';
+const CACHE_NAME = 'atlas-fit-v4.3';
 
 const TRUSTED_CDN_HOSTS = new Set([
   'cdn.jsdelivr.net',
@@ -44,10 +44,12 @@ const PRECACHE_ASSETS = [
   './favicon.ico',
   './assets/css/style.css',
   './assets/css/custom-select.css',
+  './assets/css/custom-date.css',
   './assets/css/cookies.css',
   './assets/js/app.js',
   './assets/js/pwa-sync.js',
   './assets/js/custom-select.js',
+  './assets/js/custom-date.js',
   './assets/js/cookies.js',
   './assets/vendor/sweetalert2/sweetalert2.all.min.js',
   './assets/vendor/animejs/anime.min.js',

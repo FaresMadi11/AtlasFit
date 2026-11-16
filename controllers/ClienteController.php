@@ -956,20 +956,35 @@ function cliGuardarSerie(): void {
 function cliGuardarSesion(): void {
     csrfCheck();
     $db          = getDB();
-    $clienteId   = $_SESSION['cliente_id'];
+    $clienteId   = (int)$_SESSION['cliente_id'];
     $ejercicioId = (int)($_POST['ejercicio_id'] ?? 0);
     $reps        = (int)($_POST['reps'] ?? 0);
     $pesoUsado   = isset($_POST['peso']) && $_POST['peso'] !== '' ? (float)$_POST['peso'] : null;
 
-    if (!$ejercicioId || $reps <= 0) jsonOut(false, 'Datos invÃ¡lidos.');
+    if (!$ejercicioId || $reps <= 0) jsonOut(false, 'Datos inválidos.');
 
-    $db->prepare(
-        "INSERT INTO sesiones (ejercicio_id, cliente_id, reps_realizadas, peso_usado, completado, fecha)
-         VALUES (?, ?, ?, ?, 1, CURDATE())
-         ON DUPLICATE KEY UPDATE reps_realizadas = ?, peso_usado = ?, completado = 1"
-    )->execute([$ejercicioId, $clienteId, $reps, $pesoUsado, $reps, $pesoUsado]);
+    try {
+        $stOwn = $db->prepare(
+            "SELECT e.id FROM ejercicios e
+             JOIN rutinas r ON r.id = e.rutina_id
+             WHERE e.id = ? AND r.cliente_id = ? LIMIT 1"
+        );
+        $stOwn->execute([$ejercicioId, $clienteId]);
+        if (!$stOwn->fetchColumn()) {
+            jsonOut(false, 'Ejercicio no autorizado.', [], 403);
+        }
 
-    jsonOut(true, 'Â¡Ejercicio guardado!');
+        $db->prepare(
+            "INSERT INTO sesiones (ejercicio_id, cliente_id, reps_realizadas, peso_usado, completado, fecha)
+             VALUES (?, ?, ?, ?, 1, CURDATE())
+             ON DUPLICATE KEY UPDATE reps_realizadas = ?, peso_usado = ?, completado = 1"
+        )->execute([$ejercicioId, $clienteId, $reps, $pesoUsado, $reps, $pesoUsado]);
+
+        jsonOut(true, '¡Ejercicio guardado!');
+    } catch (\Throwable $e) {
+        error_log('[cliGuardarSesion] ' . $e->getMessage());
+        jsonOut(false, 'No se pudo guardar el ejercicio.', [], 500);
+    }
 }
 
 /*âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
@@ -995,8 +1010,13 @@ function cliMarcarRutina(): void {
     }
 
     // PERSISTENCIA CÍCLICA SEMANAL:
-    // La rutina asignada JAMÁS debe borrarse, desasignarse ni marcarse en un estado que la oculte.
-    // Se mantiene activa ('en_progreso') para que la próxima semana el atleta la repita.
+    // Verificar propiedad de la rutina antes de registrar asistencia/completado.
+    $stOwn = $db->prepare("SELECT id FROM rutinas WHERE id = ? AND cliente_id = ? LIMIT 1");
+    $stOwn->execute([$rutinaId, $clienteId]);
+    if (!$stOwn->fetchColumn()) {
+        jsonOut(false, 'Rutina no encontrada o sin permisos.', [], 403);
+    }
+
     $db->prepare(
         "UPDATE rutinas SET estado='en_progreso' WHERE id = ? AND cliente_id = ?"
     )->execute([$rutinaId, $clienteId]);
@@ -1061,6 +1081,12 @@ function cliIniciarRutina(): void {
 
     if (!$rutinaId) {
         jsonOut(false, 'ID de rutina no válido.');
+    }
+
+    $stOwn = $db->prepare("SELECT id FROM rutinas WHERE id = ? AND cliente_id = ? LIMIT 1");
+    $stOwn->execute([$rutinaId, $clienteId]);
+    if (!$stOwn->fetchColumn()) {
+        jsonOut(false, 'Rutina no encontrada o sin permisos.', [], 403);
     }
 
     $fechaEntrenamiento = trim((string)($_POST['fecha_entrenamiento'] ?? ''));
@@ -1673,11 +1699,19 @@ function cliApiGuardarPregunta(): void {
     header('Content-Type: application/json');
     $body      = json_decode(file_get_contents('php://input'), true);
     $userId    = $_SESSION['user_id'] ?? null;
-    $pregunta  = $body['pregunta']  ?? '';
-    $respuesta = trim($body['respuesta'] ?? '');
-    $password  = $body['password']  ?? '';
+    $preguntaRaw = trim((string)($body['pregunta'] ?? ''));
+    $mapaPreguntas = [
+        'mascota' => 'Nombre de tu primera mascota',
+        'ciudad'  => 'Ciudad de nacimiento',
+        'colegio' => 'Nombre de tu colegio',
+        'madre'   => 'Apellido de soltera de tu madre',
+        'equipo'  => 'Equipo deportivo favorito',
+    ];
+    $pregunta  = $mapaPreguntas[$preguntaRaw] ?? $preguntaRaw;
+    $respuesta = trim((string)($body['respuesta'] ?? ''));
+    $password  = (string)($body['password'] ?? '');
 
-    if (!$userId || empty($respuesta) || empty($password)) {
+    if (!$userId || $pregunta === '' || empty($respuesta) || empty($password)) {
         echo json_encode(['ok' => false, 'msg' => 'Datos incompletos.']); exit;
     }
 
@@ -1917,6 +1951,12 @@ function cliGuardarPago(): void {
         if ($rawCmp !== '' && guardarMediaPermanente($rawCmp, $filename, 900, 75, true)) {
             $imgPath = $filename;
         }
+    }
+
+    $stPagoOwn = $db->prepare("SELECT id FROM pagos WHERE id = ? AND cliente_id = ? LIMIT 1");
+    $stPagoOwn->execute([$pagoId, $clienteId]);
+    if (!$stPagoOwn->fetchColumn()) {
+        jsonOut(false, 'Pago no encontrado o sin permisos.', [], 404);
     }
 
     $upd = $db->prepare(
@@ -2160,6 +2200,7 @@ function cliGuardarModificacion(): void {
 
         $entrenadorUsuarioId = (int)$rutinaOriginal['entrenador_id'];
         $atletaUsuarioId     = (int)$_SESSION['user_id'];
+        $notifExistenteId    = 0;
 
         if ($notifExistenteId > 0) {
             $upNotif = $db->prepare(

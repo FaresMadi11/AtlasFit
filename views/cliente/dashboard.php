@@ -294,13 +294,13 @@ $fraseDelDia = $frasesMotivadoras[$indiceFrase];
 .db-edit-weight-btn:hover {
   background: var(--accent-primary, #8a2be2); color: #fff; transform: translateY(-1px);
 }
-.db-stat-label { font-size: .68rem; color: #6b7280; margin-top: 6px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.4px; }
+.db-stat-label { font-size: .68rem; color: var(--text2, #6b7280); margin-top: 6px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.4px; }
 .db-stat-value {
-  font-size: 1.65rem; font-weight: 900; color: #fff;
+  font-size: 1.65rem; font-weight: 900; color: var(--text, #fff);
   line-height: 1.1; letter-spacing: -0.5px; margin-top: 2px;
   display: flex; align-items: baseline; gap: 3px; white-space: nowrap;
 }
-.db-stat-value small { font-size: 0.82rem; font-weight: 600; color: #9ca3af; letter-spacing: 0; }
+.db-stat-value small { font-size: 0.82rem; font-weight: 600; color: var(--text2, #9ca3af); letter-spacing: 0; }
 .db-peso-row {
   margin-top: 8px; display: flex; justify-content: space-between; align-items: flex-end; gap: 6px; min-width: 0;
 }
@@ -1008,7 +1008,7 @@ $fraseDelDia = $frasesMotivadoras[$indiceFrase];
 }
 .t-header-left {
   display: flex; align-items: center; gap: 8px;
-  font-size: 1.05rem; font-weight: 700; color: #fff; letter-spacing: 0.5px;
+  font-size: 1.05rem; font-weight: 700; color: var(--text, #fff); letter-spacing: 0.5px;
 }
 .t-header-left i { font-size: 1.35rem; color: var(--text-purple, #b388ff); }
 .t-header-right { display: flex; align-items: center; gap: 6px; }
@@ -1072,10 +1072,10 @@ $fraseDelDia = $frasesMotivadoras[$indiceFrase];
 }
 
 .t-card-info-base { display: flex; flex-direction: column; gap: 4px; flex: 1; transition: opacity 0.3s; }
-.t-card-brand { font-size: 0.65rem; color: #a1a1aa; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 500; margin:0;}
-.t-card-title { font-size: 0.85rem; color: #fff; font-weight: 400; line-height: 1.25; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; margin:0; }
+.t-card-brand { font-size: 0.65rem; color: var(--text2, #a1a1aa); text-transform: uppercase; letter-spacing: 0.5px; font-weight: 500; margin:0;}
+.t-card-title { font-size: 0.85rem; color: var(--text, #fff); font-weight: 400; line-height: 1.25; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; margin:0; }
 .t-card-footer { display: flex; justify-content: space-between; align-items: center; margin-top: auto; padding-top: 6px; }
-.t-card-price { font-size: 1.05rem; color: #fff; font-weight: 700; }
+.t-card-price { font-size: 1.05rem; color: var(--text, #fff); font-weight: 700; }
 
 /* ── OVERLAY DE CRISTAL (HOVER) ── */
 .t-card-glass {

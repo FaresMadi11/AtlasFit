@@ -1474,7 +1474,7 @@
         <i class="ti ti-calendar-check"></i>
       </div>
       <div class="user-text-wrap">
-        <h1 class="sys-top-title user-name-gradient" title="Control Diario" style="font-size: 1.12rem !important; font-weight: 800; color: #fff; margin: 0; line-height: 1.25;">
+        <h1 class="sys-top-title user-name-gradient" title="Control Diario" style="font-size: 1.12rem !important; font-weight: 800; color: var(--text, #fff); margin: 0; line-height: 1.25;">
           <span class="user-name-text">Control Diario</span>
         </h1>
         <p style="font-size: .74rem; font-weight: 500; color: #94a3af; margin: 2px 0 0; letter-spacing: 0.2px; line-height: 1.2;">
@@ -1659,7 +1659,7 @@
                onclick="toggleRutinaAtleta(this, <?= $cid ?>, 'completada')"
                onkeydown="if(event.key==='Enter'||event.key===' ')toggleRutinaAtleta(this, <?= $cid ?>, 'completada')"
                aria-expanded="false" aria-controls="drawer-comp-<?= $cid ?>"
-               aria-label="Ver rutina completada de <?= e($a['atleta_nombre']) ?>" id="verificar">
+               aria-label="Ver rutina completada de <?= e($a['atleta_nombre']) ?>" data-card-tipo="verificar">
             <div class="cd-avatar ring-green"
                  style="background: <?= $bg ?>20; color: <?= $bg ?>;"
                  aria-hidden="true">
@@ -1724,7 +1724,7 @@
                  onclick="abrirSolicitudRutinaAtleta(this, <?= $cidSol ?>, <?= $rutSol ?>)"
                  onkeydown="if(event.key==='Enter'||event.key===' ')abrirSolicitudRutinaAtleta(this, <?= $cidSol ?>, <?= $rutSol ?>)"
                  aria-expanded="false" aria-controls="drawer-sol-<?= $cidSol ?>"
-                 aria-label="Ver solicitud de modificación de <?= e($mod['atleta']) ?>" id="modificar">
+                 aria-label="Ver solicitud de modificación de <?= e($mod['atleta']) ?>" data-card-tipo="modificar">
               <div class="cd-avatar ring-amber"
                    style="background: rgba(251,191,36,0.1); color:#fbbf24;"
                    aria-hidden="true">
@@ -1753,7 +1753,7 @@
             $bg = avatarColor($a['atleta_nombre'], $avatarPalette);
           ?>
           <a href="<?= APP_URL ?>/entrenador/crear-rutina?atleta_id=<?= $a['cliente_id'] ?>"
-             class="cd-card glass-surface" aria-label="Asignar rutina a <?= e($a['atleta_nombre']) ?>" id="sinasignar">
+             class="cd-card glass-surface" aria-label="Asignar rutina a <?= e($a['atleta_nombre']) ?>" data-card-tipo="sinasignar">
             <div class="cd-avatar ring-red"
                  style="background: rgba(248,113,113,0.1); color:#f87171;"
                  aria-hidden="true">
@@ -1939,7 +1939,7 @@ function elegirFechaCalendario(fecha) {
   const picker = document.getElementById('nativeDatePicker');
   if (picker && picker.value !== fecha) picker.value = fecha;
 
-  const headerP = document.querySelector('.cd-header-text p');
+  const headerP = document.querySelector('.user-text-wrap p');
   if (headerP) {
     const hoy = '<?= $hoyReal ?>';
     const label = fecha === hoy ? 'Hoy' : new Date(fecha + 'T00:00:00').toLocaleDateString('es-VE', { day:'2-digit', month:'2-digit', year:'numeric' });
@@ -2175,7 +2175,7 @@ function iniciarPolling() {
     // Evitar sondeo si la pestaña no es visible, si hay un drawer cargando o si el usuario está escribiendo/en modal
     if (document.hidden || document.visibilityState !== 'visible') return;
     if (activeDrawerFetches > 0) return;
-    if (document.querySelector('.swal2-container, .drill-modal.open, .cdd-bs-sheet.open, .cdd-modal-backdrop.open, input:focus, textarea:focus')) return;
+    if (document.querySelector('.swal2-container, .drill-modal.open, .cdd-bs-sheet.is-open, .cdd-modal-backdrop.is-open, input:focus, textarea:focus')) return;
     cargarDatosPorFecha(fechaGlobal, true);
   }, 12000);
 }
@@ -2243,7 +2243,7 @@ function prefetchRutinasDelDia(data, fecha) {
 // Precalentar las rutinas de los atletas de hoy al iniciar la vista
 document.addEventListener('DOMContentLoaded', () => {
   const initialIds = Array.from(document.querySelectorAll('#panelPendientes .cd-item-wrapper, #panelCompletadas .cd-item-wrapper'))
-    .map(el => (el.id || '').replace(/^item-(pen|ver)-/, ''))
+    .map(el => (el.id || '').replace(/^item-(pen|comp|ver)-/, ''))
     .filter(Boolean)
     .slice(0, 8);
   if (initialIds.length > 0 && navigator.onLine) {
@@ -2375,6 +2375,7 @@ async function resolverSolicitudRutinaInline(solicitudId, clienteId, accion, btn
       method: 'POST',
       body: fd
     });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
     const data = await res.json();
     if (data.ok) {
       rutinaAtletaCache.clear();
@@ -2482,13 +2483,14 @@ async function guardarSerieEntrenador(clienteId, ejercicioId, numSerie, tipoImp,
         fecha: fechaGlobal
       })
     });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
     const data = await res.json();
     if (!data.ok) {
       throw new Error(data.msg || 'No se pudo guardar la serie.');
     }
 
     // Actualizar cache local
-    const cacheKey = `${clienteId}_${fechaGlobal}`;
+    const cacheKey = getRutinaCacheKey(clienteId, fechaGlobal, 0);
     if (rutinaAtletaCache.has(cacheKey)) {
       const cacheData = rutinaAtletaCache.get(cacheKey);
       if (cacheData && Array.isArray(cacheData.ejercicios)) {
@@ -2553,13 +2555,14 @@ async function toggleSerieCheckEntrenador(clienteId, ejercicioId, numSerie, tipo
         fecha: fechaGlobal
       })
     });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
     const data = await res.json();
     if (!data.ok) {
       throw new Error(data.msg || 'Error al guardar estado de la serie');
     }
 
     // Actualizar cache local
-    const cacheKey = `${clienteId}_${fechaGlobal}`;
+    const cacheKey = getRutinaCacheKey(clienteId, fechaGlobal, 0);
     if (rutinaAtletaCache.has(cacheKey)) {
       const cacheData = rutinaAtletaCache.get(cacheKey);
       if (cacheData && Array.isArray(cacheData.ejercicios)) {
@@ -3452,7 +3455,7 @@ function renderPanelCompletadas(items, appUrl) {
              onclick="toggleRutinaAtleta(this, ${cid}, 'completada')"
              onkeydown="if(event.key==='Enter'||event.key===' ')toggleRutinaAtleta(this, ${cid}, 'completada')"
              aria-expanded="false" aria-controls="drawer-comp-${cid}"
-             aria-label="Ver rutina completada de ${esc(a.atleta_nombre)}" id="verificar">
+             aria-label="Ver rutina completada de ${esc(a.atleta_nombre)}" data-card-tipo="verificar">
           <div class="cd-avatar ring-green" style="background:${bg}20;color:${bg}" aria-hidden="true">
             ${(a.atleta_nombre || 'A').charAt(0).toUpperCase()}
           </div>
@@ -3510,7 +3513,7 @@ function renderPanelAlertas(sinAsignar, modificaciones, appUrl) {
                onclick="abrirSolicitudRutinaAtleta(this, ${cidSol}, ${rutSol})"
                onkeydown="if(event.key==='Enter'||event.key===' ')abrirSolicitudRutinaAtleta(this, ${cidSol}, ${rutSol})"
                aria-expanded="false" aria-controls="drawer-sol-${cidSol}"
-               aria-label="Ver solicitud de modificación de ${esc(m.atleta)}" id="modificar">
+               aria-label="Ver solicitud de modificación de ${esc(m.atleta)}" data-card-tipo="modificar">
             <div class="cd-avatar ring-amber" style="background:rgba(251,191,36,.1);color:#fbbf24" aria-hidden="true">
               <i class="ti ti-message-report" style="font-size:1.3rem"></i>
             </div>
@@ -3532,7 +3535,7 @@ function renderPanelAlertas(sinAsignar, modificaciones, appUrl) {
     html += '<h4 style="margin:24px 0 16px; color:var(--text); font-size:1.1rem; border-bottom:1px solid rgba(255,255,255,0.1); padding-bottom:8px;">Atletas sin asignar</h4>';
     html += sinAsignar.map(a => `
       <a href="${appUrl}/entrenador/crear-rutina?atleta_id=${a.cliente_id}" class="cd-card glass-surface"
-         aria-label="Asignar rutina a ${esc(a.atleta_nombre)}" id="sinasignar">
+         aria-label="Asignar rutina a ${esc(a.atleta_nombre)}" data-card-tipo="sinasignar">
         <div class="cd-avatar ring-red" style="background:rgba(248,113,113,.1);color:#f87171" aria-hidden="true">
           <i class="ti ti-user-exclamation" style="font-size:1.3rem"></i>
         </div>

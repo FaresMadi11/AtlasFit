@@ -59,13 +59,13 @@ $totalNotifs = count($notificaciones ?? []);
   margin: 0;
   font-size: 1.25rem;
   font-weight: 800;
-  color: #fff;
+  color: var(--text, #fff);
   letter-spacing: -0.02em;
 }
 .nh-sub {
   margin: 2px 0 0;
   font-size: 0.8rem;
-  color: #94a3b8;
+  color: var(--muted, #94a3b8);
 }
 .nh-back-btn {
   display: inline-flex;
@@ -73,9 +73,9 @@ $totalNotifs = count($notificaciones ?? []);
   gap: 6px;
   padding: 8px 14px;
   border-radius: 10px;
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  color: #e2e8f0;
+  background: var(--card, rgba(255, 255, 255, 0.05));
+  border: 1px solid var(--border, rgba(255, 255, 255, 0.12));
+  color: var(--text, #e2e8f0);
   font-size: 0.8rem;
   font-weight: 600;
   text-decoration: none;
@@ -84,7 +84,7 @@ $totalNotifs = count($notificaciones ?? []);
 .nh-back-btn:hover {
   background: rgba(139, 92, 246, 0.16);
   border-color: rgba(167, 139, 250, 0.38);
-  color: #fff;
+  color: var(--text, #fff);
 }
 .nh-filters {
   display: flex;
@@ -98,9 +98,9 @@ $totalNotifs = count($notificaciones ?? []);
 .nh-filter-pill {
   padding: 6px 14px;
   border-radius: 99px;
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  border: 1px solid var(--border, rgba(255, 255, 255, 0.12));
   background: transparent;
-  color: #94a3b8;
+  color: var(--text2, #94a3b8);
   font-size: 0.78rem;
   font-weight: 700;
   cursor: pointer;
@@ -110,7 +110,7 @@ $totalNotifs = count($notificaciones ?? []);
 .nh-filter-pill.active, .nh-filter-pill:hover {
   background: rgba(139, 92, 246, 0.22);
   border-color: rgba(167, 139, 250, 0.5);
-  color: #fff;
+  color: var(--text, #fff);
 }
 .nh-group-block {
   margin-bottom: 22px;

@@ -320,17 +320,18 @@ foreach ($dias as $d) {
       <?php endif; ?>
 
       <!-- ════ SELECTOR DE VISTA: NUEVA VS ORIGINAL ════ -->
+      <?php $keyVer = (int)$i . '_' . (int)$bi; ?>
       <div style="display:flex;gap:8px;margin:18px 0 20px;background:rgba(255,255,255,0.04);padding:4px;border-radius:12px;border:1px solid rgba(255,255,255,0.08);">
-        <button type="button" class="btn-version-toggle active" id="btnVerNueva_<?= $bi ?>" onclick="mostrarVersion(<?= $bi ?>, 'nueva')" style="flex:1;padding:8px 12px;border:none;border-radius:8px;font-size:0.85rem;font-weight:700;cursor:pointer;background:rgba(139,92,246,0.3);color:#fff;border:1px solid rgba(139,92,246,0.5);">
+        <button type="button" class="btn-version-toggle active" id="btnVerNueva_<?= $keyVer ?>" onclick="mostrarVersion('<?= $keyVer ?>', 'nueva')" style="flex:1;padding:8px 12px;border:none;border-radius:8px;font-size:0.85rem;font-weight:700;cursor:pointer;background:rgba(139,92,246,0.3);color:#fff;border:1px solid rgba(139,92,246,0.5);">
           <i class="ti ti-sparkles"></i> Nueva Versión (Atleta)
         </button>
-        <button type="button" class="btn-version-toggle" id="btnVerVieja_<?= $bi ?>" onclick="mostrarVersion(<?= $bi ?>, 'vieja')" style="flex:1;padding:8px 12px;border:none;border-radius:8px;font-size:0.85rem;font-weight:700;cursor:pointer;background:transparent;color:#94a3b8;border:1px solid transparent;">
+        <button type="button" class="btn-version-toggle" id="btnVerVieja_<?= $keyVer ?>" onclick="mostrarVersion('<?= $keyVer ?>', 'vieja')" style="flex:1;padding:8px 12px;border:none;border-radius:8px;font-size:0.85rem;font-weight:700;cursor:pointer;background:transparent;color:#94a3b8;border:1px solid transparent;">
           <i class="ti ti-history"></i> Versión Original (Actual)
         </button>
       </div>
 
       <!-- Contenedor Versión Nueva -->
-      <div id="wrapNueva_<?= $bi ?>">
+      <div id="wrapNueva_<?= $keyVer ?>">
         <?php if (empty($b['ejercicios'])): ?>
           <p style="color:var(--muted);font-size:.9rem">Esta solicitud no contiene ejercicios.</p>
         <?php endif; ?>
@@ -362,7 +363,7 @@ foreach ($dias as $d) {
       </div>
 
       <!-- Contenedor Versión Vieja -->
-      <div id="wrapVieja_<?= $bi ?>" style="display:none">
+      <div id="wrapVieja_<?= $keyVer ?>" style="display:none">
         <?php if (empty($b['ejercicios_padre'])): ?>
           <p style="color:var(--muted);font-size:.9rem">No hay registros de ejercicios en la versión anterior.</p>
         <?php endif; ?>

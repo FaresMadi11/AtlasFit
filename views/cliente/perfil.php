@@ -1195,9 +1195,10 @@ document.getElementById('btnEditarFoto').addEventListener('click', () => documen
   document.getElementById('btnCropSave').addEventListener('click', async ()=>{
     const btn=document.getElementById('btnCropSave');
     btn.disabled=true; btn.innerHTML='<i class="ti ti-loader ti-spin"></i> Guardando&hellip;';
-    const dataUrl = can.toDataURL('image/jpeg', 0.9);
     try {
+      const dataUrl = can.toDataURL('image/jpeg', 0.9);
       const r = await fetch('<?= APP_URL ?>/cliente/api-subir-foto',{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-TOKEN':window.CSRF||''},body:JSON.stringify({imagen:dataUrl,csrf_token:window.CSRF||''})});
+      if(!r.ok) throw new Error('HTTP ' + r.status);
       const d = await r.json();
       if(d.ok){
         const prev = document.getElementById('avatarPreview');

@@ -1613,12 +1613,20 @@ function adminApiNotificaciones(): void {
 
 function adminApiMarcarNotificacion(): void {
     csrfCheck();
-    $in = array_merge($_POST, getJsonPayload());
-    $id = (int)($in['id'] ?? 0);
-    if ($id > 0) {
-        getDB()->prepare("UPDATE notificaciones SET leida = 1 WHERE id = ?")->execute([$id]);
+    try {
+        $in = array_merge($_POST, getJsonPayload());
+        $id = (int)($in['id'] ?? 0);
+        $adminUid = (int)($_SESSION['user_id'] ?? 0);
+        if ($id > 0 && $adminUid > 0) {
+            getDB()->prepare(
+                "UPDATE notificaciones SET leida = 1, leido = 1 WHERE id = ? AND (destinatario_id = ? OR rol_destinatario = 'admin')"
+            )->execute([$id, $adminUid]);
+        }
+        jsonOut(true, 'OK');
+    } catch (\Throwable $e) {
+        error_log('[adminApiMarcarNotificacion] ' . $e->getMessage());
+        jsonOut(false, 'No se pudo actualizar la notificación.', [], 500);
     }
-    jsonOut(true, 'OK');
 }
 
 function adminApiLeerNotificaciones(): void {

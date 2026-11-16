@@ -15,7 +15,7 @@ $unread_hdr = function_exists('contarNotificacionesNoLeidas')
       <i class="ti ti-users-group"></i>
     </div>
     <div class="user-text-wrap">
-      <h1 class="sys-top-title user-name-gradient" title="Gestión de Entrenadores" style="font-size: 1.12rem !important; font-weight: 800; color: #fff; margin: 0; line-height: 1.25; display:flex; align-items:center; gap:8px;">
+      <h1 class="sys-top-title user-name-gradient" title="Gestión de Entrenadores" style="font-size: 1.12rem !important; font-weight: 800; color: var(--text, #fff); margin: 0; line-height: 1.25; display:flex; align-items:center; gap:8px;">
         <span class="user-name-text">Entrenadores</span>
         <span class="cl-count-badge" id="saTotalCountBadge" style="font-size: 0.72rem; padding: 2px 8px; border-radius: 10px; background: rgba(138,43,226,0.25); color: #d8b4fe; border: 1px solid rgba(138,43,226,0.4);"><?= count($entrenadores) ?></span>
       </h1>

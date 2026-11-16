@@ -687,7 +687,7 @@ $grupoIconos = [
       <i class="ti ti-chart-bar"></i>
     </div>
     <div class="user-text-wrap">
-      <h1 class="sys-top-title user-name-gradient" title="Estadísticas" style="font-size: 1.12rem !important; font-weight: 800; color: #fff; margin: 0; line-height: 1.25;">
+      <h1 class="sys-top-title user-name-gradient" title="Estadísticas" style="font-size: 1.12rem !important; font-weight: 800; color: var(--text, #fff); margin: 0; line-height: 1.25;">
         <span class="user-name-text">Estadísticas</span>
       </h1>
       <p style="font-size: .74rem; font-weight: 500; color: #94a3af; margin: 2px 0 0; letter-spacing: 0.2px; line-height: 1.2;">

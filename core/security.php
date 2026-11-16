@@ -158,21 +158,30 @@ function generateCspNonce(): string {
  * Añade headers de seguridad HTTP.
  * Llamar al inicio del request, antes de cualquier output.
  */
-function addSecurityHeaders(): void {
+function addSecurityHeaders(bool $isHttps = false): void {
     // Previene MIME-type sniffing
     header('X-Content-Type-Options: nosniff');
 
     // Previene clickjacking
     header('X-Frame-Options: SAMEORIGIN');
 
-    // XSS Protection (legacy, para IE)
-    header('X-XSS-Protection: 1; mode=block');
+    // Desactiva el filtro legacy XSS (recomendación moderna OWASP/WebCheck)
+    header('X-XSS-Protection: 0');
 
     // Referrer Policy: no filtra info sensible en requests externos
     header('Referrer-Policy: strict-origin-when-cross-origin');
 
+    // Aislamiento de origen compatible con popups de Google OAuth
+    header('Cross-Origin-Opener-Policy: same-origin-allow-popups');
+    header('Cross-Origin-Resource-Policy: same-origin');
+
+    // HSTS únicamente bajo HTTPS real o detrás de proxy TLS (Render/Cloudflare)
+    if ($isHttps) {
+        header('Strict-Transport-Security: max-age=31536000; includeSubDomains');
+    }
+
     // Permissions Policy: deshabilita APIs no usadas
-    header('Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=()');
+    header('Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=(), usb=(), bluetooth=()');
 
     // Eliminar header que revela tecnología
     header_remove('X-Powered-By');

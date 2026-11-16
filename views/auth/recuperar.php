@@ -7,9 +7,9 @@
 <!-- Tabler Icons (Local) -->
 <link rel="stylesheet" href="<?= APP_URL ?>/assets/vendor/tabler-icons/tabler-icons.min.css">
 <!-- SweetAlert2 -->
-<script src="<?= APP_URL ?>/assets/vendor/sweetalert2/sweetalert2.all.min.js"></script>
-<!-- Anime.js -->
-<script src="https://cdnjs.cloudflare.com/ajax/libs/animejs/3.2.1/anime.min.js" defer></script>
+<script src="<?= APP_URL ?>/assets/vendor/sweetalert2/sweetalert2.all.min.js" defer></script>
+<!-- Anime.js (Local Vendor) -->
+<script src="<?= APP_URL ?>/assets/vendor/animejs/anime.min.js" defer></script>
 
 
 <style>

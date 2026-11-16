@@ -49,7 +49,13 @@ $temaGlobalVer     = (int)($temaInfoUser['global_ver'] ?? 1);
   }
   </script>
 
-  <?php $icoVer = @filemtime(__DIR__ . '/../../assets/img/icon-192.png') ?: time(); ?>
+  <?php $icoVer = @filemtime(__DIR__ . '/../../assets/img/icon-512.png') ?: time(); ?>
+  <meta name="description" content="Atlas Fit: plataforma de gestión y entrenamiento personalizado para entrenadores y atletas.">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Atlas Fit — Plataforma de Entrenamiento">
+  <meta property="og:description" content="Rutinas interactivas, control diario, métricas de fuerza y seguimiento biométrico en tiempo real.">
+  <meta property="og:image" content="<?= e(APP_URL . '/assets/img/icon-512.png?v=' . $icoVer) ?>">
+  <meta name="twitter:card" content="summary">
   <!-- ── PWA Manifest & App Icons ── -->
   <link rel="manifest" href="<?= APP_URL ?>/manifest.webmanifest?v=<?= $icoVer ?>">
   <link rel="shortcut icon" href="<?= APP_URL ?>/favicon.ico?v=<?= $icoVer ?>">
@@ -63,8 +69,9 @@ $temaGlobalVer     = (int)($temaInfoUser['global_ver'] ?? 1);
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
 
-  <!-- ── Google Fonts (display=swap para no bloquear render) ── -->
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <!-- ── Google Fonts (no bloqueante con preload + swap) ── -->
+  <link rel="preload" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" as="style" onload="this.onload=null;this.rel='stylesheet'">
+  <noscript><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet"></noscript>
 
   <!-- ── CSS crítico: cargado de forma síncrona (necesario para render) ── -->
   <!-- Tabler Icons (Local: 0ms, 100% offline sin fallos de CDN) -->
@@ -83,8 +90,8 @@ $temaGlobalVer     = (int)($temaInfoUser['global_ver'] ?? 1);
   <script src="<?= APP_URL ?>/assets/js/custom-select.js?v=<?= @filemtime(__DIR__ . '/../../assets/js/custom-select.js') ?: '1.0' ?>" defer></script>
   <!-- Custom Minimalist Date Picker -->
   <script src="<?= APP_URL ?>/assets/js/custom-date.js?v=<?= @filemtime(__DIR__ . '/../../assets/js/custom-date.js') ?: '1.0' ?>" defer></script>
-  <!-- SweetAlert2 (Local Vendor - Cero bloqueos de CDN) -->
-  <script src="<?= APP_URL ?>/assets/vendor/sweetalert2/sweetalert2.all.min.js"></script>
+  <!-- SweetAlert2 (Local Vendor - diferido para no bloquear render inicial) -->
+  <script src="<?= APP_URL ?>/assets/vendor/sweetalert2/sweetalert2.all.min.js" defer></script>
   <!-- Anime.js (Local Vendor - 0ms online y offline) -->
   <script src="<?= APP_URL ?>/assets/vendor/animejs/anime.min.js" defer></script>
   <!-- SortableJS (Touch & Drag Reordering) -->
@@ -98,8 +105,8 @@ $temaGlobalVer     = (int)($temaInfoUser['global_ver'] ?? 1);
     window.APP           = '<?= APP_URL ?>';
     window.BASE_PATH     = '<?= BASE_PATH ?>';
     window.CSRF          = '<?= $csrf ?>';
-    window.XP_CACHE_NAME = 'xprod-fit-v4.2';
-    window.XP_SW_URL     = window.APP + '/sw.js?v=4.2';
+    window.XP_CACHE_NAME = 'atlas-fit-v4.3';
+    window.XP_SW_URL     = window.APP + '/sw.js?v=4.3';
     const APP            = window.APP;
     const CSRF           = window.CSRF;
 
@@ -610,7 +617,7 @@ $temaGlobalVer     = (int)($temaInfoUser['global_ver'] ?? 1);
 <?php if ($rolUser === 'entrenador'):
   $membresiaHeader = obtenerEstadoMembresiaEntrenador((int)($_SESSION['user_id'] ?? 0));
   if (!empty($membresiaHeader['mostrar_banner'])):
-    $esGracia = ($membresiaHeader['tipo_alerta'] ?? '') === 'warning';
+    $esGracia = (($membresiaHeader['tipo_banner'] ?? '') === 'gracia');
 ?>
   <div class="xp-membresia-banner <?= $esGracia ? 'is-grace' : 'is-reminder' ?>" role="status" style="margin: 0 0 16px 0; padding: 13px 16px; border-radius: 16px; display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; background: <?= $esGracia ? 'rgba(245, 158, 11, 0.14)' : 'rgba(138, 43, 226, 0.14)' ?>; border: 1px solid <?= $esGracia ? 'rgba(245, 158, 11, 0.42)' : 'rgba(138, 43, 226, 0.42)' ?>; box-shadow: 0 8px 24px rgba(0,0,0,0.22);">
     <div style="display:flex; align-items:center; gap:12px; flex:1; min-width:220px;">
@@ -618,15 +625,15 @@ $temaGlobalVer     = (int)($temaInfoUser['global_ver'] ?? 1);
         <i class="ti <?= $esGracia ? 'ti-alert-triangle' : 'ti-calendar-event' ?>"></i>
       </div>
       <div style="display:flex; flex-direction:column; gap:2px;">
-        <span style="font-size:0.72rem; font-weight:800; text-transform:uppercase; letter-spacing:0.6px; color: <?= $esGracia ? '#fbbf24' : '#c084fc' ?>;">
+        <span style="font-size:0.72rem; font-weight:800; text-transform:uppercase; letter-spacing:0.6px; color: <?= $esGracia ? '#d97706' : 'var(--accent-light, #c084fc)' ?>;">
           <?= $esGracia ? 'Periodo de Gracia Activo (7 Días)' : 'Recordatorio de Membresía Mensual' ?>
         </span>
-        <span style="font-size:0.86rem; color:#f8fafc; font-weight:500; line-height:1.35;">
+        <span style="font-size:0.86rem; color:var(--text, #f8fafc); font-weight:500; line-height:1.35;">
           <?= e($membresiaHeader['mensaje_alerta'] ?? '') ?>
         </span>
       </div>
     </div>
-    <span style="font-size:0.75rem; font-weight:700; padding:5px 11px; border-radius:99px; background:rgba(255,255,255,0.06); color:#e2e8f0; border:1px solid rgba(255,255,255,0.1); white-space:nowrap;">
+    <span style="font-size:0.75rem; font-weight:700; padding:5px 11px; border-radius:99px; background:rgba(128,128,160,0.12); color:var(--text2, #e2e8f0); border:1px solid var(--border, rgba(255,255,255,0.1)); white-space:nowrap;">
       Corte: <?= e(date('d/m/Y', strtotime((string)$membresiaHeader['fecha_proximo_pago']))) ?>
     </span>
   </div>

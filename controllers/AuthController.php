@@ -18,6 +18,7 @@ if (!function_exists('csrfField')) {
 
 match($action) {
     'login'                       => authLogin(),
+    'standby'                     => authLogin('standby'),
     'do-login'                    => authDoLogin(),
     'registro'                    => authRegistro(),
     'do-registro'                 => authDoRegistro(),
@@ -50,9 +51,14 @@ function authLogin(string $vistaInicial = 'login'): void {
         $codigoGuardar = $refCheck ? (string)$refCheck['codigo_referido'] : $refRaw;
         if ($codigoGuardar !== '') {
             $_SESSION['ref_codigo'] = $codigoGuardar;
+            $isHttpsCookie = (
+                (!empty($_SERVER['HTTPS']) && strtolower((string)$_SERVER['HTTPS']) !== 'off') ||
+                (!empty($_SERVER['HTTP_X_FORWARDED_PROTO']) && strtolower((string)$_SERVER['HTTP_X_FORWARDED_PROTO']) === 'https')
+            );
             @setcookie('xp_ref_code', $codigoGuardar, [
                 'expires'  => time() + (14 * 86400),
                 'path'     => '/',
+                'secure'   => $isHttpsCookie,
                 'httponly' => true,
                 'samesite' => 'Lax',
             ]);
@@ -78,7 +84,7 @@ function authLogin(string $vistaInicial = 'login'): void {
     }
     $flash = getFlash();
     // login.php contiene las 3 vistas (#view-login / #view-register / #view-recovery) sobre el mismo fondo.
-    $vistaInicial = in_array($vistaInicial, ['register', 'recovery'], true) ? $vistaInicial : 'login';
+    $vistaInicial = in_array($vistaInicial, ['register', 'recovery', 'standby'], true) ? $vistaInicial : 'login';
     require BASE_DIR . '/views/auth/login.php';
 }
 
@@ -585,6 +591,7 @@ function authDoRegistro(): void {
                 $metaDetalle
             );
             $clienteId = $ids['cliente_id'];
+            $uid       = (int)($ids['usuario_id'] ?? 0);
         } else {
             // ── Flujo Google: Guardar perfil completo en usuarios y clientes con estado_cuenta='pendiente' ──
             $googleSession = $_SESSION['google_onboarding'] ?? [];
@@ -685,7 +692,7 @@ function authDoRegistro(): void {
                 $msg    = 'Nuevo atleta en espera: ' . $nombres . ' ' . $apellidos . ' solicita activación';
                 $enlace = APP_URL . '/entrenador/perfil-cliente?id=' . $clienteId;
                 registrarNotificacionSistema([
-                    'remitente_id'     => $usuarioId ?? null,
+                    'remitente_id'     => ($uid ?? 0) ?: null,
                     'destinatario_id'  => $entrenadorId,
                     'rol_destinatario' => 'entrenador',
                     'tipo_evento'      => 'registro',

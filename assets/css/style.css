@@ -3348,7 +3348,7 @@ html[data-theme="light"] .dash-metas-section {
 
   100% {
     opacity: 1;
-    transform: translateY(0);
+    transform: none;
   }
 }
 
@@ -3363,14 +3363,14 @@ html[data-theme="light"] .dash-metas-section {
 }
 
 /* 3. Progressive Enhancement for Panels/Cards on DOM update */
-/* We bind the animation to .xp-main for initial load (fallback for browsers without View Transitions) */
+/* Sin forwards para liberar stacking context de transform al terminar y no atrapar modales fixed */
 .xp-main {
-  animation: xpFadeUpIn 0.3s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+  animation: xpFadeUpIn 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 
 /* Bind to tabs/panels (like Control Diario) when they become active */
 .cd-panel.is-active {
-  animation: xpFadeUpIn 0.25s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+  animation: xpFadeUpIn 0.25s cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 
 /* Staggered entry for cards inside an active panel */
@@ -4532,13 +4532,13 @@ html[data-theme="light"] .dash-metas-section {
 .bento-meta-empty-title {
   font-size: 1.25rem;
   font-weight: 800;
-  color: #fff;
+  color: var(--text, #fff);
   margin: 0 0 6px 0;
 }
 
 .bento-meta-empty-sub {
   font-size: 0.84rem;
-  color: #9ca3af;
+  color: var(--text2, #9ca3af);
   margin: 0;
   line-height: 1.45;
 }
@@ -6655,7 +6655,24 @@ button, a, input, select, textarea, .btn-xp, .wd-check-btn, .wd-day-tab {
   html[data-theme="light"] .exercise-item,
   html[data-theme="light"] .wd-ex-card,
   html[data-theme="light"] .ig-card,
-  html[data-theme="light"] .glass-surface {
+  html[data-theme="light"] .glass-surface,
+  html[data-theme="light"] .cl-search-wrap,
+  html[data-theme="light"] .solicitud-card,
+  html[data-theme="light"] .wd-hero-card,
+  html[data-theme="light"] .wd-progress-card,
+  html[data-theme="light"] .wd-day-tab,
+  html[data-theme="nordic-frost"] .card-bento,
+  html[data-theme="nordic-frost"] .stat-card,
+  html[data-theme="nordic-frost"] .dash-stat-card,
+  html[data-theme="nordic-frost"] .exercise-item,
+  html[data-theme="nordic-frost"] .wd-ex-card,
+  html[data-theme="nordic-frost"] .ig-card,
+  html[data-theme="nordic-frost"] .glass-surface,
+  html[data-theme="nordic-frost"] .cl-search-wrap,
+  html[data-theme="nordic-frost"] .solicitud-card,
+  html[data-theme="nordic-frost"] .wd-hero-card,
+  html[data-theme="nordic-frost"] .wd-progress-card,
+  html[data-theme="nordic-frost"] .wd-day-tab {
     background: rgba(255, 255, 255, 0.96) !important;
     box-shadow: 0 4px 14px rgba(0, 0, 0, 0.07) !important;
   }
@@ -6673,6 +6690,12 @@ button, a, input, select, textarea, .btn-xp, .wd-check-btn, .wd-day-tab {
     backdrop-filter: blur(8px) !important;
     -webkit-backdrop-filter: blur(8px) !important;
     background: rgba(10, 10, 16, 0.92) !important;
+  }
+
+  html[data-theme="light"] .xp-nav,
+  html[data-theme="nordic-frost"] .xp-nav {
+    background: rgba(255, 255, 255, 0.95) !important;
+    border-top-color: var(--border) !important;
   }
 
   /* 5. Cuando el teclado móvil está abierto (is-typing), pausar orbes sin alterar estilos ni tamaños de campos */
@@ -6803,4 +6826,43 @@ html[data-theme="light"] .xp-skeleton-base {
 @keyframes xpSpinSk {
   to { transform: rotate(360deg); }
 }
+
+/* ── Overrides de contraste para temas claros (light / nordic-frost) ── */
+html[data-theme="light"] .subnivel-card,
+html[data-theme="nordic-frost"] .subnivel-card,
+html[data-theme="light"] .goal-chip,
+html[data-theme="nordic-frost"] .goal-chip {
+  background: var(--surface, #f8fafc);
+  border-color: var(--border, rgba(15, 23, 42, 0.12));
+}
+html[data-theme="light"] .subnivel-card-title,
+html[data-theme="nordic-frost"] .subnivel-card-title,
+html[data-theme="light"] .goal-chip-title,
+html[data-theme="nordic-frost"] .goal-chip-title {
+  color: var(--text, #0f172a);
+}
+html[data-theme="light"] .subnivel-card-desc,
+html[data-theme="nordic-frost"] .subnivel-card-desc,
+html[data-theme="light"] .goal-chip-icon,
+html[data-theme="nordic-frost"] .goal-chip-icon {
+  color: var(--text2, #475569);
+}
+html[data-theme="light"] .subnivel-card-pill,
+html[data-theme="nordic-frost"] .subnivel-card-pill {
+  background: rgba(138, 43, 226, 0.12);
+  color: #6d28d9;
+}
+html[data-theme="light"] .goal-chip.selected .goal-chip-title,
+html[data-theme="light"] .goal-chip.active .goal-chip-title,
+html[data-theme="nordic-frost"] .goal-chip.selected .goal-chip-title,
+html[data-theme="nordic-frost"] .goal-chip.active .goal-chip-title {
+  color: var(--text, #0f172a) !important;
+}
+html[data-theme="light"] .goal-chip.selected .goal-chip-icon,
+html[data-theme="light"] .goal-chip.active .goal-chip-icon,
+html[data-theme="nordic-frost"] .goal-chip.selected .goal-chip-icon,
+html[data-theme="nordic-frost"] .goal-chip.active .goal-chip-icon {
+  color: #7c3aed !important;
+}
+
 

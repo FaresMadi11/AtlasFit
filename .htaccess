@@ -41,11 +41,15 @@ RewriteRule ^(fix_|check|test_|kogane_).*\.php$ - [F,L]
     # Previene clickjacking
     Header always set X-Frame-Options "SAMEORIGIN"
 
-    # XSS Protection legacy (IE/Edge)
-    Header always set X-XSS-Protection "1; mode=block"
+    # XSS Protection legacy desactivado según recomendación moderna (OWASP)
+    Header always set X-XSS-Protection "0"
 
     # Referrer Policy
     Header always set Referrer-Policy "strict-origin-when-cross-origin"
+
+    # Aislamiento Cross-Origin compatible con Google OAuth popup y assets locales
+    Header always set Cross-Origin-Opener-Policy "same-origin-allow-popups"
+    Header always set Cross-Origin-Resource-Policy "same-origin"
 
     # Permissions Policy — desactivar APIs no usadas
     Header always set Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=(), usb=(), bluetooth=()"
@@ -68,12 +72,15 @@ RewriteRule ^(fix_|check|test_|kogane_).*\.php$ - [F,L]
         form-action 'self'; \
         base-uri 'self';"
 
-    # HSTS — Solo activar con HTTPS real
-    # Header always set Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+    # HSTS automático cuando llega tráfico HTTPS directo o vía proxy TLS (Render/Cloudflare)
+    SetEnvIf HTTPS "on" IS_HTTPS_REQ=1
+    SetEnvIfNoCase X-Forwarded-Proto "^https$" IS_HTTPS_REQ=1
+    Header always set Strict-Transport-Security "max-age=31536000; includeSubDomains" env=IS_HTTPS_REQ
 
     # Permitir carga y decodificación de assets estáticos locales en Canvas/PWA
     <FilesMatch "\.(jpe?g|png|gif|svg|webp|ico|woff2?)$">
         Header set Access-Control-Allow-Origin "*"
+        Header set Cross-Origin-Resource-Policy "cross-origin"
     </FilesMatch>
 </IfModule>
 

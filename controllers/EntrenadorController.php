@@ -737,8 +737,12 @@ function entCrearRutina(): void {
     $rutinaEditar = null;
     $ejerciciosEditar = [];
     if ($rutina_id) {
-        $stR = $db->prepare("SELECT * FROM rutinas WHERE id = ?");
-        $stR->execute([$rutina_id]);
+        $stR = $db->prepare(
+            "SELECT r.* FROM rutinas r
+             JOIN clientes c ON c.id = r.cliente_id
+             WHERE r.id = ? AND c.entrenador_id = ?"
+        );
+        $stR->execute([$rutina_id, (int)$_SESSION['user_id']]);
         $rutinaEditar = $stR->fetch() ?: null;
         if ($rutinaEditar) {
             $atleta_id = (int)$rutinaEditar['cliente_id'];
@@ -1582,10 +1586,12 @@ function entAsistenciasData(): void {
 ─────────────────────────────────────────────────────────────*/
 function entApiDiasAtleta(): void {
     $db = getDB();
+    $entId = (int)($_SESSION['user_id'] ?? 0);
     $clienteId = (int)($_GET['id'] ?? 0);
     if (!$clienteId) {
         jsonOut(false, 'Cliente no especificado.');
     }
+    assertClienteBelongsToEntrenador($db, $clienteId, $entId, true);
     $dias = obtenerEstadoDiasSemanaAtleta($db, $clienteId);
     jsonOut(true, 'OK', ['dias' => $dias]);
 }
@@ -1750,7 +1756,7 @@ function entApiPagosCliente(): void {
         $clienteId = (int)($_GET['id'] ?? 0);
         if ($clienteId <= 0) entPagosJson(['ok' => false, 'msg' => 'Atleta inválido.'], 422);
 
-        $stCli = $db->prepare("SELECT id, monto_mensualidad FROM clientes WHERE id = ? AND c.entrenador_id = ?");
+        $stCli = $db->prepare("SELECT id, monto_mensualidad FROM clientes WHERE id = ? AND entrenador_id = ?");
         $stCli->execute([$clienteId, $entId]);
         $cli = $stCli->fetch();
         if (!$cli) entPagosJson(['ok' => false, 'msg' => 'Atleta no encontrado.'], 404);
@@ -2203,9 +2209,9 @@ function entAprobarModificacion(): void {
         $stRut = $db->prepare(
             "SELECT r.id, r.rutina_padre_id, r.cliente_id, r.dias_semana
              FROM rutinas r JOIN clientes c ON r.cliente_id = c.id
-             WHERE r.id IN ($ph) AND r.es_modificacion = 1 AND r.estado_modificacion = 'pendiente'"
+             WHERE r.id IN ($ph) AND r.es_modificacion = 1 AND r.estado_modificacion = 'pendiente' AND c.entrenador_id = ?"
         );
-        $stRut->execute($ids);
+        $stRut->execute(array_merge($ids, [$entId]));
         $rutinas = $stRut->fetchAll();
         if (empty($rutinas) || ($entId === null)) jsonOut(false, 'No hay solicitudes pendientes para verificar.');
 
@@ -2273,9 +2279,9 @@ function entRechazarModificacion(): void {
         $stRut = $db->prepare(
             "SELECT r.id, r.rutina_padre_id, r.cliente_id
              FROM rutinas r JOIN clientes c ON r.cliente_id = c.id
-             WHERE r.id IN ($ph) AND r.es_modificacion = 1 AND r.estado_modificacion = 'pendiente'"
+             WHERE r.id IN ($ph) AND r.es_modificacion = 1 AND r.estado_modificacion = 'pendiente' AND c.entrenador_id = ?"
         );
-        $stRut->execute($ids);
+        $stRut->execute(array_merge($ids, [$entId]));
         $rutinas = $stRut->fetchAll();
         if (empty($rutinas)) jsonOut(false, 'No hay solicitudes pendientes.');
 
@@ -2778,34 +2784,39 @@ function entApiRutinaLive(): void {
         jsonOut(true, 'ok', ['ejercicios' => []]);
     }
 
-    $stHoy = $db->prepare(
-        "SELECT e.id, e.nombre,
-                (SELECT 1 FROM sesiones s 
-                 WHERE s.ejercicio_id = e.id 
-                   AND s.cliente_id = ? 
-                   AND DATE(s.creado_en) = ?
-                   AND s.completado = 1 
-                 LIMIT 1) AS completado,
-                (SELECT s.reps_realizadas FROM sesiones s 
-                 WHERE s.ejercicio_id = e.id 
-                   AND s.cliente_id = ? 
-                   AND DATE(s.creado_en) = ?
-                   AND s.completado = 1 
-                 ORDER BY s.id DESC LIMIT 1) AS reps_realizadas
-         FROM ejercicios e
-         WHERE e.rutina_id = ? ORDER BY e.orden"
-    );
-    $stHoy->execute([$clienteId, $fechaSeleccionada, $clienteId, $fechaSeleccionada, $rutinaHoyId]);
-    
-    $ejercicios = [];
-    foreach ($stHoy->fetchAll() as $ej) {
-        $ejercicios[$ej['id']] = [
-            'completado' => (bool)$ej['completado'],
-            'reps'       => $ej['reps_realizadas']
-        ];
-    }
+    try {
+        $stHoy = $db->prepare(
+            "SELECT e.id, e.nombre,
+                    (SELECT 1 FROM sesiones s
+                     WHERE s.ejercicio_id = e.id
+                       AND s.cliente_id = ?
+                       AND s.fecha = ?
+                       AND s.completado = 1
+                     LIMIT 1) AS completado,
+                    (SELECT s.reps_realizadas FROM sesiones s
+                     WHERE s.ejercicio_id = e.id
+                       AND s.cliente_id = ?
+                       AND s.fecha = ?
+                       AND s.completado = 1
+                     ORDER BY s.id DESC LIMIT 1) AS reps_realizadas
+             FROM ejercicios e
+             WHERE e.rutina_id = ? ORDER BY e.orden"
+        );
+        $stHoy->execute([$clienteId, $fechaSeleccionada, $clienteId, $fechaSeleccionada, $rutinaHoyId]);
 
-    jsonOut(true, 'ok', ['ejercicios' => $ejercicios]);
+        $ejercicios = [];
+        foreach ($stHoy->fetchAll() as $ej) {
+            $ejercicios[$ej['id']] = [
+                'completado' => (bool)$ej['completado'],
+                'reps'       => $ej['reps_realizadas']
+            ];
+        }
+
+        jsonOut(true, 'ok', ['ejercicios' => $ejercicios]);
+    } catch (\Throwable $e) {
+        error_log('[entApiRutinaLive] ' . $e->getMessage());
+        jsonOut(false, 'No se pudo consultar el estado en vivo.', [], 500);
+    }
 }
 
 /*─────────────────────────────────────────────────────────────
@@ -3182,7 +3193,7 @@ function entApiRutinaEjercicio(): void {
 
     // Verificación defensiva de pertenencia y permisos del entrenador
     $stCheck = $db->prepare("
-        SELECT e.id, e.rutina_id, e.nombre, e.grupo_muscular, e.tipo_implemento, r.cliente_id
+        SELECT e.id, e.rutina_id, e.orden, e.nombre, e.grupo_muscular, e.tipo_implemento, r.cliente_id
         FROM ejercicios e
         JOIN rutinas r ON r.id = e.rutina_id
         JOIN clientes c ON c.id = r.cliente_id
@@ -3877,9 +3888,14 @@ function entApiGuardarSerieAtleta(): void {
             jsonOut(false, 'El número de serie no puede superar el límite de 12.');
         }
 
-        // Obtener configuración del ejercicio
-        $stEjInfo = $db->prepare("SELECT nombre, rutina_id, tipo_implemento, unidad_carga FROM ejercicios WHERE id = ?");
-        $stEjInfo->execute([$ejercicioId]);
+        // Obtener configuración del ejercicio garantizando que pertenezca a una rutina del atleta
+        $stEjInfo = $db->prepare(
+            "SELECT e.nombre, e.rutina_id, e.tipo_implemento, e.unidad_carga
+             FROM ejercicios e
+             JOIN rutinas r ON r.id = e.rutina_id
+             WHERE e.id = ? AND r.cliente_id = ?"
+        );
+        $stEjInfo->execute([$ejercicioId, $clienteId]);
         $ejInfo = $stEjInfo->fetch();
         if (!$ejInfo) {
             http_response_code(404);

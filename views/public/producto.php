@@ -1,7 +1,7 @@
 <?php
 $title = e($producto['nombre']);
 $desc = e($producto['descripcion']) ?: 'Adquiere este producto en nuestra tienda online.';
-$img = $producto['imagen_path'] ? APP_URL . '/' . e($producto['imagen_path']) : APP_URL . '/assets/img/default-product.png';
+$img = $producto['imagen_path'] ? APP_URL . '/' . e($producto['imagen_path']) : APP_URL . '/assets/img/icon-512.png';
 $url = APP_URL . '/public/producto?id=' . $producto['id'];
 ?>
 <!DOCTYPE html>

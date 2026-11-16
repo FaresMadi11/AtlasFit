@@ -210,7 +210,7 @@ $diaHoyNum  = (int)date('N');
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="9" width="3" height="6" rx="1.5" fill="currentColor" fill-opacity="0.25"/><rect x="5" y="6" width="3" height="12" rx="1.5" fill="currentColor"/><line x1="8" y1="12" x2="16" y2="12" stroke-width="2.5"/><rect x="16" y="6" width="3" height="12" rx="1.5" fill="currentColor"/><rect x="19" y="9" width="3" height="6" rx="1.5" fill="currentColor" fill-opacity="0.25"/></svg>
     </div>
     <div class="user-text-wrap">
-      <h1 class="sys-top-title user-name-gradient" title="Mis Rutinas" style="font-size: 1.12rem !important; font-weight: 800; color: #fff; margin: 0; line-height: 1.25;">
+      <h1 class="sys-top-title user-name-gradient" title="Mis Rutinas" style="font-size: 1.12rem !important; font-weight: 800; color: var(--text, #fff); margin: 0; line-height: 1.25;">
         <span class="user-name-text">Mis Rutinas</span>
       </h1>
       <p style="font-size: .74rem; font-weight: 500; color: #94a3af; margin: 2px 0 0; text-transform: capitalize; letter-spacing: 0.2px; line-height: 1.2;">

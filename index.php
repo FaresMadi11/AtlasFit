@@ -77,6 +77,8 @@ require BASE_DIR . '/core/ExcelExportService.php';
 require BASE_DIR . '/core/CatalogoService.php';
 require BASE_DIR . '/core/ImportadorService.php';
 
+addSecurityHeaders($isHttps);
+
 // Restaurar sesión persistente automáticamente si el usuario cerró la app de "Recientes"
 xpRestoreRememberSession();
 
