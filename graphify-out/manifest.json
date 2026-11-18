@@ -60,9 +60,9 @@
     "semantic_hash": "a33ae3e927ffc156c4e14fc4b0cdec98"
   },
   "controllers/PublicController.php": {
-    "mtime": 1794826766.078962,
-    "seen": 1794826840.5956764,
-    "ast_hash": "c9dbc77f87f48fceb9e844f72df53ec1",
+    "mtime": 1794877388.0416534,
+    "seen": 1794877450.1575332,
+    "ast_hash": "b5d5b4cdbf46a027f523c7dff8cd243e",
     "semantic_hash": ""
   },
   "core/SimpleXLSX.php": {
@@ -84,9 +84,9 @@
     "semantic_hash": ""
   },
   "core/helpers.php": {
-    "mtime": 1794490347.077722,
-    "seen": 1794493931.9093378,
-    "ast_hash": "c500d3e8ab964677b1be7f3dc5bdaa54",
+    "mtime": 1794880829.8164208,
+    "seen": 1794881440.583662,
+    "ast_hash": "ddee6f07c8f6c15a51030ab4bf24743f",
     "semantic_hash": ""
   },
   "core/rate_limiter.php": {
@@ -216,15 +216,15 @@
     "semantic_hash": "ca6328d41cbcf6112d6fc81c7e2c8325"
   },
   "views/auth/login.php": {
-    "mtime": 1794826767.9067435,
-    "seen": 1794826840.5995204,
-    "ast_hash": "e9397c6919c8e9091315b4ed71c4f570",
+    "mtime": 1794880830.2045553,
+    "seen": 1794881440.587292,
+    "ast_hash": "62451c8598becc28713c243da51437b3",
     "semantic_hash": ""
   },
   "views/auth/recuperar.php": {
-    "mtime": 1794826767.9233618,
-    "seen": 1794826840.599522,
-    "ast_hash": "50aee570700968947f3b172a82f0dec7",
+    "mtime": 1794874939.0108979,
+    "seen": 1794877450.1777627,
+    "ast_hash": "d08c0e09b1d980d9f82ff2b2194a95a5",
     "semantic_hash": ""
   },
   "views/cliente/dashboard.php": {
@@ -234,9 +234,9 @@
     "semantic_hash": ""
   },
   "views/cliente/estadisticas.php": {
-    "mtime": 1794826768.3063328,
-    "seen": 1794826840.5995252,
-    "ast_hash": "f69e460213ef114345b35f4da82b697e",
+    "mtime": 1794874939.4057882,
+    "seen": 1794877450.1781473,
+    "ast_hash": "7120e1a0fbe2e73b8bac22df5474d99f",
     "semantic_hash": ""
   },
   "views/cliente/modificar_rutina.php": {
@@ -300,9 +300,9 @@
     "semantic_hash": ""
   },
   "views/entrenador/estadisticas_cliente.php": {
-    "mtime": 1792850563.1921852,
-    "seen": 1792865876.0285354,
-    "ast_hash": "d1a477b20ba85aca9c88e3ed51ca70ad",
+    "mtime": 1794874939.9343264,
+    "seen": 1794877450.182901,
+    "ast_hash": "688a62aea94c7a3c6643609a80e02299",
     "semantic_hash": ""
   },
   "views/entrenador/metodos_pago.php": {
@@ -330,9 +330,9 @@
     "semantic_hash": "3528c4391025b58445fa59b7963705d9"
   },
   "views/entrenador/perfil_cliente.php": {
-    "mtime": 1794151108.495243,
-    "seen": 1794151111.3535447,
-    "ast_hash": "ae8f22ecc14641bfec4a87237f950152",
+    "mtime": 1794909872.51931,
+    "seen": 1794909895.1338756,
+    "ast_hash": "ab37cd8f63e1747c9ec5575c5943e8b6",
     "semantic_hash": ""
   },
   "views/entrenador/registrar_cliente.php": {
@@ -360,9 +360,9 @@
     "semantic_hash": ""
   },
   "views/layout/header.php": {
-    "mtime": 1794826770.5327973,
-    "seen": 1794826840.600475,
-    "ast_hash": "7658df38f6dfc695ef404d7f83f069c6",
+    "mtime": 1794909810.9626145,
+    "seen": 1794909895.1343708,
+    "ast_hash": "99d760b3899482b689b9ce96fffa6419",
     "semantic_hash": ""
   },
   "views/legal/privacidad.php": {
@@ -438,15 +438,15 @@
     "semantic_hash": ""
   },
   "assets/js/pwa-sync.js": {
-    "mtime": 1794826764.238499,
-    "seen": 1794826840.5952394,
-    "ast_hash": "b1decbe0b692e252f2b7c5334d48f7e9",
+    "mtime": 1794874937.9125888,
+    "seen": 1794877450.1525028,
+    "ast_hash": "5a013e87eb8930c63b7bef1c0cd60fcc",
     "semantic_hash": ""
   },
   "sw.js": {
-    "mtime": 1794826766.970795,
-    "seen": 1794826840.5994081,
-    "ast_hash": "ada18e7c8dfb22b059d3216da057edc0",
+    "mtime": 1794880830.1361437,
+    "seen": 1794881440.5868769,
+    "ast_hash": "717005e243a2c382e5d60d83f824c38f",
     "semantic_hash": ""
   },
   "core/media_storage.php": {
@@ -510,9 +510,9 @@
     "semantic_hash": ""
   },
   "views/entrenador/membresia_suspendida.php": {
-    "mtime": 1794826769.985354,
-    "seen": 1794826840.5998452,
-    "ast_hash": "cfee704a3386e1b06cc190d883760d8c",
+    "mtime": 1794874940.096026,
+    "seen": 1794877450.1829076,
+    "ast_hash": "4a95bde8f701795aa2882fb6f92f544b",
     "semantic_hash": ""
   },
   "views/admin/configuracion.php": {

@@ -11,17 +11,50 @@
   const XpSync = {
     // Reutilizar el registro único de Service Worker para evitar colisiones de versión entre vistas
     initSW() {
-      const swUrl = window.XP_SW_URL || ((window.APP || '') + '/sw.js?v=4.2');
+      const swVer = window.XP_SW_VER || '4.4';
+      const swUrl = window.XP_SW_URL || ((window.APP || '') + '/sw.js?v=' + swVer);
       if ('serviceWorker' in navigator && !window.XP_SW_URL) {
+        const hadCtrl = !!navigator.serviceWorker.controller;
         window.addEventListener('load', () => {
           navigator.serviceWorker.register(swUrl, {
             scope: (window.APP || '') + '/',
             updateViaCache: 'none'
+          }).then(reg => {
+            reg.update().catch(() => {});
           }).catch(err => {
             console.warn('[PWA] Error registrando Service Worker:', err);
           });
         });
+        navigator.serviceWorker.addEventListener('controllerchange', () => {
+          if (!hadCtrl) return;
+          try {
+            if (sessionStorage.getItem('xp_sw_reloaded') === swVer) return;
+            sessionStorage.setItem('xp_sw_reloaded', swVer);
+          } catch (_) {}
+          window.location.reload();
+        });
       }
+
+      // Prefetch instantáneo al tocar o pulsar pestañas de navegación (acelera iOS PWA y navegadores sin speculationrules)
+      const prefetchedTabs = new Set();
+      const triggerTabPrefetch = (e) => {
+        if (!navigator.onLine) return;
+        const a = e.target && e.target.closest ? e.target.closest('.xp-nav a[href]') : null;
+        if (!a) return;
+        const href = a.href;
+        if (!href || href.includes('logout') || prefetchedTabs.has(href) || href === window.location.href) return;
+        prefetchedTabs.add(href);
+        fetch(href, { credentials: 'same-origin', headers: { 'Accept': 'text/html' }, priority: 'low' })
+          .then(res => {
+            if (res && res.ok && 'caches' in window) {
+              const cName = window.XP_CACHE_NAME || ('atlas-fit-' + (window.XP_SW_VER || '4.4'));
+              caches.open(cName).then(c => c.put(href, res.clone()).catch(() => {})).catch(() => {});
+            }
+          })
+          .catch(() => {});
+      };
+      document.addEventListener('pointerdown', triggerTabPrefetch, { passive: true });
+      document.addEventListener('touchstart', triggerTabPrefetch, { passive: true });
 
       // Al tocar cualquier botón de Cerrar Sesión, limpiar el estado persistente local antes de salir
       document.addEventListener('click', (e) => {
@@ -61,7 +94,13 @@
       if (navigator.onLine && 'caches' in window) {
         const runPrewarm = async () => {
           try {
-            const CACHE_NAME = window.XP_CACHE_NAME || 'atlas-fit-v4.3';
+            const CACHE_NAME = window.XP_CACHE_NAME || ('atlas-fit-' + (window.XP_SW_VER || '4.4'));
+            const curBuild = String(window.XP_SW_VER || '4.4');
+            let prevBuild = '';
+            try { prevBuild = localStorage.getItem('xp_prewarm_build') || ''; } catch (_) {}
+            if (prevBuild !== curBuild) {
+              try { sessionStorage.removeItem('xp_prewarm_ts'); } catch (_) {}
+            }
             const cache = await caches.open(CACHE_NAME);
             const base = (window.APP || window.location.origin).replace(/\/+$/, '');
             const curPath = window.location.pathname;
@@ -144,6 +183,7 @@
             }
 
             sessionStorage.setItem('xp_prewarm_ts', String(Date.now()));
+            try { localStorage.setItem('xp_prewarm_build', curBuild); } catch (_) {}
           } catch (_) { }
         };
 

@@ -1,8 +1,9 @@
 // ══════════════════════════════════════════════════════════════
-//  Atlas Fit — Service Worker (PWA & Offline-First Core v2.1)
+//  Atlas Fit — Service Worker (PWA, Instant Auto-Update & Fast Cache)
 // ══════════════════════════════════════════════════════════════
 
-const CACHE_NAME = 'atlas-fit-v4.3';
+const SW_VER = new URL(self.location.href).searchParams.get('v') || '4.4';
+const CACHE_NAME = 'atlas-fit-' + SW_VER;
 
 const TRUSTED_CDN_HOSTS = new Set([
   'cdn.jsdelivr.net',
@@ -38,9 +39,8 @@ function fetchWithTimeout(reqOrPromise, ms) {
   });
 }
 
-// Recursos críticos locales precacheados (0ms de arranque, 100% offline)
+// Recursos críticos locales precacheados (0ms de arranque, iconos y offline)
 const PRECACHE_ASSETS = [
-  './manifest.webmanifest',
   './favicon.ico',
   './assets/css/style.css',
   './assets/css/custom-select.css',
@@ -58,18 +58,19 @@ const PRECACHE_ASSETS = [
   './assets/vendor/tabler-icons/fonts/tabler-icons.woff2',
   './assets/img/icon-192.png',
   './assets/img/icon-512.png',
+  './assets/img/icon-maskable-512.png',
   './assets/img/favicon.svg',
   './assets/img/favicon-32.png',
   './assets/img/apple-touch-icon.png'
 ];
 
-// Instalación: Precarga de assets locales críticos
+// Instalación: Precarga fresca desde red (cache: 'reload') evitando caché HTTP vieja
 self.addEventListener('install', event => {
   event.waitUntil(
     caches.open(CACHE_NAME).then(cache => {
       return Promise.allSettled(
         PRECACHE_ASSETS.map(url =>
-          fetch(url)
+          fetch(new Request(url, { cache: 'reload' }))
             .then(res => {
               if (res.ok) return cache.put(url, res);
             })
@@ -78,6 +79,12 @@ self.addEventListener('install', event => {
       );
     }).then(() => self.skipWaiting())
   );
+});
+
+self.addEventListener('message', event => {
+  if (event.data && event.data.type === 'SKIP_WAITING') {
+    self.skipWaiting();
+  }
 });
 
 // Activación: Purga de cachés antiguas + habilitar Navigation Preload
@@ -137,6 +144,21 @@ self.addEventListener('fetch', event => {
 
   const pathname = url.pathname.toLowerCase();
 
+  // Manifest PWA siempre fresco (Network-First sin caché HTTP) para que cambios de iconos se detecten al instante
+  if (pathname.endsWith('/manifest.webmanifest')) {
+    event.respondWith(
+      fetch(new Request(req, { cache: 'no-store' }))
+        .then(res => {
+          safeCachePut(req, res);
+          return res;
+        })
+        .catch(() => caches.match(req).then(c => c || new Response('{}', {
+          headers: { 'Content-Type': 'application/manifest+json; charset=utf-8' }
+        })))
+    );
+    return;
+  }
+
   // ── REGLA ZERO-TRUST 1: NUNCA INTERCEPTAR MUTACIONES, OAUTH NI LOGOUT EXPLÍCITO ──
   if (
     pathname.includes('/logout') ||
@@ -171,7 +193,7 @@ self.addEventListener('fetch', event => {
       });
       if (cached) {
         try {
-          return await fetchWithTimeout(netPromise, 2600);
+          return await fetchWithTimeout(netPromise, 1800);
         } catch (_) {
           netPromise.catch(() => {});
           return cached;
@@ -285,7 +307,7 @@ self.addEventListener('fetch', event => {
 
       if (cachedFallback) {
         try {
-          return await fetchWithTimeout(netPromise, 2400);
+          return await fetchWithTimeout(netPromise, 1800);
         } catch (_) {
           netPromise.catch(() => {});
           return cachedFallback;
@@ -307,15 +329,49 @@ self.addEventListener('fetch', event => {
   }
 
   // ── REGLA 3: RECURSOS ESTÁTICOS (CSS, JS, Fuentes, Iconos locales) ──
-  // Cache-First (coincidencia exacta o ignoreSearch sobre precache) con actualización en segundo plano
+  // 1) Si trae ?v=..., exige coincidencia exacta en caché (0ms sin fetch extra); si falta, descarga la nueva versión.
+  // 2) Iconos sin ?v=... usan Network-First rápido (900ms) para actualizar cambios en cuanto se suban.
   const isStatic = /\.(css|js|woff2?|ttf|png|jpe?g|svg|webp|ico)$/i.test(url.pathname);
 
   if (isStatic) {
+    const hasVer = url.searchParams.has('v');
+    const isIconAsset = (
+      pathname.includes('/assets/img/icon-') ||
+      pathname.includes('favicon') ||
+      pathname.includes('apple-touch-icon')
+    );
+
     event.respondWith(
       caches.open(CACHE_NAME).then(async cache => {
+        if (hasVer) {
+          const exactCached = await cache.match(req);
+          if (exactCached) {
+            return exactCached;
+          }
+          try {
+            const networkResponse = await fetch(req);
+            safeCachePut(req, networkResponse);
+            return networkResponse;
+          } catch (_) {
+            const staleFallback = await cache.match(req, { ignoreSearch: true });
+            return staleFallback || new Response('', { status: 408, statusText: 'Offline' });
+          }
+        }
+
+        if (isIconAsset) {
+          try {
+            const freshIcon = await fetchWithTimeout(fetch(req, { cache: 'no-cache' }), 900);
+            safeCachePut(req, freshIcon);
+            return freshIcon;
+          } catch (_) {
+            const cachedIcon = (await cache.match(req)) || (await cache.match(req, { ignoreSearch: true }));
+            return cachedIcon || new Response('', { status: 408, statusText: 'Offline' });
+          }
+        }
+
         const cachedResponse = (await cache.match(req)) || (await cache.match(req, { ignoreSearch: true }));
         if (cachedResponse) {
-          fetch(req).then(networkResponse => {
+          fetch(req, { cache: 'no-cache' }).then(networkResponse => {
             safeCachePut(req, networkResponse);
           }).catch(() => {});
           return cachedResponse;

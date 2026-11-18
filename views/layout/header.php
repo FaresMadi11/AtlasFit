@@ -49,55 +49,68 @@ $temaGlobalVer     = (int)($temaInfoUser['global_ver'] ?? 1);
   }
   </script>
 
-  <?php $icoVer = @filemtime(__DIR__ . '/../../assets/img/icon-512.png') ?: time(); ?>
+  <?php
+    $xpBuildVer = xpAppBuildVersion();
+    $xpCacheName = xpAppCacheName();
+    $vIcon192 = xpAssetVer('assets/img/icon-192.png');
+    $vIcon512 = xpAssetVer('assets/img/icon-512.png');
+    $vIconSvg = xpAssetVer('assets/img/favicon.svg');
+    $vIcon32  = xpAssetVer('assets/img/favicon-32.png');
+    $vApple   = xpAssetVer('assets/img/apple-touch-icon.png');
+    $vFavIco  = xpAssetVer('favicon.ico');
+    $vWoff2   = xpAssetVer('assets/vendor/tabler-icons/fonts/tabler-icons.woff2');
+    $vTabler  = xpAssetVer('assets/vendor/tabler-icons/tabler-icons.min.css');
+    $vSwal    = xpAssetVer('assets/vendor/sweetalert2/sweetalert2.all.min.js');
+    $vAnime   = xpAssetVer('assets/vendor/animejs/anime.min.js');
+  ?>
   <meta name="description" content="Atlas Fit: plataforma de gestión y entrenamiento personalizado para entrenadores y atletas.">
   <meta property="og:type" content="website">
   <meta property="og:title" content="Atlas Fit — Plataforma de Entrenamiento">
   <meta property="og:description" content="Rutinas interactivas, control diario, métricas de fuerza y seguimiento biométrico en tiempo real.">
-  <meta property="og:image" content="<?= e(APP_URL . '/assets/img/icon-512.png?v=' . $icoVer) ?>">
+  <meta property="og:image" content="<?= e(APP_URL . '/assets/img/icon-512.png?v=' . $vIcon512) ?>">
   <meta name="twitter:card" content="summary">
-  <!-- ── PWA Manifest & App Icons ── -->
-  <link rel="manifest" href="<?= APP_URL ?>/manifest.webmanifest?v=<?= $icoVer ?>">
-  <link rel="shortcut icon" href="<?= APP_URL ?>/favicon.ico?v=<?= $icoVer ?>">
-  <link rel="icon" type="image/png" sizes="32x32" href="<?= APP_URL ?>/assets/img/favicon-32.png?v=<?= $icoVer ?>">
-  <link rel="icon" type="image/png" sizes="192x192" href="<?= APP_URL ?>/assets/img/icon-192.png?v=<?= $icoVer ?>">
-  <link rel="icon" type="image/svg+xml" href="<?= APP_URL ?>/assets/img/favicon.svg?v=<?= $icoVer ?>">
-  <link rel="apple-touch-icon" href="<?= APP_URL ?>/assets/img/apple-touch-icon.png?v=<?= $icoVer ?>">
+  <!-- ── PWA Manifest & App Icons (versionado automático por filemtime) ── -->
+  <link rel="manifest" href="<?= APP_URL ?>/manifest.webmanifest?v=<?= e($xpBuildVer) ?>">
+  <link rel="icon" type="image/svg+xml" sizes="any" href="<?= APP_URL ?>/assets/img/favicon.svg?v=<?= e($vIconSvg) ?>">
+  <link rel="icon" type="image/png" sizes="32x32" href="<?= APP_URL ?>/assets/img/favicon-32.png?v=<?= e($vIcon32) ?>">
+  <link rel="alternate icon" href="<?= APP_URL ?>/favicon.ico?v=<?= e($vFavIco) ?>">
+  <link rel="apple-touch-icon" href="<?= APP_URL ?>/assets/img/apple-touch-icon.png?v=<?= e($vApple) ?>">
 
-  <!-- ── Preconnect a CDNs críticos (mejora LCP) ── -->
+  <!-- ── Preconnect & Preload de fuentes/recursos críticos (mejora LCP & FOUT) ── -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+  <link rel="preload" href="<?= APP_URL ?>/assets/vendor/tabler-icons/fonts/tabler-icons.woff2?v=<?= e($vWoff2) ?>" as="font" type="font/woff2" crossorigin>
 
   <!-- ── Google Fonts (no bloqueante con preload + swap) ── -->
   <link rel="preload" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" as="style" onload="this.onload=null;this.rel='stylesheet'">
   <noscript><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet"></noscript>
 
-  <!-- ── CSS crítico: cargado de forma síncrona (necesario para render) ── -->
+  <!-- ── CSS crítico: cargado de forma síncrona (versionado automático) ── -->
   <!-- Tabler Icons (Local: 0ms, 100% offline sin fallos de CDN) -->
-  <link rel="stylesheet" href="<?= APP_URL ?>/assets/vendor/tabler-icons/tabler-icons.min.css">
+  <link rel="stylesheet" href="<?= APP_URL ?>/assets/vendor/tabler-icons/tabler-icons.min.css?v=<?= e($vTabler) ?>">
   <!-- Bootstrap CSS -->
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css">
   <!-- App CSS (versionado con filemtime para cache inteligente sin descargas repetidas) -->
-  <link rel="stylesheet" href="<?= APP_URL ?>/assets/css/style.css?v=<?= @filemtime(__DIR__ . '/../../assets/css/style.css') ?: '2.6' ?>">
-  <link rel="stylesheet" href="<?= APP_URL ?>/assets/css/custom-select.css?v=<?= @filemtime(__DIR__ . '/../../assets/css/custom-select.css') ?: '1.0' ?>">
-  <link rel="stylesheet" href="<?= APP_URL ?>/assets/css/custom-date.css?v=<?= @filemtime(__DIR__ . '/../../assets/css/custom-date.css') ?: '1.0' ?>">
+  <link rel="stylesheet" href="<?= APP_URL ?>/assets/css/style.css?v=<?= xpAssetVer('assets/css/style.css') ?>">
+  <link rel="stylesheet" href="<?= APP_URL ?>/assets/css/custom-select.css?v=<?= xpAssetVer('assets/css/custom-select.css') ?>">
+  <link rel="stylesheet" href="<?= APP_URL ?>/assets/css/custom-date.css?v=<?= xpAssetVer('assets/css/custom-date.css') ?>">
 
   <!-- ── JavaScript no crítico: diferido para no bloquear render ── -->
   <!-- Bootstrap JS -->
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js" defer></script>
   <!-- Custom Searchable Select -->
-  <script src="<?= APP_URL ?>/assets/js/custom-select.js?v=<?= @filemtime(__DIR__ . '/../../assets/js/custom-select.js') ?: '1.0' ?>" defer></script>
+  <script src="<?= APP_URL ?>/assets/js/custom-select.js?v=<?= xpAssetVer('assets/js/custom-select.js') ?>" defer></script>
   <!-- Custom Minimalist Date Picker -->
-  <script src="<?= APP_URL ?>/assets/js/custom-date.js?v=<?= @filemtime(__DIR__ . '/../../assets/js/custom-date.js') ?: '1.0' ?>" defer></script>
+  <script src="<?= APP_URL ?>/assets/js/custom-date.js?v=<?= xpAssetVer('assets/js/custom-date.js') ?>" defer></script>
   <!-- SweetAlert2 (Local Vendor - diferido para no bloquear render inicial) -->
-  <script src="<?= APP_URL ?>/assets/vendor/sweetalert2/sweetalert2.all.min.js" defer></script>
+  <script src="<?= APP_URL ?>/assets/vendor/sweetalert2/sweetalert2.all.min.js?v=<?= e($vSwal) ?>" defer></script>
   <!-- Anime.js (Local Vendor - 0ms online y offline) -->
-  <script src="<?= APP_URL ?>/assets/vendor/animejs/anime.min.js" defer></script>
+  <script src="<?= APP_URL ?>/assets/vendor/animejs/anime.min.js?v=<?= e($vAnime) ?>" defer></script>
   <!-- SortableJS (Touch & Drag Reordering) -->
   <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js" defer></script>
   <!-- PWA & Offline Sync Manager -->
-  <script src="<?= APP_URL ?>/assets/js/pwa-sync.js?v=<?= @filemtime(__DIR__ . '/../../assets/js/pwa-sync.js') ?: '3.0' ?>" defer></script>
+  <script src="<?= APP_URL ?>/assets/js/pwa-sync.js?v=<?= xpAssetVer('assets/js/pwa-sync.js') ?>" defer></script>
 
   <!-- ── Variables globales JS (inline, no bloquea render) ── -->
   <script>
@@ -105,8 +118,9 @@ $temaGlobalVer     = (int)($temaInfoUser['global_ver'] ?? 1);
     window.APP           = '<?= APP_URL ?>';
     window.BASE_PATH     = '<?= BASE_PATH ?>';
     window.CSRF          = '<?= $csrf ?>';
-    window.XP_CACHE_NAME = 'atlas-fit-v4.3';
-    window.XP_SW_URL     = window.APP + '/sw.js?v=4.3';
+    window.XP_SW_VER     = '<?= e($xpBuildVer) ?>';
+    window.XP_CACHE_NAME = '<?= e($xpCacheName) ?>';
+    window.XP_SW_URL     = window.APP + '/sw.js?v=<?= e($xpBuildVer) ?>';
     const APP            = window.APP;
     const CSRF           = window.CSRF;
 
@@ -140,14 +154,76 @@ $temaGlobalVer     = (int)($temaInfoUser['global_ver'] ?? 1);
         }).catch(function(){});
       }
       if ('serviceWorker' in navigator) {
+        const hadController = !!navigator.serviceWorker.controller;
+        let lastVerCheck = Date.now();
         navigator.serviceWorker.register(window.XP_SW_URL, { scope: window.APP + '/', updateViaCache: 'none' })
-          .then(function(r) {
-            if (!sessionStorage.getItem('xp_sw_checked')) {
-              sessionStorage.setItem('xp_sw_checked', '1');
-              r.update().catch(function(){});
-            }
-          })
+          .then(function(r) { r.update().catch(function(){}); })
           .catch(function(){});
+
+        const trySafeReload = function(targetVer) {
+          try {
+            if (sessionStorage.getItem('xp_sw_reloaded') === targetVer) return;
+          } catch (_) {}
+          const activeEl = document.activeElement;
+          const isEditing = activeEl && (
+            activeEl.tagName === 'INPUT' ||
+            activeEl.tagName === 'TEXTAREA' ||
+            activeEl.tagName === 'SELECT' ||
+            activeEl.isContentEditable
+          );
+          const hasOpenModal = !!document.querySelector('.modal.show, .swal2-container');
+          if (isEditing || hasOpenModal || (document.body && document.body.classList.contains('is-typing'))) {
+            window._xpPendingSwVer = targetVer;
+            return;
+          }
+          try { sessionStorage.setItem('xp_sw_reloaded', targetVer); } catch (_) {}
+          window.location.reload();
+        };
+
+        // Al volver a la PWA desde segundo plano, verifica si se subió una nueva build al servidor
+        const checkBuildOnResume = function() {
+          if (!navigator.onLine) return;
+          const now = Date.now();
+          if (now - lastVerCheck < 30000) return;
+          lastVerCheck = now;
+          fetch(window.APP + '/public/version', { cache: 'no-store', credentials: 'same-origin' })
+            .then(function(res) { return res.ok ? res.json() : null; })
+            .then(function(data) {
+              if (!data || !data.v || data.v === window.XP_SW_VER) return;
+              navigator.serviceWorker.register(window.APP + '/sw.js?v=' + encodeURIComponent(data.v), {
+                scope: window.APP + '/',
+                updateViaCache: 'none'
+              }).catch(function(){});
+              trySafeReload(data.v);
+            })
+            .catch(function(){});
+        };
+        document.addEventListener('visibilitychange', function() {
+          if (document.visibilityState === 'visible') checkBuildOnResume();
+        });
+        window.addEventListener('online', checkBuildOnResume);
+
+        // Solo recarga ante controllerchange si el HTML actual era de una build anterior (evita doble carga)
+        navigator.serviceWorker.addEventListener('controllerchange', function() {
+          if (!hadController) return;
+          var ctrlUrl = navigator.serviceWorker.controller ? navigator.serviceWorker.controller.scriptURL : '';
+          var ctrlVer = '';
+          try { ctrlVer = new URL(ctrlUrl, window.location.href).searchParams.get('v') || ''; } catch (_) {}
+          if (!ctrlVer || ctrlVer === window.XP_SW_VER) return;
+          trySafeReload(ctrlVer);
+        });
+        document.addEventListener('focusout', function() {
+          if (!window._xpPendingSwVer) return;
+          setTimeout(function() {
+            const ae = document.activeElement;
+            const stillTyping = ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA' || ae.tagName === 'SELECT' || ae.isContentEditable);
+            if (!stillTyping && window._xpPendingSwVer) {
+              const v = window._xpPendingSwVer;
+              window._xpPendingSwVer = null;
+              trySafeReload(v);
+            }
+          }, 300);
+        });
       }
     })();
   </script>
@@ -159,7 +235,7 @@ $temaGlobalVer     = (int)($temaInfoUser['global_ver'] ?? 1);
 ?>
 <nav class="xp-nav" id="mainNav">
   <div class="xp-nav-brand">
-    <div class="brand-icon" style="background:transparent;padding:0;overflow:hidden;border-radius:8px;"><img src="<?= APP_URL ?>/assets/img/icon-192.png" alt="AF" style="width:28px;height:28px;object-fit:cover;border-radius:6px;display:block;"></div>
+    <div class="brand-icon" style="background:transparent;box-shadow:none;padding:0;overflow:visible;"><img src="<?= APP_URL ?>/assets/img/favicon.svg?v=<?= e($vIconSvg) ?>" alt="AF" style="width:28px;height:28px;object-fit:contain;display:block;"></div>
     <span class="brand-name">Atlas<strong>Fit</strong></span>
   </div>
 

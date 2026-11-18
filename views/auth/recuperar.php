@@ -5,11 +5,11 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Recuperar Contraseña | Atlas Fit</title>
 <!-- Tabler Icons (Local) -->
-<link rel="stylesheet" href="<?= APP_URL ?>/assets/vendor/tabler-icons/tabler-icons.min.css">
+<link rel="stylesheet" href="<?= APP_URL ?>/assets/vendor/tabler-icons/tabler-icons.min.css?v=<?= xpAssetVer('assets/vendor/tabler-icons/tabler-icons.min.css') ?>">
 <!-- SweetAlert2 -->
-<script src="<?= APP_URL ?>/assets/vendor/sweetalert2/sweetalert2.all.min.js" defer></script>
+<script src="<?= APP_URL ?>/assets/vendor/sweetalert2/sweetalert2.all.min.js?v=<?= xpAssetVer('assets/vendor/sweetalert2/sweetalert2.all.min.js') ?>" defer></script>
 <!-- Anime.js (Local Vendor) -->
-<script src="<?= APP_URL ?>/assets/vendor/animejs/anime.min.js" defer></script>
+<script src="<?= APP_URL ?>/assets/vendor/animejs/anime.min.js?v=<?= xpAssetVer('assets/vendor/animejs/anime.min.js') ?>" defer></script>
 
 
 <style>

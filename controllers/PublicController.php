@@ -18,6 +18,59 @@ if ($action === 'ping' || $action === 'health') {
     exit;
 }
 
+// Versión ligera de build (0 consultas BD, detecta deploys nuevos al instante en PWA)
+if ($action === 'version') {
+    header('Content-Type: application/json; charset=utf-8');
+    header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
+    header('Pragma: no-cache');
+    echo json_encode(['v' => xpAppBuildVersion()]);
+    exit;
+}
+
+// Manifest dinámico PWA: siempre sin caché HTTP y con ?v= automático en los íconos
+if ($action === 'manifest') {
+    header('Content-Type: application/manifest+json; charset=utf-8');
+    header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
+    header('Pragma: no-cache');
+    $v192  = xpAssetVer('assets/img/icon-192.png');
+    $v512  = xpAssetVer('assets/img/icon-512.png');
+    $vMask = xpAssetVer('assets/img/icon-maskable-512.png');
+    echo json_encode([
+        'id'               => './',
+        'name'             => 'Atlas Fit',
+        'short_name'       => 'Atlas Fit',
+        'description'      => 'Sistema de gestión para entrenadores y atletas',
+        'start_url'        => './',
+        'scope'            => './',
+        'display'          => 'standalone',
+        'orientation'      => 'portrait',
+        'background_color' => '#02040a',
+        'theme_color'      => '#02040a',
+        'categories'       => ['fitness', 'health', 'sports'],
+        'icons'            => [
+            [
+                'src'     => './assets/img/icon-192.png?v=' . $v192,
+                'sizes'   => '192x192',
+                'type'    => 'image/png',
+                'purpose' => 'any',
+            ],
+            [
+                'src'     => './assets/img/icon-512.png?v=' . $v512,
+                'sizes'   => '512x512',
+                'type'    => 'image/png',
+                'purpose' => 'any',
+            ],
+            [
+                'src'     => './assets/img/icon-maskable-512.png?v=' . $vMask,
+                'sizes'   => '512x512',
+                'type'    => 'image/png',
+                'purpose' => 'maskable',
+            ],
+        ],
+    ], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
+    exit;
+}
+
 if ($action === 'producto') {
     $id = (int)($_GET['id'] ?? 0);
     if (!$id) {

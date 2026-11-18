@@ -3,7 +3,7 @@ $pageTitle = 'Mis Estadísticas';
 require __DIR__ . '/../layout/header.php';
 ?>
 <!-- Chart.js Local (0ms de latencia, 100% Offline Compatible) con fallback -->
-<script src="<?= APP_URL ?>/assets/vendor/chartjs/chart.min.js"></script>
+<script src="<?= APP_URL ?>/assets/vendor/chartjs/chart.min.js?v=<?= xpAssetVer('assets/vendor/chartjs/chart.min.js') ?>"></script>
 <script>
   if (typeof Chart === 'undefined') {
     document.write('<script src="https://cdn.jsdelivr.net/npm/chart.js"><\/script>');

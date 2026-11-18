@@ -79,8 +79,8 @@ RewriteRule ^(fix_|check|test_|kogane_).*\.php$ - [F,L]
 
     # Permitir carga y decodificación de assets estáticos locales en Canvas/PWA
     <FilesMatch "\.(jpe?g|png|gif|svg|webp|ico|woff2?)$">
-        Header set Access-Control-Allow-Origin "*"
-        Header set Cross-Origin-Resource-Policy "cross-origin"
+        Header always set Access-Control-Allow-Origin "*"
+        Header always set Cross-Origin-Resource-Policy "cross-origin"
     </FilesMatch>
 </IfModule>
 
@@ -150,9 +150,11 @@ RewriteRule ^(fix_|check|test_|kogane_).*\.php$ - [F,L]
 
 # ── Cache-Control headers complementarios ─────────────────────
 <IfModule mod_headers.c>
-    # Assets estáticos: inmutables por 1 año
+    # Assets estáticos versionados (?v=...): inmutables por 1 año (0ms de red)
+    # Assets sin versión (ej. favicon/iconos directos): revalidación horaria para propagar cambios rápidos
     <FilesMatch "\.(css|js|woff2?|png|jpg|jpeg|webp|gif|svg|ico)$">
-        Header set Cache-Control "public, max-age=31536000, immutable"
+        Header set Cache-Control "public, max-age=3600, must-revalidate" env=!IMMUTABLE_ASSET
+        Header set Cache-Control "public, max-age=31536000, immutable" env=IMMUTABLE_ASSET
     </FilesMatch>
 
     # Service Worker y Manifest: NUNCA cachear en navegador (actualización inmediata)
@@ -171,6 +173,12 @@ RewriteRule ^(fix_|check|test_|kogane_).*\.php$ - [F,L]
 # ── ETags ──────────────────────────────────────────────────────
 # Desactivar ETags basados en inode (poco útiles en servidores múltiples)
 FileETag MTime Size
+
+# ── Marcar assets versionados (?v=...) como inmutables y servir manifest dinámico ─
+RewriteCond %{QUERY_STRING} (^|&)v= [NC]
+RewriteRule \.(css|js|woff2?|png|jpe?g|webp|gif|svg|ico)$ - [E=IMMUTABLE_ASSET:1]
+
+RewriteRule ^manifest\.webmanifest$ index.php?route=public/manifest [QSA,L]
 
 # ── Router principal ───────────────────────────────────────────
 RewriteCond %{REQUEST_FILENAME} !-f

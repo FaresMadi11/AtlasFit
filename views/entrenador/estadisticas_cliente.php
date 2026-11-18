@@ -33,7 +33,7 @@
 
 <?php if(!empty($pesoHistorial) || !empty($sesiones)): ?>
 <!-- Chart.js Local con fallback CDN -->
-<script src="<?= APP_URL ?>/assets/vendor/chartjs/chart.min.js"></script>
+<script src="<?= APP_URL ?>/assets/vendor/chartjs/chart.min.js?v=<?= xpAssetVer('assets/vendor/chartjs/chart.min.js') ?>"></script>
 <script>
   if (typeof Chart === 'undefined') {
     document.write('<script src="https://cdn.jsdelivr.net/npm/chart.js"><\/script>');

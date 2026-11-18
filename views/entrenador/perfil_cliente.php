@@ -1106,16 +1106,18 @@ svg.silueta-interactive {
   transition: transform 0.2s ease;
 }
 
-/* Modal Bottom-Sheet Picker */
+/* Modal Picker de Ejercicios (Portal sobre document.body) */
 .pm-picker-overlay {
   position: fixed;
   inset: 0;
   background: rgba(0, 0, 0, 0.75);
   backdrop-filter: blur(6px);
-  z-index: 9999;
+  -webkit-backdrop-filter: blur(6px);
+  z-index: 10050;
   display: none;
-  align-items: flex-end;
+  align-items: center;
   justify-content: center;
+  padding: 20px;
   opacity: 0;
   transition: opacity 0.25s ease;
 }
@@ -1124,29 +1126,49 @@ svg.silueta-interactive {
   opacity: 1;
 }
 .pm-picker-sheet {
-  background: #111827;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 24px 24px 0 0;
+  background: var(--card, #111827);
+  border: 1px solid var(--border, rgba(255, 255, 255, 0.1));
+  border-radius: 22px;
   width: 100%;
   max-width: 520px;
-  max-height: 82vh;
+  max-height: min(82vh, 620px);
   display: flex;
   flex-direction: column;
-  padding: 12px 18px 24px 18px;
-  box-shadow: 0 -10px 40px rgba(0, 0, 0, 0.85);
-  transform: translateY(100%);
-  transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  padding: 18px 20px 20px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.75);
+  transform: translateY(16px) scale(0.98);
+  transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
 }
 .pm-picker-overlay.open .pm-picker-sheet {
-  transform: translateY(0);
+  transform: translateY(0) scale(1);
 }
 .pm-picker-handle {
+  display: none;
   width: 38px;
   height: 4px;
   background: rgba(255, 255, 255, 0.2);
   border-radius: 4px;
   margin: 0 auto 12px auto;
   flex-shrink: 0;
+}
+@media (max-width: 767px) {
+  .pm-picker-overlay {
+    align-items: flex-end;
+    padding: 0;
+  }
+  .pm-picker-sheet {
+    border-radius: 24px 24px 0 0;
+    max-height: 85dvh;
+    padding: 12px 18px max(24px, env(safe-area-inset-bottom));
+    box-shadow: 0 -10px 40px rgba(0, 0, 0, 0.85);
+    transform: translateY(100%);
+  }
+  .pm-picker-overlay.open .pm-picker-sheet {
+    transform: translateY(0);
+  }
+  .pm-picker-handle {
+    display: block;
+  }
 }
 .pm-picker-head {
   display: flex;
@@ -1157,13 +1179,13 @@ svg.silueta-interactive {
 .pm-picker-title {
   font-size: 1rem;
   font-weight: 800;
-  color: #fff;
+  color: var(--text, #fff);
   display: flex;
   align-items: center;
 }
 .pm-picker-subtitle {
   font-size: 0.75rem;
-  color: #94a3b8;
+  color: var(--text2, #94a3b8);
   margin-top: 2px;
 }
 .pm-picker-close {
@@ -1198,11 +1220,11 @@ svg.silueta-interactive {
 }
 .pm-picker-search input {
   width: 100%;
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: var(--surface, rgba(255, 255, 255, 0.05));
+  border: 1px solid var(--border, rgba(255, 255, 255, 0.1));
   border-radius: 12px;
   padding: 10px 36px 10px 38px;
-  color: #fff;
+  color: var(--text, #fff);
   font-size: 0.85rem;
   outline: none;
   transition: all 0.2s;
@@ -1225,12 +1247,12 @@ svg.silueta-interactive {
 }
 .pm-picker-list {
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
   padding-right: 4px;
   display: flex;
   flex-direction: column;
   gap: 6px;
-  max-height: 55vh;
 }
 .pm-picker-item {
   display: flex;
@@ -1239,15 +1261,15 @@ svg.silueta-interactive {
   gap: 10px;
   padding: 10px 14px;
   border-radius: 12px;
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid rgba(255, 255, 255, 0.05);
+  background: var(--surface, rgba(255, 255, 255, 0.03));
+  border: 1px solid var(--border, rgba(255, 255, 255, 0.05));
   cursor: pointer;
   transition: all 0.15s ease;
   text-align: left;
 }
 .pm-picker-item:hover {
-  background: rgba(255, 255, 255, 0.07);
-  border-color: rgba(255, 255, 255, 0.12);
+  background: rgba(138, 43, 226, 0.08);
+  border-color: var(--border, rgba(255, 255, 255, 0.12));
   transform: translateX(2px);
 }
 .pm-picker-item.active {
@@ -1263,7 +1285,7 @@ svg.silueta-interactive {
 .pm-picker-item-name {
   font-size: 0.85rem;
   font-weight: 700;
-  color: #f1f5f9;
+  color: var(--text, #f1f5f9);
   line-height: 1.25;
 }
 .pm-picker-item.active .pm-picker-item-name {
@@ -4045,7 +4067,7 @@ svg.silueta-interactive {
 </div>
 
 <!-- Chart.js Local con fallback CDN -->
-<script src="<?= APP_URL ?>/assets/vendor/chartjs/chart.min.js"></script>
+<script src="<?= APP_URL ?>/assets/vendor/chartjs/chart.min.js?v=<?= xpAssetVer('assets/vendor/chartjs/chart.min.js') ?>"></script>
 <script>
   if (typeof Chart === 'undefined') {
     document.write('<script src="https://cdn.jsdelivr.net/npm/chart.js"><\/script>');
@@ -4679,6 +4701,10 @@ function abrirModalSelectorEjercicio() {
   }
   const overlay = document.getElementById('pmPickerOverlay');
   if (!overlay) return;
+  // Mover fuera de .card-bento/.xp-main para que backdrop-filter no corte position:fixed
+  if (overlay.parentElement !== document.body) {
+    document.body.appendChild(overlay);
+  }
   overlay.classList.add('open');
   document.body.style.overflow = 'hidden';
   const input = document.getElementById('pmPickerSearchInput');

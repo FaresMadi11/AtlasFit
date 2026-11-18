@@ -6864,5 +6864,9 @@ html[data-theme="nordic-frost"] .goal-chip.selected .goal-chip-icon,
 html[data-theme="nordic-frost"] .goal-chip.active .goal-chip-icon {
   color: #7c3aed !important;
 }
+html[data-theme="light"] .xp-nav-brand .brand-icon img,
+html[data-theme="nordic-frost"] .xp-nav-brand .brand-icon img {
+  filter: brightness(0);
+}
 
 

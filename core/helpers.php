@@ -77,6 +77,67 @@ function asset(string $path = ''): string {
     return url($path);
 }
 
+/**
+ * Devuelve la marca de tiempo de modificación de un archivo local (SSOT de cache-busting).
+ */
+function xpAssetVer(string $relPath): string {
+    static $cache = [];
+    $clean = ltrim(str_replace('\\', '/', $relPath), '/');
+    if (isset($cache[$clean])) {
+        return $cache[$clean];
+    }
+    $full = (defined('BASE_DIR') ? BASE_DIR : dirname(__DIR__)) . '/' . $clean;
+    $mt = @filemtime($full);
+    return $cache[$clean] = ($mt !== false ? (string)$mt : '1');
+}
+
+/**
+ * Calcula un hash determinista corto de la build actual (CSS, JS, iconos, manifest, SW y layout).
+ * Cambia automáticamente en cada despliegue sin editar versiones manualmente.
+ */
+function xpAppBuildVersion(): string {
+    static $ver = null;
+    if ($ver !== null) {
+        return $ver;
+    }
+    $files = [
+        'sw.js',
+        'manifest.webmanifest',
+        'assets/css/style.css',
+        'assets/css/custom-select.css',
+        'assets/css/custom-date.css',
+        'assets/js/app.js',
+        'assets/js/pwa-sync.js',
+        'assets/js/custom-select.js',
+        'assets/js/custom-date.js',
+        'assets/vendor/tabler-icons/tabler-icons.min.css',
+        'assets/vendor/tabler-icons/fonts/tabler-icons.woff2',
+        'assets/vendor/sweetalert2/sweetalert2.all.min.js',
+        'assets/vendor/animejs/anime.min.js',
+        'assets/img/icon-192.png',
+        'assets/img/icon-512.png',
+        'assets/img/icon-maskable-512.png',
+        'assets/img/apple-touch-icon.png',
+        'assets/img/favicon-32.png',
+        'assets/img/favicon.svg',
+        'favicon.ico',
+        'views/layout/header.php',
+        'views/auth/login.php',
+    ];
+    $parts = [];
+    foreach ($files as $f) {
+        $parts[] = $f . ':' . xpAssetVer($f);
+    }
+    return $ver = substr(md5(implode('|', $parts)), 0, 10);
+}
+
+/**
+ * Nombre único de caché para Service Worker y pwa-sync.js alineado a la build actual.
+ */
+function xpAppCacheName(): string {
+    return 'atlas-fit-' . xpAppBuildVersion();
+}
+
 /** Redirige y termina */
 function redirect(string $path): never {
     header('Location: ' . url($path));
