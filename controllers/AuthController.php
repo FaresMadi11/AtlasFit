@@ -413,18 +413,24 @@ function authDoRegistro(): void {
         $pregunta     = sanitizeInput($in('pregunta_seguridad'),  100);
         $respuesta    = sanitizeInput($in('respuesta_seguridad'), 100);
 
-        // Campos del Onboarding Wizard (Composición y Metas)
+        // Detectar ANTES de validar campos exclusivos de atleta si es una solicitud de Entrenador
+        $esEntrenador = in_array(strtolower(trim((string)$in('soy_entrenador'))), ['1', 'true', 'on', 'si', 'yes'], true);
+
+        // Campos del Onboarding Wizard (Composición y Metas — solo obligatorios para atletas)
         $fechaNacRaw = trim($in('fecha_nacimiento') ?: $in('fecha_nac'));
         $fechaNac    = preg_match('/^\d{4}-\d{2}-\d{2}$/', $fechaNacRaw) ? $fechaNacRaw : '2005-06-15';
-        
-        $pesoRaw     = (float)($in('peso_kg') ?: $in('peso'));
-        if ($pesoRaw < 35 || $pesoRaw > 160) {
-            authRegistroError('El peso corporal debe estar entre 35 kg y 160 kg.', 'peso_kg');
-        }
-        $pesoKg      = round($pesoRaw, 1);
 
-        $alturaRaw   = (float)($in('altura_cm') ?: $in('altura'));
-        $alturaCm    = ($alturaRaw >= 100 && $alturaRaw <= 250) ? round($alturaRaw) : 170.0;
+        $pesoKg   = null;
+        $alturaCm = null;
+        if (!$esEntrenador) {
+            $pesoRaw = (float)($in('peso_kg') ?: $in('peso'));
+            if ($pesoRaw < 35 || $pesoRaw > 160) {
+                authRegistroError('El peso corporal debe estar entre 35 kg y 160 kg.', 'peso_kg');
+            }
+            $pesoKg    = round($pesoRaw, 1);
+            $alturaRaw = (float)($in('altura_cm') ?: $in('altura'));
+            $alturaCm  = ($alturaRaw >= 100 && $alturaRaw <= 250) ? round($alturaRaw) : 170.0;
+        }
 
         // Metas seleccionadas (array o JSON estructurado)
         $metas = [];
@@ -503,9 +509,6 @@ function authDoRegistro(): void {
             }
         }
         $metas = array_values(array_filter($metas));
-
-        // Detectar si el registro es una solicitud de cuenta de Entrenador (sin código de invitación)
-        $esEntrenador = in_array(strtolower(trim((string)$in('soy_entrenador'))), ['1', 'true', 'on', 'si', 'yes'], true);
 
         // ── 4. Validar tipos, longitudes y listas blancas ──
         if (mb_strlen($nombres) < 2 || !preg_match($reNombre, $nombres)) {
@@ -1060,6 +1063,29 @@ function authLogout(): void {
 // ══════════════════════════════════════════════════════════════
 
 function authGoogleRedirect(): void {
+    $isHttpsCookie = (
+        (!empty($_SERVER['HTTPS']) && strtolower((string)$_SERVER['HTTPS']) !== 'off') ||
+        (!empty($_SERVER['HTTP_X_FORWARDED_PROTO']) && strtolower((string)$_SERVER['HTTP_X_FORWARDED_PROTO']) === 'https')
+    );
+    if (!empty($_GET['role']) && $_GET['role'] === 'entrenador') {
+        $_SESSION['oauth_intent_role'] = 'entrenador';
+        @setcookie('xp_oauth_role', 'entrenador', [
+            'expires'  => time() + 600,
+            'path'     => '/',
+            'secure'   => $isHttpsCookie,
+            'httponly' => true,
+            'samesite' => 'Lax',
+        ]);
+    } else {
+        unset($_SESSION['oauth_intent_role']);
+        @setcookie('xp_oauth_role', '', [
+            'expires'  => time() - 3600,
+            'path'     => '/',
+            'secure'   => $isHttpsCookie,
+            'httponly' => true,
+            'samesite' => 'Lax',
+        ]);
+    }
     if (!empty($_GET['ref']) && is_string($_GET['ref'])) {
         $refInfo = resolverEntrenadorPorCodigo($_GET['ref']);
         $codeToSave = $refInfo ? (string)$refInfo['codigo_referido'] : strtoupper(trim($_GET['ref']));
@@ -1068,6 +1094,7 @@ function authGoogleRedirect(): void {
             @setcookie('xp_ref_code', $codeToSave, [
                 'expires'  => time() + (14 * 86400),
                 'path'     => '/',
+                'secure'   => $isHttpsCookie,
                 'httponly' => true,
                 'samesite' => 'Lax',
             ]);

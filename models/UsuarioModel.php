@@ -103,7 +103,7 @@ class UsuarioModel {
      */
     public function findById(int $id): ?array {
         $s = $this->db->prepare(
-            "SELECT id, nombre, email, rol, estado_cuenta, google_id, auth_provider, avatar_url
+            "SELECT id, nombre, email, password_hash, rol, activo, estado_cuenta, google_id, auth_provider, avatar_url
              FROM usuarios WHERE id = ? LIMIT 1"
         );
         $s->execute([$id]);
@@ -117,7 +117,7 @@ class UsuarioModel {
         if (empty($googleId)) return null;
 
         $s = $this->db->prepare(
-            "SELECT id, nombre, email, rol, estado_cuenta, google_id, auth_provider, avatar_url
+            "SELECT id, nombre, email, password_hash, rol, activo, estado_cuenta, google_id, auth_provider, avatar_url
              FROM usuarios WHERE google_id = ? LIMIT 1"
         );
         $s->execute([$googleId]);

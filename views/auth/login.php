@@ -121,48 +121,68 @@ $metaColorLogin = $mapaMetaColorLogin[$temaGlobalLogin] ?? '#02040a';
   if ('serviceWorker' in navigator) {
     var xpSwVer = <?= json_encode($xpBuildVer) ?>;
     var xpHadCtrl = !!navigator.serviceWorker.controller;
-    var xpLastCheck = Date.now();
+    var xpLastCheck = 0;
     navigator.serviceWorker.register(appBase + '/sw.js?v=' + xpSwVer, { scope: appBase + '/', updateViaCache: 'none' })
-      .then(function(r) { r.update().catch(function(){}); })
+      .then(function(r) {
+        if (r.waiting) r.waiting.postMessage({ type: 'SKIP_WAITING' });
+        r.update().catch(function(){});
+      })
       .catch(function(){});
-    document.addEventListener('visibilitychange', function() {
-      if (document.visibilityState !== 'visible' || !navigator.onLine) return;
+
+    var tryReloadLoginForBuild = function(targetVer) {
+      try {
+        if (sessionStorage.getItem('xp_sw_reloaded') === targetVer) return;
+        var ae = document.activeElement;
+        if (ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA' || ae.tagName === 'SELECT')) return;
+        var regView = document.getElementById('view-register');
+        if ((regView && regView.style.display !== 'none') || document.querySelector('.swal2-container')) return;
+        sessionStorage.setItem('xp_sw_reloaded', targetVer);
+      } catch (_) {}
+      window.location.reload();
+    };
+
+    var checkLoginBuildUpdate = function(force) {
+      if (!navigator.onLine) return;
       var now = Date.now();
-      if (now - xpLastCheck < 30000) return;
+      if (!force && (now - xpLastCheck) < 8000) return;
       xpLastCheck = now;
-      fetch(appBase + '/public/version', { cache: 'no-store', credentials: 'same-origin' })
+      fetch(appBase + '/public/version?t=' + now, { cache: 'no-store', credentials: 'same-origin' })
         .then(function(res) { return res.ok ? res.json() : null; })
         .then(function(data) {
           if (!data || !data.v || data.v === xpSwVer) return;
+          if ('caches' in window) {
+            caches.keys().then(function(ks) {
+              ks.forEach(function(k) { if (k !== ('atlas-fit-' + data.v)) caches.delete(k); });
+            }).catch(function(){});
+          }
           navigator.serviceWorker.register(appBase + '/sw.js?v=' + encodeURIComponent(data.v), {
             scope: appBase + '/',
             updateViaCache: 'none'
+          }).then(function(r) {
+            if (r.waiting) r.waiting.postMessage({ type: 'SKIP_WAITING' });
+            r.update().catch(function(){});
           }).catch(function(){});
-          try {
-            if (sessionStorage.getItem('xp_sw_reloaded') === data.v) return;
-            var ae = document.activeElement;
-            if (ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA' || ae.tagName === 'SELECT')) return;
-            var regView = document.getElementById('view-register');
-            if ((regView && regView.style.display !== 'none') || document.querySelector('.swal2-container')) return;
-            sessionStorage.setItem('xp_sw_reloaded', data.v);
-          } catch (_) {}
-          window.location.reload();
+          tryReloadLoginForBuild(data.v);
         })
         .catch(function(){});
+    };
+
+    // Verificar versión nueva inmediatamente al abrir el acceso directo PWA, al volver a primer plano o recuperar red
+    checkLoginBuildUpdate(true);
+    document.addEventListener('visibilitychange', function() {
+      if (document.visibilityState === 'visible') checkLoginBuildUpdate(false);
     });
+    window.addEventListener('focus', function() { checkLoginBuildUpdate(false); });
+    window.addEventListener('online', function() { checkLoginBuildUpdate(true); });
+    window.addEventListener('pageshow', function(ev) { if (ev.persisted) checkLoginBuildUpdate(true); });
+
     navigator.serviceWorker.addEventListener('controllerchange', function() {
       if (!xpHadCtrl) return;
       var ctrlUrl = navigator.serviceWorker.controller ? navigator.serviceWorker.controller.scriptURL : '';
       var ctrlVer = '';
       try { ctrlVer = new URL(ctrlUrl, window.location.href).searchParams.get('v') || ''; } catch (_) {}
       if (!ctrlVer || ctrlVer === xpSwVer) return;
-      try {
-        if (sessionStorage.getItem('xp_sw_reloaded') === ctrlVer) return;
-        var ae = document.activeElement;
-        if (ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA' || ae.tagName === 'SELECT')) return;
-        sessionStorage.setItem('xp_sw_reloaded', ctrlVer);
-      } catch (_) {}
-      window.location.reload();
+      tryReloadLoginForBuild(ctrlVer);
     });
   }
 })();
@@ -1734,6 +1754,16 @@ $esStandbyEntrenador = ($esStandby && (($_GET['rol'] ?? '') === 'entrenador'));
 
   <!-- ══ VISTA LOGIN ══ -->
   <div id="view-login" class="auth-view"<?= $esLogin ? '' : ' style="display: none;" aria-hidden="true"' ?>>
+  <?php
+    $flashMsg  = is_array($flash ?? null) ? trim((string)($flash['msg'] ?? $flash['error'] ?? '')) : '';
+    $flashType = is_array($flash ?? null) ? (string)($flash['type'] ?? (!empty($flash['error']) ? 'error' : 'info')) : '';
+  ?>
+  <?php if ($flashMsg !== ''): ?>
+  <div role="alert" style="margin-bottom:14px;padding:11px 14px;border-radius:14px;font-size:0.84rem;font-weight:600;line-height:1.4;display:flex;align-items:center;gap:9px;<?= $flashType === 'error' ? 'background:rgba(239,68,68,0.14);border:1px solid rgba(248,113,113,0.45);color:#fecaca;' : 'background:rgba(34,197,94,0.14);border:1px solid rgba(74,222,128,0.45);color:#bbf7d0;' ?>">
+    <i class="ti <?= $flashType === 'error' ? 'ti-alert-circle' : 'ti-circle-check' ?>" style="font-size:1.1rem;flex-shrink:0;"></i>
+    <span><?= e($flashMsg) ?></span>
+  </div>
+  <?php endif; ?>
   <form id="loginForm" method="POST" action="<?= APP_URL ?>/auth/do-login" novalidate aria-label="Formulario de inicio de sesión">
     <?= csrfField() ?>
     <div class="field" id="group_login_usuario">
@@ -1867,7 +1897,7 @@ $esStandbyEntrenador = ($esStandby && (($_GET['rol'] ?? '') === 'entrenador'));
             </label>
             <label class="trainer-switch-pill" id="pillSoyEntrenador" for="reg_soy_entrenador" title="Activa esta opción si te estás registrando como entrenador">
               <span>Soy entrenador</span>
-              <input type="checkbox" id="reg_soy_entrenador" name="soy_entrenador" value="1" role="switch" aria-checked="false" aria-label="Soy entrenador, no necesito código de invitación">
+              <input type="checkbox" id="reg_soy_entrenador" name="soy_entrenador" value="1" role="switch" <?= !empty($googleData['es_entrenador']) ? 'checked aria-checked="true"' : 'aria-checked="false"' ?> aria-label="Soy entrenador, no necesito código de invitación">
               <span class="trainer-switch-track" aria-hidden="true"><span class="trainer-switch-thumb"></span></span>
             </label>
           </div>
@@ -1982,7 +2012,7 @@ $esStandbyEntrenador = ($esStandby && (($_GET['rol'] ?? '') === 'entrenador'));
           </script>
         </div>
 
-        <button type="button" id="btnWizardStep1Next" class="btn-submit btn-wizard-next btn-wizard-next-step1" onclick="handleWizardStep1Next(event)">
+        <button type="button" id="btnWizardStep1Next" class="btn-submit btn-wizard-next btn-wizard-next-step1">
           SIGUIENTE <i class="ti ti-arrow-right" style="vertical-align:middle;margin-left:4px;"></i>
         </button>
 
@@ -2282,17 +2312,17 @@ $esStandbyEntrenador = ($esStandby && (($_GET['rol'] ?? '') === 'entrenador'));
 </div>
 </main>
 
-<?php if (!empty($flash['error'])): ?>
+<?php if (!empty($flashMsg)): ?>
 <script>
-document.addEventListener('DOMContentLoaded', () => {
+window.addEventListener('load', () => {
     if (typeof Swal !== 'undefined') {
         Swal.fire({
-            icon: 'error',
-            title: 'Atención',
-            text: '<?= addslashes($flash['error']) ?>',
+            icon: <?= json_encode($flashType === 'error' ? 'error' : 'info') ?>,
+            title: <?= json_encode($flashType === 'error' ? 'Atención' : 'Información') ?>,
+            text: <?= json_encode($flashMsg, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>,
             background: '#111827',
             color: '#fff',
-            confirmButtonColor: '#4f46e5'
+            confirmButtonColor: '#8a2be2'
         });
     }
 });
@@ -2594,7 +2624,7 @@ function updateStandbyCopy(esEntrenador) {
       if (wizProgress) wizProgress.style.display = 'none';
       if (step1Sub) step1Sub.textContent = 'Completa tus datos para solicitar tu cuenta de entrenador';
       if (btnStep1) btnStep1.innerHTML = '<i class="ti ti-check"></i> <span>Solicitar acceso</span>';
-      if (btnGoo) btnGoo.href = APP + '/auth/google';
+      if (btnGoo) btnGoo.href = APP + '/auth/google?role=entrenador';
     } else {
       inpRef.disabled = false;
       inpRef.required = true;
@@ -2609,11 +2639,18 @@ function updateStandbyCopy(esEntrenador) {
       if (wizProgress) wizProgress.style.display = '';
       if (step1Sub) step1Sub.textContent = origStep1SubText;
       if (btnStep1) btnStep1.innerHTML = origStep1BtnHtml;
+      if (btnGoo) {
+        const code = (inpRef.value || '').trim().toUpperCase();
+        btnGoo.href = APP + '/auth/google' + (code ? ('?ref=' + encodeURIComponent(code)) : '');
+      }
     }
   };
 
   if (chkTrainer) {
     chkTrainer.addEventListener('change', window.syncTrainerSwitchUI);
+    if (chkTrainer.checked) {
+      window.syncTrainerSwitchUI();
+    }
   }
 
   inpRef.addEventListener('input', () => {
@@ -3163,11 +3200,15 @@ window.verificarCodigoEmailBtn = async function(silent = false) {
 };
 
 /* ── 6. Manejador Global e Incondicional de SIGUIENTE → (Paso 1) ── */
+let isStep1Busy = false;
 window.handleWizardStep1Next = async function(event) {
   if (event) {
     if (typeof event.preventDefault === 'function') event.preventDefault();
     if (typeof event.stopPropagation === 'function') event.stopPropagation();
   }
+  if (isStep1Busy) return;
+  isStep1Busy = true;
+  try {
 
   clearRegErrors();
 
@@ -3278,13 +3319,9 @@ window.handleWizardStep1Next = async function(event) {
       box.classList.add('has-error');
     }
 
-    // Scroll suave del contenedor hacia el campo con el aviso discreto arriba
-    const main = document.getElementById('mainContent');
-    if (box && main) {
-      const boxRect = box.getBoundingClientRect();
-      const mainRect = main.getBoundingClientRect();
-      const targetY = main.scrollTop + (boxRect.top - mainRect.top) - 60;
-      main.scrollTo({ top: Math.max(0, targetY), behavior: 'smooth' });
+    // Scroll suave y confiable hacia el campo con error en móvil y escritorio
+    if (box) {
+      try { box.scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch (_) {}
     }
 
     const errMap = {
@@ -3297,6 +3334,8 @@ window.handleWizardStep1Next = async function(event) {
     if (errSmall) {
       errSmall.textContent = errorMsg;
       errSmall.style.display = 'inline-flex';
+    } else if (errorMsg) {
+      Toast.fire({ icon: 'warning', title: errorMsg });
     }
 
     if (inp) {
@@ -3316,6 +3355,9 @@ window.handleWizardStep1Next = async function(event) {
 
   // Todos los campos válidos: transición inmediata y garantizada al Paso 2
   window.forceStepSwitch(1, 2);
+  } finally {
+    isStep1Busy = false;
+  }
 };
 
 // Delegación Global en document para botones del wizard
@@ -3491,12 +3533,20 @@ async function submitRegistration(isOmitido = false) {
       });
     } else {
       setBtn(btn, false, origBtnHtml);
+      const errMsg = data.msg || data.mensaje || 'No se pudo completar el registro.';
       if (data.campo) {
         goToWizardStep(1);
-        const input = setRegError(data.campo, data.msg || 'Dato no válido.');
-        if (input) input.focus();
+        const input = setRegError(data.campo, errMsg);
+        const box = input ? input.closest('.input-box-group') : null;
+        if (box) {
+          try { box.scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch (_) {}
+          if (input && input.type !== 'hidden') input.focus();
+        } else {
+          // Campo oculto o sin contenedor visible: nunca tragar errores en silencio
+          Toast.fire({ icon: 'error', title: errMsg });
+        }
       } else {
-        Toast.fire({ icon: 'error', title: data.msg || 'No se pudo completar el registro.' });
+        Toast.fire({ icon: 'error', title: errMsg });
       }
       if (typeof anime !== 'undefined') {
         anime({ targets: '#authBox', translateX: [0, -8, 8, -5, 5, 0], duration: 500, easing: 'linear' });

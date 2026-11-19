@@ -82,8 +82,13 @@ self.addEventListener('install', event => {
 });
 
 self.addEventListener('message', event => {
-  if (event.data && event.data.type === 'SKIP_WAITING') {
+  if (!event.data) return;
+  if (event.data.type === 'SKIP_WAITING') {
     self.skipWaiting();
+  } else if (event.data.type === 'CLEAR_CACHES') {
+    event.waitUntil(
+      caches.keys().then(keys => Promise.all(keys.map(k => caches.delete(k))))
+    );
   }
 });
 
@@ -159,8 +164,12 @@ self.addEventListener('fetch', event => {
     return;
   }
 
-  // ── REGLA ZERO-TRUST 1: NUNCA INTERCEPTAR MUTACIONES, OAUTH NI LOGOUT EXPLÍCITO ──
+  // ── REGLA ZERO-TRUST 1: NUNCA INTERCEPTAR AUTH, OAUTH, VERSION CHECK NI MUTACIONES ──
   if (
+    pathname.includes('/auth/') ||
+    pathname.endsWith('/auth') ||
+    pathname.includes('/public/version') ||
+    pathname.includes('/public/manifest') ||
     pathname.includes('/logout') ||
     pathname.includes('/google') ||
     pathname.includes('/do-') ||
@@ -218,15 +227,20 @@ self.addEventListener('fetch', event => {
 
       const resolveOfflineHtml = async () => {
         const keys = await cache.keys();
-        const isRootOrLogin = (
+        const isRootPath = (
           pathname.endsWith('/') ||
-          pathname.endsWith('/index.php') ||
-          pathname.includes('/login') ||
-          pathname.includes('/auth') ||
-          pathname.includes('/dashboard')
+          pathname.endsWith('/index.php')
         );
 
-        if (isRootOrLogin) {
+        const directMatch = await cache.match(req, { ignoreSearch: true });
+        if (directMatch) return directMatch;
+
+        // Nunca mezclar HTML de cliente/entrenador al navegar a rutas /admin/
+        if (pathname.includes('/admin/')) {
+          return null;
+        }
+
+        if (isRootPath) {
           const homeKey =
             keys.find(k => k.url.toLowerCase().includes('/cliente/dashboard')) ||
             keys.find(k => k.url.toLowerCase().includes('/cliente/perfil')) ||
@@ -234,9 +248,6 @@ self.addEventListener('fetch', event => {
             keys.find(k => k.url.toLowerCase().includes('/cliente/rutina-dia'));
           if (homeKey) return await cache.match(homeKey);
         }
-
-        const directMatch = await cache.match(req, { ignoreSearch: true });
-        if (directMatch) return directMatch;
 
         if (pathname.includes('/rutina')) {
           const rutinaKey = keys.find(k => {
@@ -270,7 +281,7 @@ self.addEventListener('fetch', event => {
           if (cfgKey) return await cache.match(cfgKey);
         }
 
-        if (isRootOrLogin) {
+        if (isRootPath) {
           const anyHtmlKey = keys.find(k => {
             const u = k.url.toLowerCase();
             return u.includes('/cliente/') || u.includes('/entrenador/');
@@ -286,11 +297,11 @@ self.addEventListener('fetch', event => {
           networkResponse = await event.preloadResponse.catch(() => null);
         }
         if (!networkResponse) {
-          networkResponse = await fetch(req);
+          networkResponse = await fetch(new Request(req, { cache: 'no-store' }));
         }
         const finalUrl = (networkResponse && networkResponse.url ? networkResponse.url : req.url).toLowerCase();
         const isAuthPage = finalUrl.includes('/cliente/') || finalUrl.includes('/entrenador/');
-        if (isAuthPage) {
+        if (isAuthPage && !finalUrl.includes('/auth/')) {
           safeCachePut(req, networkResponse);
           if (finalUrl.includes('/dashboard') || finalUrl.includes('/perfil')) {
             try {
@@ -306,8 +317,9 @@ self.addEventListener('fetch', event => {
       const netPromise = fetchAndCacheNav();
 
       if (cachedFallback) {
+        // Priorizar siempre red fresca (hasta 6.5s para tolerar cold-start en Render/TiDB) y solo caer en caché si falla o está sin conexión
         try {
-          return await fetchWithTimeout(netPromise, 1800);
+          return await fetchWithTimeout(netPromise, 6500);
         } catch (_) {
           netPromise.catch(() => {});
           return cachedFallback;

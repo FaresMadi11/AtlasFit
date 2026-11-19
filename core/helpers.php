@@ -92,43 +92,43 @@ function xpAssetVer(string $relPath): string {
 }
 
 /**
- * Calcula un hash determinista corto de la build actual (CSS, JS, iconos, manifest, SW y layout).
- * Cambia automáticamente en cada despliegue sin editar versiones manualmente.
+ * Calcula un hash determinista corto de la build actual (vistas, controladores, modelos,
+ * core, CSS, JS, iconos, manifest y SW). Cambia automáticamente en cada despliegue.
  */
 function xpAppBuildVersion(): string {
     static $ver = null;
     if ($ver !== null) {
         return $ver;
     }
-    $files = [
+    $root = defined('BASE_DIR') ? BASE_DIR : dirname(__DIR__);
+    $patterns = [
+        'index.php',
         'sw.js',
         'manifest.webmanifest',
-        'assets/css/style.css',
-        'assets/css/custom-select.css',
-        'assets/css/custom-date.css',
-        'assets/js/app.js',
-        'assets/js/pwa-sync.js',
-        'assets/js/custom-select.js',
-        'assets/js/custom-date.js',
+        'favicon.ico',
+        'assets/css/*.css',
+        'assets/js/*.js',
+        'assets/img/*',
         'assets/vendor/tabler-icons/tabler-icons.min.css',
-        'assets/vendor/tabler-icons/fonts/tabler-icons.woff2',
         'assets/vendor/sweetalert2/sweetalert2.all.min.js',
         'assets/vendor/animejs/anime.min.js',
-        'assets/img/icon-192.png',
-        'assets/img/icon-512.png',
-        'assets/img/icon-maskable-512.png',
-        'assets/img/apple-touch-icon.png',
-        'assets/img/favicon-32.png',
-        'assets/img/favicon.svg',
-        'favicon.ico',
-        'views/layout/header.php',
-        'views/auth/login.php',
+        'core/*.php',
+        'models/*.php',
+        'controllers/*.php',
+        'views/*/*.php',
     ];
     $parts = [];
-    foreach ($files as $f) {
-        $parts[] = $f . ':' . xpAssetVer($f);
+    foreach ($patterns as $pat) {
+        $matches = glob($root . '/' . $pat) ?: [];
+        sort($matches);
+        foreach ($matches as $abs) {
+            if (!is_file($abs)) continue;
+            $rel = ltrim(str_replace(['\\', str_replace('\\', '/', $root)], ['/', ''], str_replace('\\', '/', $abs)), '/');
+            $mt  = @filemtime($abs);
+            $parts[] = $rel . ':' . ($mt !== false ? (string)$mt : '0');
+        }
     }
-    return $ver = substr(md5(implode('|', $parts)), 0, 10);
+    return $ver = substr(md5(implode('|', $parts)), 0, 12);
 }
 
 /**

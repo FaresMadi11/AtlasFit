@@ -15,11 +15,52 @@ function getGoogleRedirectUri(): string {
     return $base . '/auth/google-callback';
 }
 
+function googleOAuthIsHttps(): bool {
+    return (
+        (!empty($_SERVER['HTTPS']) && strtolower((string)$_SERVER['HTTPS']) !== 'off') ||
+        (!empty($_SERVER['HTTP_X_FORWARDED_PROTO']) && strtolower((string)$_SERVER['HTTP_X_FORWARDED_PROTO']) === 'https') ||
+        (!empty($_SERVER['HTTP_FRONT_END_HTTPS']) && strtolower((string)$_SERVER['HTTP_FRONT_END_HTTPS']) !== 'off') ||
+        (isset($_SERVER['SERVER_PORT']) && (int)$_SERVER['SERVER_PORT'] === 443)
+    );
+}
+
+/**
+ * Genera un token `state` firmado criptográficamente (HMAC-SHA256 + timestamp)
+ * resiliente a reinicios de contenedor y cambios de contexto en PWA instalada.
+ */
+function googleBuildSignedState(): string {
+    $nonce  = bin2hex(random_bytes(16));
+    $ts     = (string)time();
+    $secret = function_exists('xpRememberSecret') ? xpRememberSecret() : (string)env('GOOGLE_CLIENT_SECRET', 'atlas-oauth');
+    $sig    = hash_hmac('sha256', $nonce . '|' . $ts, $secret);
+    return $nonce . '.' . $ts . '.' . $sig;
+}
+
+function googleVerifySignedState(string $state, int $maxAgeSeconds = 600): bool {
+    $parts = explode('.', $state);
+    if (count($parts) !== 3) return false;
+    [$nonce, $tsStr, $sig] = $parts;
+    if (!preg_match('/^[a-f0-9]{32}$/', $nonce) || !ctype_digit($tsStr) || strlen($sig) !== 64) {
+        return false;
+    }
+    $ts = (int)$tsStr;
+    $now = time();
+    if ($ts > ($now + 60) || ($now - $ts) > $maxAgeSeconds) {
+        return false;
+    }
+    $secret   = function_exists('xpRememberSecret') ? xpRememberSecret() : (string)env('GOOGLE_CLIENT_SECRET', 'atlas-oauth');
+    $expected = hash_hmac('sha256', $nonce . '|' . $tsStr, $secret);
+    return hash_equals($expected, $sig);
+}
+
 /**
  * PASO 1: Redirigir al usuario a Google para autenticación.
  * Ruta: GET /auth/google
  */
 function googleRedirect(): void {
+    header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
+    header('Pragma: no-cache');
+
     $clientId    = env('GOOGLE_CLIENT_ID', '');
     $redirectUri = getGoogleRedirectUri();
 
@@ -28,10 +69,23 @@ function googleRedirect(): void {
         redirect('auth/login');
     }
 
-    // ── Generar state CSRF para prevenir ataques en el callback ──
-    $state = bin2hex(random_bytes(16));
+    // ── Generar state CSRF firmado y persistirlo en sesión + cookie SameSite=Lax ──
+    $state = googleBuildSignedState();
     $_SESSION['oauth_state'] = $state;
     $_SESSION['oauth_state_time'] = time();
+
+    @setcookie('xp_oauth_state', $state, [
+        'expires'  => time() + 600,
+        'path'     => '/',
+        'secure'   => googleOAuthIsHttps(),
+        'httponly' => true,
+        'samesite' => 'Lax',
+    ]);
+
+    // Garantizar que la sesión se escriba a disco antes de seguir la redirección externa
+    if (session_status() === PHP_SESSION_ACTIVE) {
+        session_write_close();
+    }
 
     $params = http_build_query([
         'client_id'     => $clientId,
@@ -52,21 +106,40 @@ function googleRedirect(): void {
  * Ruta: GET /auth/google-callback
  */
 function googleCallback(): void {
-    // ── Validar state CSRF ──
-    $state         = $_GET['state'] ?? '';
-    $expectedState = $_SESSION['oauth_state'] ?? '';
-    $stateTime     = $_SESSION['oauth_state_time'] ?? 0;
+    header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
+    header('Pragma: no-cache');
 
-    // Limpiar state de sesión
+    // ── Validar state CSRF (sesión, cookie dedicada o firma HMAC si la PWA cambió de contexto) ──
+    $state         = trim((string)($_GET['state'] ?? ''));
+    $expectedState = (string)($_SESSION['oauth_state'] ?? '');
+    $stateTime     = (int)($_SESSION['oauth_state_time'] ?? 0);
+    $cookieState   = (string)($_COOKIE['xp_oauth_state'] ?? '');
+
+    // Limpiar state de sesión y cookie
     unset($_SESSION['oauth_state'], $_SESSION['oauth_state_time']);
+    @setcookie('xp_oauth_state', '', [
+        'expires'  => time() - 3600,
+        'path'     => '/',
+        'secure'   => googleOAuthIsHttps(),
+        'httponly' => true,
+        'samesite' => 'Lax',
+    ]);
 
-    if (
-        empty($state) ||
-        !hash_equals($expectedState, $state) ||
-        (time() - $stateTime) > 600 // Expirar en 10 minutos
-    ) {
-        error_log('[Xprod Fit][OAuth] State CSRF inválido o expirado');
-        setFlash('error', 'Error de seguridad en la autenticación. Intenta de nuevo.');
+    $stateValid = false;
+    if ($state !== '') {
+        if ($expectedState !== '' && hash_equals($expectedState, $state) && (time() - $stateTime) <= 600) {
+            $stateValid = true;
+        } elseif ($cookieState !== '' && hash_equals($cookieState, $state) && googleVerifySignedState($state, 600)) {
+            $stateValid = true;
+        } elseif ($expectedState === '' && $cookieState === '' && googleVerifySignedState($state, 600)) {
+            // Handoff PWA standalone -> navegador del sistema donde el contenedor de cookies está aislado
+            $stateValid = true;
+        }
+    }
+
+    if (!$stateValid) {
+        error_log('[Xprod Fit][OAuth] State CSRF inválido o expirado (hasSession=' . ($expectedState !== '' ? '1' : '0') . ', hasCookie=' . ($cookieState !== '' ? '1' : '0') . ')');
+        setFlash('error', 'La sesión de inicio con Google expiró o cambió de ventana. Intenta iniciar sesión nuevamente.');
         redirect('auth/login');
     }
 
@@ -143,17 +216,23 @@ function googleCallback(): void {
             }
 
             // Pre-cargar nombre, apellido, correo y cédula (si existe) para el Onboarding Wizard
+            $intentRole = (string)($_SESSION['oauth_intent_role'] ?? ($_COOKIE['xp_oauth_role'] ?? ''));
+            unset($_SESSION['oauth_intent_role']);
             $_SESSION['google_onboarding'] = [
-                'user_id'    => $uid,
-                'email'      => $email,
-                'nombres'    => $givenName ?: ($payload['name'] ?? ''),
-                'apellidos'  => $familyName,
-                'avatar_url' => $avatarUrl,
-                'cedula'     => $clRow['cedula'] ?? ($cliente['cedula'] ?? ''),
+                'user_id'       => $uid,
+                'email'         => $email,
+                'nombres'       => $givenName ?: ($payload['name'] ?? ''),
+                'apellidos'     => $familyName,
+                'avatar_url'    => $avatarUrl,
+                'cedula'        => $clRow['cedula'] ?? ($cliente['cedula'] ?? ''),
+                'es_entrenador' => ($intentRole === 'entrenador'),
             ];
 
             // NO permitir acceso al Dashboard: destruir variables de sesión de usuario activo
             unset($_SESSION['user_id'], $_SESSION['nombre'], $_SESSION['email'], $_SESSION['rol'], $_SESSION['_login_at'], $_SESSION['_via']);
+            if (session_status() === PHP_SESSION_ACTIVE) {
+                session_write_close();
+            }
 
             // Redirigir al Onboarding Wizard en Modo Google
             redirect('auth/registro?google=1');
@@ -169,11 +248,13 @@ function googleCallback(): void {
             $esEnt = (($user['rol'] ?? '') === 'entrenador');
             if (($user['estado_cuenta'] ?? 'pendiente') === 'pendiente') {
                 unset($_SESSION['user_id'], $_SESSION['nombre'], $_SESSION['email'], $_SESSION['rol'], $_SESSION['_login_at'], $_SESSION['_via']);
+                if (session_status() === PHP_SESSION_ACTIVE) session_write_close();
                 redirect('auth/login?standby=1' . ($esEnt ? '&rol=entrenador' : ''));
                 return;
             } elseif (($user['estado_cuenta'] ?? '') === 'rechazado') {
                 unset($_SESSION['user_id'], $_SESSION['nombre'], $_SESSION['email'], $_SESSION['rol'], $_SESSION['_login_at'], $_SESSION['_via']);
                 setFlash('error', $esEnt ? UsuarioModel::MSG_RECHAZADO_ENTRENADOR : UsuarioModel::MSG_RECHAZADO);
+                if (session_status() === PHP_SESSION_ACTIVE) session_write_close();
                 redirect('auth/login');
                 return;
             }
@@ -181,25 +262,37 @@ function googleCallback(): void {
 
         // ── Paso E: Establecer sesión (Usuario activo) ──
         session_regenerate_id(true);
-        $_SESSION['user_id']   = (int)$user['id'];
-        $_SESSION['nombre']    = $user['nombre'];
-        $_SESSION['email']     = $user['email'];
-        $_SESSION['rol']       = $user['rol'];
-        $_SESSION['_login_at'] = time();
-        $_SESSION['_via']      = 'google';
+        $_SESSION['user_id']    = (int)$user['id'];
+        $_SESSION['nombre']     = $user['nombre'];
+        $_SESSION['email']      = $user['email'];
+        $_SESSION['rol']        = ($user['rol'] === 'atleta') ? 'cliente' : $user['rol'];
+        $_SESSION['_login_at']  = time();
+        $_SESSION['_acc_ok_ts'] = time();
+        $_SESSION['_via']       = 'google';
 
-        // Persistir sesión por 90 días en el teléfono
+        if ($_SESSION['rol'] === 'cliente' && !empty($cliente['id'])) {
+            $_SESSION['cliente_id'] = (int)$cliente['id'];
+        }
+
+        // Persistir sesión por 90 días en el teléfono (usa $user con password_hash real)
         xpSetRememberCookie($user);
 
-        $dest = $user['rol'] === 'admin'
-            ? 'admin/dashboard'
-            : ($user['rol'] === 'entrenador' ? 'entrenador/dashboard' : 'cliente/dashboard');
+        if (session_status() === PHP_SESSION_ACTIVE) {
+            session_write_close();
+        }
+
+        $dest = $_SESSION['rol'] === 'admin'
+            ? 'admin/rutina'
+            : ($_SESSION['rol'] === 'entrenador' ? 'entrenador/dashboard' : 'cliente/dashboard');
         redirect($dest);
         return;
 
     } catch (\Throwable $e) {
         error_log('[Xprod Fit][OAuth] Error en callback: ' . $e->getMessage());
         setFlash('error', 'Error al iniciar sesión con Google. Intenta de nuevo o usa el login tradicional.');
+        if (session_status() === PHP_SESSION_ACTIVE) {
+            session_write_close();
+        }
         redirect('auth/login');
     }
 }
@@ -341,20 +434,41 @@ function googleExchangeCode(string $code): array {
 }
 
 /**
- * Decodifica el JWT id_token de Google sin verificar firma criptográfica.
- * 
- * NOTA DE SEGURIDAD: Para máxima seguridad en producción de alto tráfico,
- * verificar la firma con las claves públicas de Google:
- * https://www.googleapis.com/oauth2/v3/certs
- * 
- * Para este proyecto, la verificación vía tokeninfo endpoint es suficiente.
+ * Decodifica y valida los claims del JWT id_token obtenido directamente del endpoint
+ * autoritativo https://oauth2.googleapis.com/token (sobre TLS con client_secret).
+ * Evita un segundo roundtrip innecesario y propenso a timeouts hacia tokeninfo.
  */
 function googleDecodeIdToken(string $idToken): array {
-    // Verificar el token con el endpoint de Google (método más seguro sin librería JWT)
-    $url = 'https://oauth2.googleapis.com/tokeninfo?id_token=' . urlencode($idToken);
-    $payload = googleHttpGet($url);
+    $payload = null;
+    $parts = explode('.', $idToken);
+    if (count($parts) === 3) {
+        $b64 = strtr($parts[1], '-_', '+/');
+        $pad = strlen($b64) % 4;
+        if ($pad > 0) $b64 .= str_repeat('=', 4 - $pad);
+        $decoded = json_decode((string)base64_decode($b64, true), true);
+        if (is_array($decoded) && !empty($decoded['sub']) && !empty($decoded['email'])) {
+            $payload = $decoded;
+        }
+    }
 
-    // Verificar que el token sea para nuestra app
+    // Fallback a tokeninfo solo si el JWT no pudo decodificarse localmente
+    if ($payload === null) {
+        $url = 'https://oauth2.googleapis.com/tokeninfo?id_token=' . urlencode($idToken);
+        $payload = googleHttpGet($url);
+    }
+
+    // Verificar emisor (iss)
+    $iss = (string)($payload['iss'] ?? '');
+    if ($iss !== '' && !in_array($iss, ['https://accounts.google.com', 'accounts.google.com'], true)) {
+        throw new \RuntimeException('Emisor de token de Google no válido.');
+    }
+
+    // Verificar expiración (exp) con 60s de tolerancia de reloj
+    if (!empty($payload['exp']) && (int)$payload['exp'] < (time() - 60)) {
+        throw new \RuntimeException('El token de Google ha expirado.');
+    }
+
+    // Verificar que el token pertenezca a nuestra app (aud)
     $expectedClientId = env('GOOGLE_CLIENT_ID', '');
     if (
         !empty($expectedClientId) &&

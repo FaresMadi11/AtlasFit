@@ -155,9 +155,12 @@ $temaGlobalVer     = (int)($temaInfoUser['global_ver'] ?? 1);
       }
       if ('serviceWorker' in navigator) {
         const hadController = !!navigator.serviceWorker.controller;
-        let lastVerCheck = Date.now();
+        let lastVerCheck = 0;
         navigator.serviceWorker.register(window.XP_SW_URL, { scope: window.APP + '/', updateViaCache: 'none' })
-          .then(function(r) { r.update().catch(function(){}); })
+          .then(function(r) {
+            if (r.waiting) r.waiting.postMessage({ type: 'SKIP_WAITING' });
+            r.update().catch(function(){});
+          })
           .catch(function(){});
 
         const trySafeReload = function(targetVer) {
@@ -180,28 +183,39 @@ $temaGlobalVer     = (int)($temaInfoUser['global_ver'] ?? 1);
           window.location.reload();
         };
 
-        // Al volver a la PWA desde segundo plano, verifica si se subió una nueva build al servidor
-        const checkBuildOnResume = function() {
+        // Al abrir la PWA instalada o volver de segundo plano, verifica de inmediato si hay una nueva build en el servidor
+        const checkBuildOnResume = function(force) {
           if (!navigator.onLine) return;
           const now = Date.now();
-          if (now - lastVerCheck < 30000) return;
+          if (!force && (now - lastVerCheck) < 8000) return;
           lastVerCheck = now;
-          fetch(window.APP + '/public/version', { cache: 'no-store', credentials: 'same-origin' })
+          fetch(window.APP + '/public/version?t=' + now, { cache: 'no-store', credentials: 'same-origin' })
             .then(function(res) { return res.ok ? res.json() : null; })
             .then(function(data) {
               if (!data || !data.v || data.v === window.XP_SW_VER) return;
+              if ('caches' in window) {
+                caches.keys().then(function(ks) {
+                  ks.forEach(function(k) { if (k !== ('atlas-fit-' + data.v)) caches.delete(k); });
+                }).catch(function(){});
+              }
               navigator.serviceWorker.register(window.APP + '/sw.js?v=' + encodeURIComponent(data.v), {
                 scope: window.APP + '/',
                 updateViaCache: 'none'
+              }).then(function(r) {
+                if (r.waiting) r.waiting.postMessage({ type: 'SKIP_WAITING' });
+                r.update().catch(function(){});
               }).catch(function(){});
               trySafeReload(data.v);
             })
             .catch(function(){});
         };
+        checkBuildOnResume(true);
         document.addEventListener('visibilitychange', function() {
-          if (document.visibilityState === 'visible') checkBuildOnResume();
+          if (document.visibilityState === 'visible') checkBuildOnResume(false);
         });
-        window.addEventListener('online', checkBuildOnResume);
+        window.addEventListener('focus', function() { checkBuildOnResume(false); });
+        window.addEventListener('online', function() { checkBuildOnResume(true); });
+        window.addEventListener('pageshow', function(ev) { if (ev.persisted) checkBuildOnResume(true); });
 
         // Solo recarga ante controllerchange si el HTML actual era de una build anterior (evita doble carga)
         navigator.serviceWorker.addEventListener('controllerchange', function() {
