@@ -164,15 +164,16 @@ function googleCallback(): void {
         $user = $um->findById((int)$existingUser['id']);
         if (!$user) throw new \RuntimeException('Usuario no encontrado tras OAuth.');
 
-        // Si el estado de cuenta sigue en 'pendiente', bloquear y mostrar vista Stand-by
-        if (!in_array($user['rol'] ?? '', ['entrenador', 'admin'], true)) {
+        // Si el estado de cuenta sigue en 'pendiente' o 'rechazado', bloquear y mostrar vista Stand-by (solo admin exento)
+        if (($user['rol'] ?? '') !== 'admin') {
+            $esEnt = (($user['rol'] ?? '') === 'entrenador');
             if (($user['estado_cuenta'] ?? 'pendiente') === 'pendiente') {
                 unset($_SESSION['user_id'], $_SESSION['nombre'], $_SESSION['email'], $_SESSION['rol'], $_SESSION['_login_at'], $_SESSION['_via']);
-                redirect('auth/login?standby=1');
+                redirect('auth/login?standby=1' . ($esEnt ? '&rol=entrenador' : ''));
                 return;
             } elseif (($user['estado_cuenta'] ?? '') === 'rechazado') {
                 unset($_SESSION['user_id'], $_SESSION['nombre'], $_SESSION['email'], $_SESSION['rol'], $_SESSION['_login_at'], $_SESSION['_via']);
-                setFlash('error', UsuarioModel::MSG_RECHAZADO);
+                setFlash('error', $esEnt ? UsuarioModel::MSG_RECHAZADO_ENTRENADOR : UsuarioModel::MSG_RECHAZADO);
                 redirect('auth/login');
                 return;
             }

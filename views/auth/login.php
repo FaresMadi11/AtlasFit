@@ -1277,6 +1277,113 @@ select:-webkit-autofill:active {
   box-shadow: 0 8px 28px rgba(138,43,226,0.55) !important;
 }
 
+/* ── Switch "Soy entrenador" junto al campo Código de Entrenador ── */
+.coach-code-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 6px;
+}
+.coach-code-header > label {
+  margin: 0 !important;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.trainer-switch-pill {
+  display: inline-flex !important;
+  align-items: center;
+  gap: 7px;
+  margin: 0 !important;
+  padding: 4px 9px 4px 10px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: #cbd5e1 !important;
+  font-size: 0.72rem !important;
+  font-weight: 700 !important;
+  letter-spacing: 0.2px;
+  text-transform: none !important;
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.2s ease, border-color 0.2s ease, color 0.2s ease, box-shadow 0.2s ease;
+}
+.trainer-switch-pill:hover {
+  border-color: rgba(179, 136, 255, 0.45);
+  color: #fff !important;
+}
+.trainer-switch-pill.is-active {
+  background: rgba(138, 43, 226, 0.22);
+  border-color: rgba(179, 136, 255, 0.65);
+  color: #e9d5ff !important;
+  box-shadow: 0 0 14px rgba(138, 43, 226, 0.28);
+}
+.trainer-switch-pill input[type="checkbox"] {
+  position: absolute;
+  opacity: 0;
+  width: 1px;
+  height: 1px;
+  pointer-events: none;
+}
+.trainer-switch-track {
+  position: relative;
+  width: 32px;
+  height: 18px;
+  border-radius: 999px;
+  background: rgba(148, 163, 184, 0.32);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  flex-shrink: 0;
+  transition: background 0.22s ease, border-color 0.22s ease;
+}
+.trainer-switch-thumb {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #e2e8f0;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.45);
+  transition: transform 0.22s cubic-bezier(0.22, 1, 0.36, 1), background 0.22s ease;
+}
+.trainer-switch-pill.is-active .trainer-switch-track {
+  background: linear-gradient(135deg, #8a2be2, #a855f7);
+  border-color: rgba(216, 180, 254, 0.65);
+}
+.trainer-switch-pill.is-active .trainer-switch-thumb {
+  transform: translateX(14px);
+  background: #ffffff;
+}
+.trainer-switch-pill:focus-within {
+  outline: 2px solid #b388ff;
+  outline-offset: 2px;
+}
+#group_reg_codigo_entrenador.is-trainer-locked {
+  border-color: rgba(138, 43, 226, 0.45) !important;
+  background: rgba(138, 43, 226, 0.08) !important;
+}
+#group_reg_codigo_entrenador.is-trainer-locked input:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  text-transform: none !important;
+  letter-spacing: 0 !important;
+  font-weight: 500 !important;
+}
+.trainer-mode-hint {
+  display: none;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+  font-size: 0.74rem;
+  color: #d8b4fe;
+  line-height: 1.35;
+}
+#group_reg_codigo_entrenador.is-trainer-locked .trainer-mode-hint {
+  display: flex;
+}
+
 /* ── Standby View ── */
 .standby-icon-wrap {
   width: 74px;
@@ -1620,6 +1727,7 @@ $esLogin    = ($vistaInicial === 'login');
 $esRegistro = ($vistaInicial === 'register');
 $esRecovery = ($vistaInicial === 'recovery');
 $esStandby  = ($vistaInicial === 'standby');
+$esStandbyEntrenador = ($esStandby && (($_GET['rol'] ?? '') === 'entrenador'));
 ?>
 <main id="mainContent">
 <div class="auth-box" id="authBox" role="region" aria-label="Portal de autenticación">
@@ -1713,8 +1821,8 @@ $esStandby  = ($vistaInicial === 'standby');
 
       <!-- ════ PASO 1 (Datos Personales y Edad) ════ -->
       <div class="wizard-step-pane wizard-step-1" id="wizardStep1">
-        <h1 class="form-title"><?= $isGoogleMode ? 'Completa tu Perfil' : 'Crear Cuenta' ?></h1>
-        <p class="form-sub"><?= $isGoogleMode ? 'Paso 1: Completa tu cédula y fecha de nacimiento para continuar' : 'Paso 1: Datos de tu cuenta y fecha de nacimiento' ?></p>
+        <h1 class="form-title" id="regStep1Title"><?= $isGoogleMode ? 'Completa tu Perfil' : 'Crear Cuenta' ?></h1>
+        <p class="form-sub" id="regStep1Sub"><?= $isGoogleMode ? 'Paso 1: Completa tu cédula y fecha de nacimiento para continuar' : 'Paso 1: Datos de tu cuenta y fecha de nacimiento' ?></p>
 
         <?php if (!$isGoogleMode): ?>
         <!-- Botón Registro con Google (1-Click verificado) -->
@@ -1753,13 +1861,26 @@ $esStandby  = ($vistaInicial === 'standby');
         </div>
 
         <div class="input-box-group" id="group_reg_codigo_entrenador" style="<?= $refEntrenadorInfo ? 'border-color:rgba(138,43,226,0.55);background:rgba(138,43,226,0.08);' : '' ?>">
-          <label for="reg_codigo_entrenador" style="display:flex;align-items:center;justify-content:space-between;gap:6px;">
-            <span id="lblCodigoEntrenadorTxt"><i class="ti ti-ticket" style="color:#b388ff;"></i> Código de Entrenador <span style="color:#ff4d6d;">*</span></span>
+          <div class="coach-code-header">
+            <label for="reg_codigo_entrenador">
+              <span id="lblCodigoEntrenadorTxt"><i class="ti ti-ticket" style="color:#b388ff;"></i> Código de Entrenador <span id="reqStarCodigoEnt" style="color:#ff4d6d;">*</span></span>
+            </label>
+            <label class="trainer-switch-pill" id="pillSoyEntrenador" for="reg_soy_entrenador" title="Activa esta opción si te estás registrando como entrenador">
+              <span>Soy entrenador</span>
+              <input type="checkbox" id="reg_soy_entrenador" name="soy_entrenador" value="1" role="switch" aria-checked="false" aria-label="Soy entrenador, no necesito código de invitación">
+              <span class="trainer-switch-track" aria-hidden="true"><span class="trainer-switch-thumb"></span></span>
+            </label>
+          </div>
+          <div style="margin-bottom:4px;">
             <span id="badgeCoachRef" style="font-size:0.68rem;padding:2px 8px;border-radius:99px;background:rgba(34,197,94,0.18);color:#4ade80;border:1px solid rgba(34,197,94,0.35);font-weight:700;text-transform:none;<?= $refEntrenadorInfo ? 'display:inline-flex;align-items:center;gap:4px;' : 'display:none;' ?>">
               <i class="ti ti-circle-check"></i> <span id="badgeCoachRefNombre">Coach: <?= e($refEntrenadorInfo['entrenador_nombre'] ?? '') ?></span>
             </span>
-          </label>
+          </div>
           <input type="text" id="reg_codigo_entrenador" name="codigo_entrenador" value="<?= e($refCodigoActivo) ?>" placeholder="Ej: SABEH-FIT" maxlength="40" required autocomplete="off" spellcheck="false" style="text-transform:uppercase;font-weight:700;letter-spacing:0.6px;" aria-required="true" aria-describedby="err_codigo_entrenador">
+          <div class="trainer-mode-hint" id="trainerModeHint">
+            <i class="ti ti-shield-check" style="font-size:0.95rem;flex-shrink:0;"></i>
+            <span>Tu solicitud se enviará al administrador para aprobar tu cuenta de entrenador.</span>
+          </div>
           <small class="ibg-error" id="err_codigo_entrenador" role="alert"></small>
         </div>
 
@@ -2078,13 +2199,17 @@ $esStandby  = ($vistaInicial === 'standby');
     <div style="text-align:center;">
       <span class="standby-status-pill"><i class="ti ti-clock"></i> Pendiente de Aprobación</span>
     </div>
-    <h1 class="form-title" style="font-size:1.45rem;margin-bottom:8px;line-height:1.35;">En espera de que tu entrenador active tu cuenta</h1>
-    <p class="form-sub" style="margin-bottom:20px;font-size:0.92rem;line-height:1.5;">Tus datos y metas han sido guardados correctamente. Te avisaremos en cuanto tu acceso sea habilitado.</p>
+    <h1 class="form-title" id="standbyTitle" style="font-size:1.45rem;margin-bottom:8px;line-height:1.35;"><?= $esStandbyEntrenador ? 'En espera de que el administrador active tu cuenta de entrenador' : 'En espera de que tu entrenador active tu cuenta' ?></h1>
+    <p class="form-sub" id="standbySub" style="margin-bottom:20px;font-size:0.92rem;line-height:1.5;"><?= $esStandbyEntrenador ? 'Tu solicitud de entrenador ha sido registrada correctamente. Te avisaremos en cuanto tu acceso sea habilitado.' : 'Tus datos y metas han sido guardados correctamente. Te avisaremos en cuanto tu acceso sea habilitado.' ?></p>
 
     <div class="standby-info-box">
       <i class="ti ti-bell-ringing"></i>
-      <div>
-        <strong>Aviso al entrenador enviado:</strong> Tu entrenador revisará y habilitará tu acceso en breve para que puedas ingresar y comenzar tus entrenamientos.
+      <div id="standbyInfoText">
+        <?php if ($esStandbyEntrenador): ?>
+          <strong>Aviso al administrador enviado:</strong> El administrador revisará y habilitará tu cuenta de entrenador en breve para que puedas ingresar y gestionar a tus atletas.
+        <?php else: ?>
+          <strong>Aviso al entrenador enviado:</strong> Tu entrenador revisará y habilitará tu acceso en breve para que puedas ingresar y comenzar tus entrenamientos.
+        <?php endif; ?>
       </div>
     </div>
 
@@ -2294,6 +2419,9 @@ document.getElementById('loginForm')?.addEventListener('submit', async e => {
     } else if (data.estado_cuenta === 'pendiente' || data.estado_cuenta === 'rechazado' || data.status === 'standby') {
       const esPendiente = (data.estado_cuenta === 'pendiente' || data.status === 'standby');
       if (esPendiente) {
+        if (typeof updateStandbyCopy === 'function') {
+          updateStandbyCopy(data.rol_solicitado === 'entrenador');
+        }
         switchView('standby');
       } else {
         Swal.fire({
@@ -2376,17 +2504,47 @@ function switchView(name, { focus = true } = {}) {
   }
 }
 
-// Validación en vivo del Código de Entrenador y sincronización con Google OAuth
+function updateStandbyCopy(esEntrenador) {
+  const titleEl = document.getElementById('standbyTitle');
+  const subEl   = document.getElementById('standbySub');
+  const infoEl  = document.getElementById('standbyInfoText');
+  if (esEntrenador) {
+    if (titleEl) titleEl.textContent = 'En espera de que el administrador active tu cuenta de entrenador';
+    if (subEl)   subEl.textContent   = 'Tu solicitud de entrenador ha sido registrada correctamente. Te avisaremos en cuanto tu acceso sea habilitado.';
+    if (infoEl)  infoEl.innerHTML    = '<strong>Aviso al administrador enviado:</strong> El administrador revisará y habilitará tu cuenta de entrenador en breve para que puedas ingresar y gestionar a tus atletas.';
+  } else {
+    if (titleEl) titleEl.textContent = 'En espera de que tu entrenador active tu cuenta';
+    if (subEl)   subEl.textContent   = 'Tus datos y metas han sido guardados correctamente. Te avisaremos en cuanto tu acceso sea habilitado.';
+    if (infoEl)  infoEl.innerHTML    = '<strong>Aviso al entrenador enviado:</strong> Tu entrenador revisará y habilitará tu acceso en breve para que puedas ingresar y comenzar tus entrenamientos.';
+  }
+}
+
+// Validación en vivo del Código de Entrenador, Switch "Soy entrenador" y sincronización con Google OAuth
 (function() {
-  const inpRef = document.getElementById('reg_codigo_entrenador');
-  const grpRef = document.getElementById('group_reg_codigo_entrenador');
-  const bdgRef = document.getElementById('badgeCoachRef');
-  const bdgNom = document.getElementById('badgeCoachRefNombre');
-  const btnGoo = document.getElementById('btnRegGoogleOAuth');
+  const inpRef      = document.getElementById('reg_codigo_entrenador');
+  const grpRef      = document.getElementById('group_reg_codigo_entrenador');
+  const bdgRef      = document.getElementById('badgeCoachRef');
+  const bdgNom      = document.getElementById('badgeCoachRefNombre');
+  const btnGoo      = document.getElementById('btnRegGoogleOAuth');
+  const chkTrainer  = document.getElementById('reg_soy_entrenador');
+  const pillTrainer = document.getElementById('pillSoyEntrenador');
+  const reqStar     = document.getElementById('reqStarCodigoEnt');
+  const grpCedula   = document.getElementById('group_reg_cedula');
+  const inpCedula   = document.getElementById('reg_cedula');
+  const grpFecha    = document.getElementById('group_reg_fecha_nac');
+  const wizProgress = document.querySelector('#view-register .wizard-progress-wrap');
+  const step1Sub    = document.getElementById('regStep1Sub');
+  const btnStep1    = document.getElementById('btnWizardStep1Next');
   if (!inpRef) return;
+
+  const origStep1SubText = step1Sub ? step1Sub.textContent : '';
+  const origStep1BtnHtml = btnStep1 ? btnStep1.innerHTML : 'SIGUIENTE <i class="ti ti-arrow-right" style="vertical-align:middle;margin-left:4px;"></i>';
+  const origPlaceholder  = inpRef.getAttribute('placeholder') || 'Ej: SABEH-FIT';
+  let savedRefCode       = inpRef.value || '';
 
   let timerRef = null;
   const checkCodeLive = (rawVal) => {
+    if (chkTrainer && chkTrainer.checked) return;
     const code = String(rawVal || '').trim().toUpperCase();
     if (btnGoo) {
       btnGoo.href = APP + '/auth/google' + (code ? ('?ref=' + encodeURIComponent(code)) : '');
@@ -2399,6 +2557,7 @@ function switchView(name, { focus = true } = {}) {
     fetch(APP + '/auth/api-validar-codigo?codigo=' + encodeURIComponent(code))
       .then(r => r.json())
       .then(d => {
+        if (chkTrainer && chkTrainer.checked) return;
         if (d && d.ok && d.entrenador_nombre) {
           if (bdgNom) bdgNom.textContent = 'Coach: ' + d.entrenador_nombre;
           if (bdgRef) bdgRef.style.display = 'inline-flex';
@@ -2414,7 +2573,60 @@ function switchView(name, { focus = true } = {}) {
       .catch(() => {});
   };
 
+  window.syncTrainerSwitchUI = function() {
+    if (!chkTrainer) return;
+    const isTrainer = !!chkTrainer.checked;
+    chkTrainer.setAttribute('aria-checked', isTrainer ? 'true' : 'false');
+    if (pillTrainer) pillTrainer.classList.toggle('is-active', isTrainer);
+
+    if (isTrainer) {
+      if (inpRef.value.trim() !== '') savedRefCode = inpRef.value;
+      inpRef.value = '';
+      inpRef.disabled = true;
+      inpRef.required = false;
+      inpRef.setAttribute('aria-required', 'false');
+      inpRef.setAttribute('placeholder', 'Bloqueado — Registro como entrenador');
+      if (reqStar) reqStar.style.display = 'none';
+      if (bdgRef) bdgRef.style.display = 'none';
+      if (grpRef) {
+        grpRef.classList.remove('has-error', 'ibg-shake');
+        grpRef.classList.add('is-trainer-locked');
+        const errEl = document.getElementById('err_codigo_entrenador');
+        if (errEl) { errEl.textContent = ''; errEl.style.display = 'none'; }
+      }
+      if (grpCedula) grpCedula.style.display = 'none';
+      if (inpCedula) { inpCedula.required = false; inpCedula.setAttribute('aria-required', 'false'); }
+      if (grpFecha) grpFecha.style.display = 'none';
+      if (wizProgress) wizProgress.style.display = 'none';
+      if (step1Sub) step1Sub.textContent = 'Completa tus datos para solicitar tu cuenta de entrenador';
+      if (btnStep1) btnStep1.innerHTML = '<i class="ti ti-shield-check" style="vertical-align:middle;margin-right:6px;"></i> SOLICITAR ACCESO COMO ENTRENADOR';
+      if (btnGoo) btnGoo.href = APP + '/auth/google';
+    } else {
+      inpRef.disabled = false;
+      inpRef.required = true;
+      inpRef.setAttribute('aria-required', 'true');
+      inpRef.setAttribute('placeholder', origPlaceholder);
+      if (savedRefCode) {
+        inpRef.value = savedRefCode;
+        checkCodeLive(savedRefCode);
+      }
+      if (reqStar) reqStar.style.display = '';
+      if (grpRef) grpRef.classList.remove('is-trainer-locked');
+      if (grpCedula) grpCedula.style.display = '';
+      if (inpCedula) { inpCedula.required = true; inpCedula.setAttribute('aria-required', 'true'); }
+      if (grpFecha) grpFecha.style.display = '';
+      if (wizProgress) wizProgress.style.display = '';
+      if (step1Sub) step1Sub.textContent = origStep1SubText;
+      if (btnStep1) btnStep1.innerHTML = origStep1BtnHtml;
+    }
+  };
+
+  if (chkTrainer) {
+    chkTrainer.addEventListener('change', window.syncTrainerSwitchUI);
+  }
+
   inpRef.addEventListener('input', () => {
+    savedRefCode = inpRef.value;
     clearTimeout(timerRef);
     timerRef = setTimeout(() => checkCodeLive(inpRef.value), 260);
   });
@@ -2968,7 +3180,8 @@ window.handleWizardStep1Next = async function(event) {
 
   clearRegErrors();
 
-  const isGoogle = (document.getElementById('regAuthProvider')?.value === 'google');
+  const isGoogle      = (document.getElementById('regAuthProvider')?.value === 'google');
+  const isTrainerMode = !!document.getElementById('reg_soy_entrenador')?.checked;
   let reNombre;
   try {
     reNombre = new RegExp('^\\p{L}[\\p{L}\\s\'\\u2019.\\-]*$', 'u');
@@ -2980,7 +3193,7 @@ window.handleWizardStep1Next = async function(event) {
   const valApellidos  = (document.getElementById('reg_apellidos')?.value || '').trim().replace(/\s+/g, ' ');
   const valCedulaRaw  = (document.getElementById('reg_cedula')?.value || '').trim();
   const valCedulaNorm = normalizarCedula(valCedulaRaw);
-  const valCodigoEnt  = (document.getElementById('reg_codigo_entrenador')?.value || '').trim().toUpperCase();
+  const valCodigoEnt  = isTrainerMode ? '' : (document.getElementById('reg_codigo_entrenador')?.value || '').trim().toUpperCase();
   const valEmail      = (document.getElementById('reg_email')?.value || '').trim();
   const valPass       = (document.getElementById('reg_pass')?.value || '').trim();
   const valPregunta   = (document.getElementById('reg_pregunta')?.value || '').trim();
@@ -2995,13 +3208,13 @@ window.handleWizardStep1Next = async function(event) {
   } else if (!valApellidos || valApellidos.length < 2 || !reNombre.test(valApellidos)) {
     errorField = 'reg_apellidos';
     errorMsg   = !valApellidos ? 'Por favor ingresa tus apellidos.' : 'Tus apellidos deben tener al menos 2 letras válidas (sin números).';
-  } else if (!valCedulaRaw) {
+  } else if (!isTrainerMode && !valCedulaRaw) {
     errorField = 'reg_cedula';
     errorMsg   = 'Por favor ingresa tu número de cédula (solo números).';
-  } else if (!valCedulaNorm) {
+  } else if (!isTrainerMode && !valCedulaNorm) {
     errorField = 'reg_cedula';
     errorMsg   = 'La cédula debe contener entre 5 y 8 números sin letras.';
-  } else if (!valCodigoEnt || valCodigoEnt.length < 3) {
+  } else if (!isTrainerMode && (!valCodigoEnt || valCodigoEnt.length < 3)) {
     errorField = 'reg_codigo_entrenador';
     errorMsg   = 'El código o link de entrenador es obligatorio para registrarte.';
   } else if (!valEmail) {
@@ -3041,8 +3254,8 @@ window.handleWizardStep1Next = async function(event) {
     }
   }
 
-  // Validación remota estricta del código de entrenador si pasó las validaciones locales
-  if (!errorField && valCodigoEnt) {
+  // Validación remota estricta del código de entrenador (solo atletas)
+  if (!errorField && !isTrainerMode && valCodigoEnt) {
     const nextBtn = document.getElementById('btnWizardStep1Next');
     if (nextBtn) nextBtn.disabled = true;
     try {
@@ -3101,6 +3314,12 @@ window.handleWizardStep1Next = async function(event) {
         try { inp.focus({ preventScroll: true }); } catch (_) {}
       }, 100);
     }
+    return;
+  }
+
+  // Si es solicitud de entrenador, enviar directamente sin pasos de cuerpo/metas de atleta
+  if (isTrainerMode) {
+    await submitRegistration(true);
     return;
   }
 
@@ -3223,31 +3442,39 @@ async function submitRegistration(isOmitido = false) {
     };
   }
 
+  const isTrainerMode = !!document.getElementById('reg_soy_entrenador')?.checked;
   const payload = {
     csrf_token:          typeof CSRF !== 'undefined' ? CSRF : '',
     auth_provider:       isGoogle ? 'google' : 'local',
+    soy_entrenador:      isTrainerMode ? 1 : 0,
     nombres:             (f['nombres']?.value || '').trim().replace(/\s+/g, ' '),
     apellidos:           (f['apellidos']?.value || '').trim().replace(/\s+/g, ' '),
-    cedula:              normalizarCedula(f['cedula']?.value || ''),
-    codigo_entrenador:   (f['codigo_entrenador']?.value || '').trim().toUpperCase(),
+    cedula:              isTrainerMode ? '' : normalizarCedula(f['cedula']?.value || ''),
+    codigo_entrenador:   isTrainerMode ? '' : (f['codigo_entrenador']?.value || '').trim().toUpperCase(),
     email:               (f['email']?.value || '').trim(),
     password:            (!isGoogle && f['password']) ? f['password'].value.trim() : '',
     pregunta_seguridad:  (!isGoogle && f['pregunta_seguridad']) ? f['pregunta_seguridad'].value : '',
     respuesta_seguridad: (!isGoogle && f['respuesta_seguridad']) ? f['respuesta_seguridad'].value.trim() : '',
-    fecha_nacimiento:    (document.getElementById('fecha_nacimiento') || document.getElementById('regFechaNac')).value,
-    peso_kg:             document.getElementById('regPesoInput').value,
-    altura_cm:           document.getElementById('regAlturaInput').value,
-    metas_json:          JSON.stringify(metasData),
+    fecha_nacimiento:    isTrainerMode ? '' : (document.getElementById('fecha_nacimiento') || document.getElementById('regFechaNac')).value,
+    peso_kg:             isTrainerMode ? '' : document.getElementById('regPesoInput').value,
+    altura_cm:           isTrainerMode ? '' : document.getElementById('regAlturaInput').value,
+    metas_json:          isTrainerMode ? '[]' : JSON.stringify(metasData),
   };
 
-  const btn = document.getElementById('btnRegister');
-  setBtn(btn, true, origRegister);
+  const btn = isTrainerMode ? document.getElementById('btnWizardStep1Next') : document.getElementById('btnRegister');
+  const origBtnHtml = isTrainerMode
+    ? '<i class="ti ti-shield-check" style="vertical-align:middle;margin-right:6px;"></i> SOLICITAR ACCESO COMO ENTRENADOR'
+    : origRegister;
+  setBtn(btn, true, origBtnHtml);
 
   try {
     const data = await postApi('auth/do-registro', payload);
 
     if (data.ok || data.status === 'standby') {
+      const fueEntrenador = isTrainerMode || data.rol_solicitado === 'entrenador';
+      setBtn(btn, false, origBtnHtml);
       registerForm.reset();
+      if (typeof window.syncTrainerSwitchUI === 'function') window.syncTrainerSwitchUI();
       resetEmailVerificationUI(true);
       const otpBoxDone = document.getElementById('boxEmailOtp');
       if (otpBoxDone) otpBoxDone.style.display = 'none';
@@ -3261,18 +3488,20 @@ async function submitRegistration(isOmitido = false) {
       goToWizardStep(1);
 
       // Transición Visual a la vista #view-standby dentro del contenedor de autenticación
+      updateStandbyCopy(fueEntrenador);
       switchView('standby');
-      setBtn(btn, false, origRegister);
 
       Swal.fire({
         icon: 'success',
         title: '¡Solicitud enviada!',
-        text: 'En espera de que tu entrenador active tu cuenta',
+        text: data.mensaje || data.msg || (fueEntrenador
+          ? 'En espera de que el administrador active tu cuenta de entrenador'
+          : 'En espera de que tu entrenador active tu cuenta'),
         background: '#111827', color: '#fff',
         confirmButtonText: 'Entendido', confirmButtonColor: '#8a2be2',
       });
     } else {
-      setBtn(btn, false, origRegister);
+      setBtn(btn, false, origBtnHtml);
       if (data.campo) {
         goToWizardStep(1);
         const input = setRegError(data.campo, data.msg || 'Dato no válido.');
@@ -3287,7 +3516,7 @@ async function submitRegistration(isOmitido = false) {
   } catch (err) {
     console.error('Error de registro:', err);
     Toast.fire({ icon: 'error', title: err.message || 'Error de conexión' });
-    setBtn(btn, false, origRegister);
+    setBtn(btn, false, origBtnHtml);
   }
 }
 

@@ -458,6 +458,8 @@ $temaGlobalVer     = (int)($temaInfoUser['global_ver'] ?? 1);
       const enlace = n.enlace && n.enlace !== '#' ? n.enlace : '';
       const tipoEv = String(n.tipo_evento || n.tipo || '').toLowerCase();
       const isSolicitudReg = (tipoEv === 'solicitud_atleta' || tipoEv === 'registro');
+      const isSolicitudEnt = (USER_ROLE === 'admin' && tipoEv === 'solicitud_entrenador');
+      const targetEntUid   = Number(n.referencia_id || n.entrenador_id || n.remitente_id || 0);
       const isRutinaMod = (
         tipoEv === 'solicitud_modificacion' ||
         tipoEv === 'modificacion_directa' ||
@@ -480,6 +482,15 @@ $temaGlobalVer     = (int)($temaInfoUser['global_ver'] ?? 1);
               <i class="ti ti-clock" style="font-size:0.75rem;"></i>
               <span>${time}${fechaHora}</span>
             </div>
+            ${isSolicitudEnt && targetEntUid > 0 ? `
+              <div class="notif-actions" style="margin-top:8px; display:flex; gap:6px; flex-wrap:wrap;" onclick="event.stopPropagation()">
+                <button type="button" onclick="aprobarEntrenadorBtn(${targetEntUid}, 'aprobar', this, event)" style="padding:4px 10px; font-size:0.74rem; font-weight:700; border-radius:7px; border:1px solid rgba(16,185,129,0.4); background:rgba(16,185,129,0.16); color:#34d399; cursor:pointer; display:inline-flex; align-items:center; gap:4px;">
+                  <i class="ti ti-check"></i> Aceptar
+                </button>
+                <button type="button" onclick="aprobarEntrenadorBtn(${targetEntUid}, 'rechazar', this, event)" style="padding:4px 10px; font-size:0.74rem; font-weight:700; border-radius:7px; border:1px solid rgba(239,68,68,0.38); background:rgba(239,68,68,0.14); color:#f87171; cursor:pointer; display:inline-flex; align-items:center; gap:4px;">
+                  <i class="ti ti-x"></i> Rechazar
+                </button>
+              </div>` : ''}
             ${isSolicitudReg && enlace ? `
               <div style="margin-top:6px;">
                 <span style="display:inline-flex; align-items:center; gap:4px; font-size:0.72rem; color:#c084fc; background:rgba(138,43,226,0.14); border:1px solid rgba(138,43,226,0.28); padding:2px 8px; border-radius:6px; font-weight:600;">
@@ -682,6 +693,75 @@ $temaGlobalVer     = (int)($temaInfoUser['global_ver'] ?? 1);
       });
       btnElement.innerText = originalText;
       btnElement.disabled = false;
+    }
+  }
+
+  async function aprobarEntrenadorBtn(targetUid, accion, btnElement, ev) {
+    if (ev && typeof ev.stopPropagation === 'function') ev.stopPropagation();
+    else if (window.event && typeof window.event.stopPropagation === 'function') window.event.stopPropagation();
+
+    const actionsContainer = btnElement.closest('.notif-actions');
+    const allBtns = actionsContainer ? actionsContainer.querySelectorAll('button') : [btnElement];
+    const originalHtml = btnElement.innerHTML;
+    allBtns.forEach(b => b.disabled = true);
+    btnElement.innerText = '...';
+
+    try {
+      const res = await fetch(APP + '/admin/api-aprobar-entrenador', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRF-TOKEN': typeof CSRF !== 'undefined' ? CSRF : ''
+        },
+        body: JSON.stringify({
+          csrf_token: typeof CSRF !== 'undefined' ? CSRF : '',
+          usuario_id: targetUid,
+          accion: accion
+        })
+      });
+      const data = await res.json();
+      if (data.ok) {
+        Swal.fire({
+          icon: 'success',
+          title: accion === 'aprobar' ? '¡Entrenador aprobado!' : 'Solicitud rechazada',
+          text: data.msg || 'Solicitud procesada correctamente.',
+          background: '#111827',
+          color: '#fff',
+          confirmButtonColor: '#8a2be2'
+        });
+        if (actionsContainer) {
+          actionsContainer.innerHTML = accion === 'aprobar'
+            ? '<span style="font-size:0.75rem; color:#4ade80; font-weight:600;"><i class="ti ti-check"></i> Entrenador Aprobado</span>'
+            : '<span style="font-size:0.75rem; color:#f87171; font-weight:600;"><i class="ti ti-x"></i> Solicitud Rechazada</span>';
+        }
+        xpFetchNotificaciones(true);
+        if (window.location.href.includes('/admin/gestion')) {
+          setTimeout(() => window.location.reload(), 1200);
+        }
+      } else {
+        Swal.fire({
+          icon: 'error',
+          title: 'Error',
+          text: data.msg || 'No se pudo procesar la solicitud.',
+          background: '#111827',
+          color: '#fff',
+          confirmButtonColor: '#8a2be2'
+        });
+        btnElement.innerHTML = originalHtml;
+        allBtns.forEach(b => b.disabled = false);
+      }
+    } catch (err) {
+      console.error(err);
+      Swal.fire({
+        icon: 'error',
+        title: 'Error',
+        text: 'Error de red o conexión.',
+        background: '#111827',
+        color: '#fff',
+        confirmButtonColor: '#8a2be2'
+      });
+      btnElement.innerHTML = originalHtml;
+      allBtns.forEach(b => b.disabled = false);
     }
   }
 </script>

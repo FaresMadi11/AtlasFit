@@ -44,6 +44,42 @@ $unread_hdr = function_exists('contarNotificacionesNoLeidas')
 </div>
 
 <div class="sa-shell">
+  <?php if (!empty($solicitudesEntrenadores)): ?>
+  <!-- ── ALERTA DE SOLICITUDES DE NUEVOS ENTRENADORES ── -->
+  <section id="saSolicitudesEntrenadoresPanel" class="glass-surface" style="padding: 18px; border-radius: 18px; border: 1px solid rgba(251,191,36,0.35); background: linear-gradient(145deg, rgba(251,191,36,0.08), rgba(15,15,24,0.85));" aria-label="Solicitudes pendientes de entrenadores">
+    <h2 style="font-size: 1.05rem; font-weight: 800; color: #facc15; margin: 0 0 14px; display: flex; align-items: center; gap: 8px;">
+      <i class="ti ti-user-plus"></i>
+      <span>Nuevas Solicitudes de Entrenadores (<span id="saSolCount"><?= count($solicitudesEntrenadores) ?></span>)</span>
+    </h2>
+    <div id="saSolicitudesList" style="display: flex; flex-direction: column; gap: 10px;">
+      <?php foreach ($solicitudesEntrenadores as $sol):
+        $solUid   = (int)$sol['usuario_id'];
+        $solFecha = !empty($sol['creado_en']) ? date('d/m/Y h:i A', strtotime((string)$sol['creado_en'])) : '';
+      ?>
+      <div class="sa-solicitud-card" id="saSolicitudEnt-<?= $solUid ?>" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; background: rgba(0,0,0,0.28); padding: 14px 16px; border-radius: 14px; border: 1px solid rgba(255,255,255,0.08); transition: opacity 0.25s ease, transform 0.25s ease;">
+        <div style="min-width: 0; flex: 1;">
+          <div style="font-weight: 700; color: #fff; font-size: 0.96rem; margin-bottom: 2px;"><?= e($sol['nombre']) ?></div>
+          <div style="color: rgba(255,255,255,0.62); font-size: 0.82rem; display: flex; align-items: center; flex-wrap: wrap; gap: 10px;">
+            <span><i class="ti ti-mail"></i> <?= e($sol['email']) ?></span>
+            <?php if ($solFecha !== ''): ?>
+              <span style="color: rgba(255,255,255,0.45);"><i class="ti ti-clock"></i> <?= e($solFecha) ?></span>
+            <?php endif; ?>
+          </div>
+        </div>
+        <div style="display: flex; gap: 8px; flex-shrink: 0;">
+          <button type="button" class="btn-xp" style="padding: 8px 14px; font-size: 0.84rem; font-weight: 700; background: rgba(16,185,129,0.16); color: #34d399; border: 1px solid rgba(16,185,129,0.38); border-radius: 10px; cursor: pointer; display: inline-flex; align-items: center; gap: 5px;" onclick="gestionarSolicitudEntrenador(<?= $solUid ?>, 'aprobar', this)">
+            <i class="ti ti-check"></i> Aceptar
+          </button>
+          <button type="button" class="btn-xp" style="padding: 8px 14px; font-size: 0.84rem; font-weight: 700; background: rgba(239,68,68,0.15); color: #f87171; border: 1px solid rgba(239,68,68,0.35); border-radius: 10px; cursor: pointer; display: inline-flex; align-items: center; gap: 5px;" onclick="gestionarSolicitudEntrenador(<?= $solUid ?>, 'rechazar', this)">
+            <i class="ti ti-x"></i> Rechazar
+          </button>
+        </div>
+      </div>
+      <?php endforeach; ?>
+    </div>
+  </section>
+  <?php endif; ?>
+
   <!-- ── 1. ACCESOS DIRECTOS COMPACTOS (FILTROS POR ESTADO) ── -->
   <section class="sa-shortcuts-grid" aria-label="Filtrar entrenadores por estado de membresía">
     <button type="button" class="sa-shortcut-btn is-ok" data-filter="al_dia" onclick="filtrarPorEstadoShortcut('al_dia', this)">
@@ -2036,6 +2072,57 @@ async function submitCrearEntrenador(ev) {
   } catch (e) {
     Swal.fire({ icon: 'error', title: 'Error', text: 'Error de conexión.', background: '#12131f', color: '#fff' });
     btn.disabled = false;
+  }
+}
+
+async function gestionarSolicitudEntrenador(usuarioId, accion, btnEl) {
+  const card = document.getElementById('saSolicitudEnt-' + usuarioId);
+  const btns = card ? card.querySelectorAll('button') : (btnEl ? [btnEl] : []);
+  btns.forEach(b => { b.disabled = true; b.style.opacity = '0.6'; });
+
+  try {
+    const res = await fetch(APP + '/admin/api-aprobar-entrenador', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': CSRF },
+      body: JSON.stringify({ csrf_token: CSRF, usuario_id: usuarioId, accion: accion })
+    });
+    const data = await res.json();
+    if (data.ok) {
+      if (card) {
+        card.style.opacity = '0';
+        card.style.transform = 'translateX(-16px)';
+        setTimeout(() => {
+          card.remove();
+          const list = document.getElementById('saSolicitudesList');
+          const countEl = document.getElementById('saSolCount');
+          if (list && countEl) countEl.textContent = String(list.children.length);
+          if (list && list.children.length === 0) {
+            document.getElementById('saSolicitudesEntrenadoresPanel')?.remove();
+          }
+        }, 260);
+      }
+      if (typeof xpFetchNotificaciones === 'function') xpFetchNotificaciones(true);
+      await Swal.fire({
+        icon: 'success',
+        title: accion === 'aprobar' ? '¡Entrenador aprobado!' : 'Solicitud rechazada',
+        text: data.msg || 'Acción procesada correctamente.',
+        background: '#12131f',
+        color: '#fff',
+        confirmButtonColor: '#8a2be2',
+        timer: accion === 'aprobar' ? 2200 : 1800,
+        showConfirmButton: accion === 'aprobar'
+      });
+      if (accion === 'aprobar') {
+        window.location.reload();
+      }
+    } else {
+      Swal.fire({ icon: 'error', title: 'Atención', text: data.msg || 'No se pudo procesar la solicitud.', background: '#12131f', color: '#fff' });
+      btns.forEach(b => { b.disabled = false; b.style.opacity = ''; });
+    }
+  } catch (err) {
+    console.error(err);
+    Swal.fire({ icon: 'error', title: 'Error', text: 'Error de red o conexión.', background: '#12131f', color: '#fff' });
+    btns.forEach(b => { b.disabled = false; b.style.opacity = ''; });
   }
 }
 </script>

@@ -149,24 +149,25 @@ function requireLogin(): void {
     if (empty($_SESSION['user_id'])) {
         redirect('auth/login');
     }
-    // Verificación de estado de cuenta para atletas (cacheada 60s en sesión para ahorrar 1 query a TiDB por clic)
-    if (!in_array($_SESSION['rol'] ?? '', ['entrenador', 'admin'], true)) {
+    // Verificación de estado de cuenta para atletas y entrenadores (cacheada 60s en sesión)
+    if (($_SESSION['rol'] ?? '') !== 'admin') {
         $now = time();
         $lastCheck = (int)($_SESSION['_acc_ok_ts'] ?? 0);
         if (($now - $lastCheck) > 60) {
             try {
                 $db = getDB();
-                $stmt = $db->prepare("SELECT estado_cuenta FROM usuarios WHERE id = ? LIMIT 1");
+                $stmt = $db->prepare("SELECT estado_cuenta, activo FROM usuarios WHERE id = ? LIMIT 1");
                 $stmt->execute([(int)$_SESSION['user_id']]);
-                $estado = $stmt->fetchColumn();
-                if ($estado !== 'activo') {
+                $accRow = $stmt->fetch(PDO::FETCH_ASSOC);
+                if (!$accRow || ($accRow['estado_cuenta'] ?? '') !== 'activo' || empty($accRow['activo'])) {
+                    $rolPrev = (string)($_SESSION['rol'] ?? 'cliente');
                     $_SESSION = [];
                     if (ini_get('session.use_cookies')) {
                         $params = session_get_cookie_params();
                         setcookie(session_name(), '', time() - 42000, $params['path'], $params['domain'], $params['secure'], $params['httponly']);
                     }
                     session_destroy();
-                    redirect('auth/login?standby=1');
+                    redirect('auth/login?standby=1' . ($rolPrev === 'entrenador' ? '&rol=entrenador' : ''));
                 }
                 $_SESSION['_acc_ok_ts'] = $now;
             } catch (\Throwable $e) {
@@ -547,6 +548,7 @@ function resolverEntrenadorPorCodigo(?string $codigo): ?array {
             WHERE UPPER(TRIM(em.codigo_referido)) = ?
               AND u.rol = 'entrenador'
               AND u.activo = 1
+              AND u.estado_cuenta = 'activo'
             LIMIT 1
         ");
         $st->execute([$clean]);
@@ -828,6 +830,24 @@ function obtenerTasaBCV(): float {
  */
 
 /**
+ * Garantiza que notificaciones.rol_destinatario acepte 'admin' (migración idempotente).
+ */
+function ensureAdminNotifSchema(PDO $db): void {
+    static $ensured = false;
+    if ($ensured) return;
+    $ensured = true;
+    try {
+        $st = $db->query("SHOW COLUMNS FROM notificaciones LIKE 'rol_destinatario'");
+        $col = $st ? $st->fetch(PDO::FETCH_ASSOC) : null;
+        if ($col && isset($col['Type']) && !str_contains(strtolower((string)$col['Type']), "'admin'")) {
+            $db->exec("ALTER TABLE notificaciones MODIFY COLUMN rol_destinatario ENUM('admin','entrenador','cliente') NULL DEFAULT NULL");
+        }
+    } catch (\Throwable $e) {
+        error_log('[ensureAdminNotifSchema] ' . $e->getMessage());
+    }
+}
+
+/**
  * Registra una notificación en la base de datos garantizando bidireccionalidad
  * y retrocompatibilidad total con columnas existentes y nuevas.
  */
@@ -838,6 +858,9 @@ function registrarNotificacionSistema(array $params): int|bool {
         $remitenteId    = !empty($params['remitente_id']) ? (int)$params['remitente_id'] : null;
         $destinatarioId = !empty($params['destinatario_id']) ? (int)$params['destinatario_id'] : null;
         $rolDestinatario= $params['rol_destinatario'] ?? 'entrenador';
+        if ($rolDestinatario === 'admin') {
+            ensureAdminNotifSchema($db);
+        }
         $tipoEvento     = $params['tipo_evento'] ?? 'sistema';
         $referenciaId   = !empty($params['referencia_id']) ? (int)$params['referencia_id'] : null;
         $clienteId      = !empty($params['cliente_id']) ? (int)$params['cliente_id'] : null;
@@ -925,7 +948,21 @@ function obtenerNotificacionesUsuario(int $userId, string $rol, int $limit = 25,
     $unreadCond = $soloNoLeidas ? " AND (n.leido = 0 AND n.leida = 0) " : "";
 
     if ($rol === 'admin') {
-        return [];
+        ensureAdminNotifSchema($db);
+        $st = $db->prepare("
+            SELECT n.*, u.nombre AS remitente_nombre, u.avatar_url AS remitente_avatar
+            FROM notificaciones n
+            LEFT JOIN usuarios u ON u.id = n.remitente_id
+            WHERE n.rol_destinatario = 'admin'
+              AND (n.destinatario_id = ? OR n.destinatario_id IS NULL)
+              {$unreadCond}
+            ORDER BY COALESCE(n.created_at, n.fecha) DESC, n.id DESC
+            LIMIT ?
+        ");
+        $st->bindValue(1, $userId, PDO::PARAM_INT);
+        $st->bindValue(2, $limit, PDO::PARAM_INT);
+        $st->execute();
+        $rows = $st->fetchAll(PDO::FETCH_ASSOC);
     } elseif ($rol === 'entrenador') {
         $st = $db->prepare("
             SELECT n.*, u.nombre AS remitente_nombre, u.avatar_url AS remitente_avatar
@@ -1009,7 +1046,15 @@ function contarNotificacionesNoLeidas(int $userId, string $rol): int {
     $db = getDB();
     purgarNotificacionesAntiguas($db);
     if ($rol === 'admin') {
-        return 0;
+        ensureAdminNotifSchema($db);
+        $st = $db->prepare("
+            SELECT COUNT(*) FROM notificaciones n
+            WHERE n.rol_destinatario = 'admin'
+              AND (n.destinatario_id = ? OR n.destinatario_id IS NULL)
+              AND (n.leido = 0 AND n.leida = 0)
+        ");
+        $st->execute([$userId]);
+        return (int)$st->fetchColumn();
     } elseif ($rol === 'entrenador') {
         $st = $db->prepare("
             SELECT COUNT(*) FROM notificaciones n
@@ -1049,7 +1094,14 @@ function marcarNotificacionLeida(int $notifId, int $userId): bool {
     $rol = $_SESSION['rol'] ?? 'cliente';
     $clienteId = (int)($_SESSION['cliente_id'] ?? 0);
     if ($rol === 'admin') {
-        return true;
+        ensureAdminNotifSchema($db);
+        $st = $db->prepare("
+            UPDATE notificaciones
+            SET leido = 1, leida = 1
+            WHERE id = ? AND rol_destinatario = 'admin'
+              AND (destinatario_id = ? OR destinatario_id IS NULL)
+        ");
+        return $st->execute([$notifId, $userId]);
     } elseif ($rol === 'entrenador') {
         $st = $db->prepare("
             UPDATE notificaciones 
@@ -1075,7 +1127,14 @@ function marcarNotificacionLeida(int $notifId, int $userId): bool {
 function marcarTodasNotificacionesLeidas(int $userId, string $rol): bool {
     $db = getDB();
     if ($rol === 'admin') {
-        return true;
+        ensureAdminNotifSchema($db);
+        $st = $db->prepare("
+            UPDATE notificaciones
+            SET leido = 1, leida = 1
+            WHERE rol_destinatario = 'admin'
+              AND (destinatario_id = ? OR destinatario_id IS NULL)
+        ");
+        return $st->execute([$userId]);
     } elseif ($rol === 'entrenador') {
         $st = $db->prepare("
             UPDATE notificaciones 
@@ -1120,7 +1179,7 @@ function purgarNotificacionesAntiguas(PDO $db): void {
                 OR n.mensaje LIKE '%actualizó tus medidas%'
                 OR n.tipo IN ('rutina_asignada', 'cambios_aprobados', 'modificacion_rechazada', 'medidas_actualizadas', 'pago_aprobado')
                 OR n.tipo_evento IN ('rutina_asignada', 'cambios_aprobados', 'modificacion_rechazada', 'medidas_actualizadas', 'pago_aprobado')
-            ) AND (n.rol_destinatario IS NULL OR n.rol_destinatario != 'cliente')
+            ) AND (n.rol_destinatario IS NULL OR n.rol_destinatario NOT IN ('cliente', 'admin'))
         ");
 
         // 2. Normalizar registros históricos sin rol_destinatario para evitar cruce entre atleta y entrenador
@@ -1202,7 +1261,7 @@ function iconoPorTipoEvento(string $tipoEvento, string $mensaje = ''): string {
     if (str_contains($ev, 'pago') || str_contains($msg, 'pago') || str_contains($msg, 'mensualidad')) {
         return 'ti-credit-card';
     }
-    if (str_contains($ev, 'solicitud_atleta') || str_contains($ev, 'registro') || str_contains($msg, 'espera')) {
+    if (str_contains($ev, 'solicitud_atleta') || str_contains($ev, 'solicitud_entrenador') || str_contains($ev, 'registro') || str_contains($msg, 'espera')) {
         return 'ti-user-plus';
     }
     if (str_contains($ev, 'activacion_cuenta') || str_contains($msg, 'activada')) {

@@ -12,8 +12,10 @@ class UsuarioModel {
     ];
 
     /** Mensajes del Onboarding Gate según el estado de la cuenta. */
-    public const MSG_PENDIENTE = 'En espera de que tu entrenador active tu cuenta';
-    public const MSG_RECHAZADO = 'Tu solicitud de acceso no fue aprobada. Contacta a tu entrenador.';
+    public const MSG_PENDIENTE            = 'En espera de que tu entrenador active tu cuenta';
+    public const MSG_RECHAZADO            = 'Tu solicitud de acceso no fue aprobada. Contacta a tu entrenador.';
+    public const MSG_PENDIENTE_ENTRENADOR = 'Tu solicitud de entrenador está en revisión. En espera de que el administrador active tu cuenta.';
+    public const MSG_RECHAZADO_ENTRENADOR = 'Tu solicitud de cuenta de entrenador no fue aprobada por el administrador.';
 
     /**
      * Preguntas de seguridad permitidas en el registro. Se guarda el TEXTO (no una clave)
@@ -30,12 +32,22 @@ class UsuarioModel {
 
     /**
      * Onboarding Gate: devuelve el mensaje de bloqueo si el usuario NO puede entrar,
-     * o null si tiene acceso. Los entrenadores nunca se bloquean (evita lock-out del admin).
+     * o null si tiene acceso. Solo el Super Admin está exento (evita lock-out).
      */
     public static function mensajeBloqueo(array $user): ?string {
-        if (in_array($user['rol'] ?? '', ['entrenador', 'admin'], true)) return null;
-        return match ($user['estado_cuenta'] ?? 'pendiente') {
-            'activo'    => null,
+        $rol = (string)($user['rol'] ?? 'cliente');
+        if ($rol === 'admin') return null;
+
+        $estado = (string)($user['estado_cuenta'] ?? 'pendiente');
+        if ($estado === 'activo') return null;
+
+        if ($rol === 'entrenador') {
+            return $estado === 'rechazado'
+                ? self::MSG_RECHAZADO_ENTRENADOR
+                : self::MSG_PENDIENTE_ENTRENADOR;
+        }
+
+        return match ($estado) {
             'rechazado' => self::MSG_RECHAZADO,
             default     => self::MSG_PENDIENTE,   // 'pendiente' o valor desconocido → denegar
         };
@@ -105,7 +117,7 @@ class UsuarioModel {
         if (empty($googleId)) return null;
 
         $s = $this->db->prepare(
-            "SELECT id, nombre, email, rol, google_id, auth_provider, avatar_url
+            "SELECT id, nombre, email, rol, estado_cuenta, google_id, auth_provider, avatar_url
              FROM usuarios WHERE google_id = ? LIMIT 1"
         );
         $s->execute([$googleId]);
@@ -262,6 +274,26 @@ class UsuarioModel {
             }
             throw $e;
         }
+    }
+
+    /**
+     * Alta atómica de una solicitud de entrenador (estado_cuenta='pendiente', activo=0).
+     * Requiere aprobación explícita del Super Admin para activarse y recibir código referido.
+     */
+    public function registrarEntrenadorPendiente(
+        string $nombre,
+        string $email,
+        string $passwordHash,
+        string $pregunta,
+        string $respuestaHash
+    ): int {
+        $s = $this->db->prepare(
+            "INSERT INTO usuarios
+                (nombre, email, password_hash, rol, auth_provider, activo, estado_cuenta, pregunta_seguridad, respuesta_seguridad)
+             VALUES (?, ?, ?, 'entrenador', 'local', 0, 'pendiente', ?, ?)"
+        );
+        $s->execute([$nombre, strtolower(trim($email)), $passwordHash, $pregunta, $respuestaHash]);
+        return (int)$this->db->lastInsertId();
     }
 
     /**

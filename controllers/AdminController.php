@@ -20,6 +20,7 @@ match ($action) {
     'api-guardar-rutina-como-plantilla'  => adminApiGuardarRutinaComoPlantilla(),
     'api-listar-plantillas-catalogo'     => adminApiListarPlantillasCatalogo(),
     'api-crear-entrenador'               => adminApiCrearEntrenador(),
+    'api-aprobar-entrenador'             => adminApiAprobarEntrenador(),
     'api-actualizar-membresia'           => adminApiActualizarMembresia(),
     'api-generar-codigo'                 => adminApiGenerarCodigo(),
     'api-toggle-pausa'                   => adminApiTogglePausa(),
@@ -33,6 +34,7 @@ match ($action) {
     'api-importar-historial-analizar'    => adminApiImportarHistorialAnalizar(),
     'api-importar-historial-guardar'     => adminApiImportarHistorialGuardar(),
     'descargar-respaldo-db'              => adminDescargarRespaldoDb(),
+    'notificaciones'                     => adminGestion(),
     'api-notificaciones'                 => adminApiNotificaciones(),
     'api-marcar-notificacion'            => adminApiMarcarNotificacion(),
     'api-leer-notificaciones'            => adminApiLeerNotificaciones(),
@@ -915,14 +917,25 @@ function adminApiListarPlantillasCatalogo(): void {
 function adminGestion(): void {
     $db = getDB();
 
-    // Obtener todos los entrenadores
+    // Obtener entrenadores activos (evita crear membresías a solicitudes pendientes o rechazadas)
     $stEnt = $db->query("
         SELECT u.id, u.nombre, u.email, u.activo, u.estado_cuenta, u.creado_en, u.avatar_url
         FROM usuarios u
         WHERE u.rol = 'entrenador'
+          AND u.estado_cuenta = 'activo'
         ORDER BY u.id ASC
     ");
     $rowsEnt = $stEnt->fetchAll(PDO::FETCH_ASSOC);
+
+    // Solicitudes de nuevos entrenadores pendientes de aprobación por el Super Admin
+    $stSolEnt = $db->query("
+        SELECT u.id AS usuario_id, u.nombre, u.email, u.creado_en, u.avatar_url, u.auth_provider
+        FROM usuarios u
+        WHERE u.rol = 'entrenador'
+          AND u.estado_cuenta = 'pendiente'
+        ORDER BY u.creado_en DESC, u.id DESC
+    ");
+    $solicitudesEntrenadores = $stSolEnt->fetchAll(PDO::FETCH_ASSOC);
 
     // Obtener todos los atletas reales (rol = 'cliente') y agruparlos por entrenador_id
     $stAtletas = $db->query("
@@ -995,11 +1008,12 @@ function adminGestion(): void {
 function adminConfiguracion(): void {
     $db = getDB();
 
-    // Obtener todos los entrenadores con su membresía y mensaje de aviso
+    // Obtener todos los entrenadores activos con su membresía y mensaje de aviso
     $stEnt = $db->query("
         SELECT u.id, u.nombre, u.email, u.avatar_url
         FROM usuarios u
         WHERE u.rol = 'entrenador'
+          AND u.estado_cuenta = 'activo'
         ORDER BY u.id ASC
     ");
     $rowsEnt = $stEnt->fetchAll(PDO::FETCH_ASSOC);
@@ -1602,12 +1616,120 @@ function adminApiRevocarEntrenador(): void {
     }
 }
 
-function adminApiNotificaciones(): void {
-    $notifs = obtenerNotificacionesUsuario((int)($_SESSION['user_id'] ?? 0), 'admin', 20, false);
-    $unread = 0;
-    foreach ($notifs as $n) {
-        if (empty($n['leida']) && empty($n['leido'])) $unread++;
+function adminApiAprobarEntrenador(): void {
+    csrfCheck();
+    $db = getDB();
+    $in = array_merge($_POST, getJsonPayload());
+
+    $targetUid = (int)($in['usuario_id'] ?? $in['entrenador_id'] ?? 0);
+    $accion    = strtolower(trim((string)($in['accion'] ?? '')));
+
+    if ($targetUid <= 0 || !in_array($accion, ['aprobar', 'rechazar'], true)) {
+        jsonOut(false, 'Parámetros inválidos para procesar la solicitud.', [], 400);
     }
+
+    try {
+        $db->beginTransaction();
+
+        $st = $db->prepare("SELECT id, nombre, email, rol, estado_cuenta FROM usuarios WHERE id = ? AND rol = 'entrenador' LIMIT 1");
+        $st->execute([$targetUid]);
+        $ent = $st->fetch(PDO::FETCH_ASSOC);
+
+        if (!$ent) {
+            $db->rollBack();
+            jsonOut(false, 'Solicitud de entrenador no encontrada.', [], 404);
+        }
+
+        $nombreEnt = (string)$ent['nombre'];
+        $adminUid  = (int)($_SESSION['user_id'] ?? 0);
+
+        if ($accion === 'aprobar') {
+            $db->prepare("UPDATE usuarios SET estado_cuenta = 'activo', activo = 1 WHERE id = ? AND rol = 'entrenador'")
+               ->execute([$targetUid]);
+
+            // Respetar código si ya existía; si no, generar uno único y habilitar membresía inicial (30 días)
+            $stMem = $db->prepare("SELECT codigo_referido FROM entrenadores_membresias WHERE entrenador_id = ? LIMIT 1");
+            $stMem->execute([$targetUid]);
+            $codigoExist = (string)($stMem->fetchColumn() ?: '');
+            $codigo = $codigoExist !== ''
+                ? $codigoExist
+                : generarCodigoEntrenadorUnico($db, $nombreEnt, $targetUid, false);
+
+            $fechaPago = date('Y-m-d', strtotime('+1 month'));
+            $db->prepare("
+                INSERT INTO entrenadores_membresias
+                    (entrenador_id, codigo_referido, monto_mensualidad, moneda, fecha_proximo_pago, dias_gracia, estado_suscripcion, pausado_manualmente, tienda_activa, tienda_nombre)
+                VALUES (?, ?, 25.00, 'USD', ?, 7, 'activa', 0, 0, 'SUPLEMENTOS')
+                ON DUPLICATE KEY UPDATE
+                    estado_suscripcion = 'activa',
+                    pausado_manualmente = 0
+            ")->execute([$targetUid, $codigo, $fechaPago]);
+
+            // Marcar como leídas todas las alertas admin asociadas a esta solicitud
+            ensureAdminNotifSchema($db);
+            $db->prepare("
+                UPDATE notificaciones
+                SET leido = 1, leida = 1
+                WHERE rol_destinatario = 'admin'
+                  AND (referencia_id = ? OR entrenador_id = ? OR remitente_id = ?)
+            ")->execute([$targetUid, $targetUid, $targetUid]);
+
+            $db->commit();
+
+            // Notificar al nuevo entrenador que su cuenta fue aprobada
+            try {
+                registrarNotificacionSistema([
+                    'remitente_id'     => $adminUid ?: null,
+                    'destinatario_id'  => $targetUid,
+                    'rol_destinatario' => 'entrenador',
+                    'tipo_evento'      => 'activacion_cuenta',
+                    'referencia_id'    => $targetUid,
+                    'entrenador_id'    => $targetUid,
+                    'mensaje'          => '¡Tu solicitud de entrenador fue aprobada! Tu código de invitación es ' . $codigo . '.',
+                    'enlace'           => APP_URL . '/entrenador/dashboard',
+                    'metadatos'        => ['codigo_referido' => $codigo],
+                ]);
+            } catch (\Throwable $eNotif) {
+                error_log('[adminApiAprobarEntrenador] Notif bienvenida: ' . $eNotif->getMessage());
+            }
+
+            jsonOut(true, "Entrenador {$nombreEnt} aprobado y activado. Código asignado: {$codigo}", [
+                'entrenador_id'   => $targetUid,
+                'codigo_referido' => $codigo,
+                'estado_cuenta'   => 'activo',
+            ]);
+        }
+
+        // Rechazar solicitud
+        $db->prepare("UPDATE usuarios SET estado_cuenta = 'rechazado', activo = 0 WHERE id = ? AND rol = 'entrenador'")
+           ->execute([$targetUid]);
+
+        ensureAdminNotifSchema($db);
+        $db->prepare("
+            UPDATE notificaciones
+            SET leido = 1, leida = 1
+            WHERE rol_destinatario = 'admin'
+              AND (referencia_id = ? OR entrenador_id = ? OR remitente_id = ?)
+        ")->execute([$targetUid, $targetUid, $targetUid]);
+
+        $db->commit();
+        jsonOut(true, "Solicitud de entrenador de {$nombreEnt} rechazada.", [
+            'entrenador_id' => $targetUid,
+            'estado_cuenta' => 'rechazado',
+        ]);
+    } catch (\Throwable $e) {
+        if ($db->inTransaction()) {
+            $db->rollBack();
+        }
+        error_log('[adminApiAprobarEntrenador] ' . $e->getMessage());
+        jsonOut(false, 'No se pudo procesar la solicitud de entrenador.', [], 500);
+    }
+}
+
+function adminApiNotificaciones(): void {
+    $adminUid = (int)($_SESSION['user_id'] ?? 0);
+    $notifs = obtenerNotificacionesUsuario($adminUid, 'admin', 20, true);
+    $unread = count($notifs);
     jsonOut(true, 'OK', ['notificaciones' => $notifs, 'unread_count' => $unread]);
 }
 
@@ -1618,9 +1740,7 @@ function adminApiMarcarNotificacion(): void {
         $id = (int)($in['id'] ?? 0);
         $adminUid = (int)($_SESSION['user_id'] ?? 0);
         if ($id > 0 && $adminUid > 0) {
-            getDB()->prepare(
-                "UPDATE notificaciones SET leida = 1, leido = 1 WHERE id = ? AND (destinatario_id = ? OR rol_destinatario = 'admin')"
-            )->execute([$id, $adminUid]);
+            marcarNotificacionLeida($id, $adminUid);
         }
         jsonOut(true, 'OK');
     } catch (\Throwable $e) {
@@ -1631,8 +1751,13 @@ function adminApiMarcarNotificacion(): void {
 
 function adminApiLeerNotificaciones(): void {
     csrfCheck();
-    getDB()->prepare("UPDATE notificaciones SET leida = 1 WHERE destinatario_id = ?")->execute([(int)($_SESSION['user_id'] ?? 0)]);
-    jsonOut(true, 'OK');
+    try {
+        marcarTodasNotificacionesLeidas((int)($_SESSION['user_id'] ?? 0), 'admin');
+        jsonOut(true, 'OK');
+    } catch (\Throwable $e) {
+        error_log('[adminApiLeerNotificaciones] ' . $e->getMessage());
+        jsonOut(false, 'No se pudieron marcar las notificaciones.', [], 500);
+    }
 }
 
 // ══════════════════════════════════════════════════════════════════

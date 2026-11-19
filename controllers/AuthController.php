@@ -331,8 +331,9 @@ function authDoLogin(): void {
         if ($bloqueo !== null) {
             $estadoCuenta = (string)($user['estado_cuenta'] ?? 'pendiente');
             $fail($bloqueo, [
-                'status'        => $estadoCuenta === 'pendiente' ? 'standby' : 'rejected',
-                'estado_cuenta' => $estadoCuenta,
+                'status'         => $estadoCuenta === 'pendiente' ? 'standby' : 'rejected',
+                'estado_cuenta'  => $estadoCuenta,
+                'rol_solicitado' => (string)($user['rol'] ?? 'cliente'),
             ]);
         }
 
@@ -503,6 +504,9 @@ function authDoRegistro(): void {
         }
         $metas = array_values(array_filter($metas));
 
+        // Detectar si el registro es una solicitud de cuenta de Entrenador (sin código de invitación)
+        $esEntrenador = in_array(strtolower(trim((string)$in('soy_entrenador'))), ['1', 'true', 'on', 'si', 'yes'], true);
+
         // ── 4. Validar tipos, longitudes y listas blancas ──
         if (mb_strlen($nombres) < 2 || !preg_match($reNombre, $nombres)) {
             authRegistroError('Ingresa tus nombres (mínimo 2 letras sin números ni símbolos).', 'nombres');
@@ -510,7 +514,7 @@ function authDoRegistro(): void {
         if (mb_strlen($apellidos) < 2 || !preg_match($reNombre, $apellidos)) {
             authRegistroError('Ingresa tus apellidos (mínimo 2 letras sin números ni símbolos).', 'apellidos');
         }
-        if ($cedula === null) {
+        if (!$esEntrenador && $cedula === null) {
             authRegistroError('La cédula debe contener solo números (entre 5 y 8 dígitos).', 'cedula');
         }
         if ($email === '') {
@@ -537,6 +541,106 @@ function authDoRegistro(): void {
         $um = new UsuarioModel();
         $db = getDB();
         $clienteId = null;
+
+        // ── 4.B FLUJO EXCLUSIVO DE SOLICITUD DE ENTRENADOR (sin código de entrenador) ──
+        if ($esEntrenador) {
+            $nombreCompleto = trim($nombres . ' ' . $apellidos);
+
+            if (!$isGoogle) {
+                if (strlen($pass) < 8) {
+                    authRegistroError('La contraseña debe tener al menos 8 caracteres.', 'password');
+                }
+                if (strlen($pass) > 1000) {
+                    authRegistroError('Contraseña demasiado larga.', 'password');
+                }
+                if (!in_array($pregunta, UsuarioModel::PREGUNTAS_SEGURIDAD, true)) {
+                    authRegistroError('Selecciona una pregunta de seguridad.', 'pregunta_seguridad');
+                }
+                if (mb_strlen($respuesta) < 2) {
+                    authRegistroError('La respuesta de seguridad es obligatoria (mínimo 2 caracteres).', 'respuesta_seguridad');
+                }
+                if ($um->emailExists($email)) {
+                    authRegistroError('Este correo ya está registrado.', 'email', 409);
+                }
+
+                $uid = $um->registrarEntrenadorPendiente(
+                    $nombreCompleto,
+                    $email,
+                    password_hash($pass, PASSWORD_BCRYPT, ['cost' => 12]),
+                    $pregunta,
+                    password_hash(strtolower(trim($respuesta)), PASSWORD_DEFAULT)
+                );
+            } else {
+                $googleSession = $_SESSION['google_onboarding'] ?? [];
+                $targetUid     = !empty($googleSession['user_id']) ? (int)$googleSession['user_id'] : null;
+                $user          = $targetUid ? $um->findById($targetUid) : $um->findByEmail($email);
+
+                if ($user && ($user['rol'] ?? '') === 'admin') {
+                    authRegistroError('No se puede cambiar el rol de una cuenta administradora.', 'email', 403);
+                }
+
+                $db->beginTransaction();
+                try {
+                    if ($user) {
+                        $uid = (int)$user['id'];
+                        $db->prepare("UPDATE usuarios SET nombre = ?, rol = 'entrenador', activo = 0, estado_cuenta = 'pendiente', auth_provider = 'google' WHERE id = ?")
+                           ->execute([$nombreCompleto, $uid]);
+                        // Limpiar fila vacía de clientes si fue creada por el onboarding temporal de Google
+                        $db->prepare("DELETE FROM clientes WHERE usuario_id = ? AND cedula IS NULL AND peso_kg IS NULL AND altura_cm IS NULL")
+                           ->execute([$uid]);
+                    } else {
+                        $googleId  = $googleSession['google_id'] ?? null;
+                        $avatarUrl = $googleSession['avatar_url'] ?? null;
+                        $stIns = $db->prepare(
+                            "INSERT INTO usuarios (nombre, email, password_hash, rol, google_id, auth_provider, avatar_url, activo, estado_cuenta)
+                             VALUES (?, ?, '', 'entrenador', ?, 'google', ?, 0, 'pendiente')"
+                        );
+                        $stIns->execute([$nombreCompleto, $email, $googleId, $avatarUrl]);
+                        $uid = (int)$db->lastInsertId();
+                    }
+                    $db->commit();
+                } catch (\Throwable $eTx) {
+                    if ($db->inTransaction()) {
+                        $db->rollBack();
+                    }
+                    throw $eTx;
+                }
+            }
+
+            // Notificar a todos los Super Admins activos en la campana del Header y panel de Gestión
+            try {
+                $admins = $db->query("SELECT id FROM usuarios WHERE rol = 'admin' AND activo = 1")->fetchAll(\PDO::FETCH_COLUMN);
+                $msgAdmin    = 'Nuevo entrenador en espera: ' . $nombreCompleto . ' solicita activación';
+                $enlaceAdmin = APP_URL . '/admin/gestion';
+                foreach ($admins as $admIdRaw) {
+                    $admId = (int)$admIdRaw;
+                    if ($admId <= 0) continue;
+                    registrarNotificacionSistema([
+                        'remitente_id'     => $uid,
+                        'destinatario_id'  => $admId,
+                        'rol_destinatario' => 'admin',
+                        'tipo_evento'      => 'solicitud_entrenador',
+                        'referencia_id'    => $uid,
+                        'entrenador_id'    => $uid,
+                        'mensaje'          => $msgAdmin,
+                        'enlace'           => $enlaceAdmin,
+                        'metadatos'        => ['entrenador_usuario_id' => $uid, 'email' => $email],
+                    ]);
+                }
+            } catch (\Throwable $eNotif) {
+                error_log('[authDoRegistro][entrenador] Notificación admin no creada: ' . $eNotif->getMessage());
+            }
+
+            unset($_SESSION['google_onboarding'], $_SESSION['reg_email_otp'], $_SESSION['reg_email_verified']);
+            unset($_SESSION['user_id'], $_SESSION['nombre'], $_SESSION['email'], $_SESSION['rol'], $_SESSION['_login_at'], $_SESSION['_via']);
+
+            jsonOut(true, UsuarioModel::MSG_PENDIENTE_ENTRENADOR, [
+                'status'         => 'standby',
+                'estado_cuenta'  => 'pendiente',
+                'rol_solicitado' => 'entrenador',
+                'mensaje'        => 'En espera de que el administrador active tu cuenta de entrenador',
+            ]);
+        }
 
         $codigoInput = strtoupper(trim(sanitizeInput($in('codigo_entrenador'), 40)));
         $codigoFallback = strtoupper(trim((string)($_SESSION['ref_codigo'] ?? ($_COOKIE['xp_ref_code'] ?? ''))));

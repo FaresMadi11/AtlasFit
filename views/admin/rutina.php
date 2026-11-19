@@ -35,6 +35,13 @@ $diasMeta = [
       <span class="xp-status-dot"></span><span class="xp-status-text">Online</span>
     </div>
     <div class="header-action-buttons">
+      <?php $unread_hdr = function_exists('contarNotificacionesNoLeidas') ? contarNotificacionesNoLeidas((int)($_SESSION['user_id'] ?? 0), 'admin') : 0; ?>
+      <div class="notif-wrapper" style="position:relative; flex-shrink: 0;">
+        <button type="button" class="db-icon-btn btn-notif-trigger xp-bell-trigger" id="btnNotifToggle" title="Notificaciones" aria-label="Notificaciones" onclick="toggleXpNotifDropdown(this, event)" style="cursor:pointer; position:relative;">
+          <i class="ti ti-bell"></i>
+          <span class="xp-notif-badge" style="<?= $unread_hdr > 0 ? '' : 'display:none;' ?>"><?= $unread_hdr ?></span>
+        </button>
+      </div>
       <a href="<?= APP_URL ?>/auth/logout" class="db-icon-btn" title="Cerrar sesión" aria-label="Cerrar sesión" style="flex-shrink: 0;">
         <i class="ti ti-logout"></i>
       </a>

@@ -295,7 +295,7 @@ function xpRestoreRememberSession(): void {
             return;
         }
 
-        if (!in_array($user['rol'] ?? '', ['entrenador', 'admin'], true) && ($user['estado_cuenta'] ?? 'activo') !== 'activo') {
+        if (($user['rol'] ?? '') !== 'admin' && ($user['estado_cuenta'] ?? 'activo') !== 'activo') {
             xpClearRememberCookie();
             return;
         }
