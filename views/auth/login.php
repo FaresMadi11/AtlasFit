@@ -2529,9 +2529,6 @@ function updateStandbyCopy(esEntrenador) {
   const chkTrainer  = document.getElementById('reg_soy_entrenador');
   const pillTrainer = document.getElementById('pillSoyEntrenador');
   const reqStar     = document.getElementById('reqStarCodigoEnt');
-  const grpCedula   = document.getElementById('group_reg_cedula');
-  const inpCedula   = document.getElementById('reg_cedula');
-  const grpFecha    = document.getElementById('group_reg_fecha_nac');
   const wizProgress = document.querySelector('#view-register .wizard-progress-wrap');
   const step1Sub    = document.getElementById('regStep1Sub');
   const btnStep1    = document.getElementById('btnWizardStep1Next');
@@ -2585,7 +2582,7 @@ function updateStandbyCopy(esEntrenador) {
       inpRef.disabled = true;
       inpRef.required = false;
       inpRef.setAttribute('aria-required', 'false');
-      inpRef.setAttribute('placeholder', 'Bloqueado — Registro como entrenador');
+      inpRef.setAttribute('placeholder', 'No requerido');
       if (reqStar) reqStar.style.display = 'none';
       if (bdgRef) bdgRef.style.display = 'none';
       if (grpRef) {
@@ -2594,12 +2591,9 @@ function updateStandbyCopy(esEntrenador) {
         const errEl = document.getElementById('err_codigo_entrenador');
         if (errEl) { errEl.textContent = ''; errEl.style.display = 'none'; }
       }
-      if (grpCedula) grpCedula.style.display = 'none';
-      if (inpCedula) { inpCedula.required = false; inpCedula.setAttribute('aria-required', 'false'); }
-      if (grpFecha) grpFecha.style.display = 'none';
       if (wizProgress) wizProgress.style.display = 'none';
       if (step1Sub) step1Sub.textContent = 'Completa tus datos para solicitar tu cuenta de entrenador';
-      if (btnStep1) btnStep1.innerHTML = '<i class="ti ti-shield-check" style="vertical-align:middle;margin-right:6px;"></i> SOLICITAR ACCESO COMO ENTRENADOR';
+      if (btnStep1) btnStep1.innerHTML = '<i class="ti ti-check"></i> <span>Solicitar acceso</span>';
       if (btnGoo) btnGoo.href = APP + '/auth/google';
     } else {
       inpRef.disabled = false;
@@ -2612,9 +2606,6 @@ function updateStandbyCopy(esEntrenador) {
       }
       if (reqStar) reqStar.style.display = '';
       if (grpRef) grpRef.classList.remove('is-trainer-locked');
-      if (grpCedula) grpCedula.style.display = '';
-      if (inpCedula) { inpCedula.required = true; inpCedula.setAttribute('aria-required', 'true'); }
-      if (grpFecha) grpFecha.style.display = '';
       if (wizProgress) wizProgress.style.display = '';
       if (step1Sub) step1Sub.textContent = origStep1SubText;
       if (btnStep1) btnStep1.innerHTML = origStep1BtnHtml;
@@ -3208,10 +3199,10 @@ window.handleWizardStep1Next = async function(event) {
   } else if (!valApellidos || valApellidos.length < 2 || !reNombre.test(valApellidos)) {
     errorField = 'reg_apellidos';
     errorMsg   = !valApellidos ? 'Por favor ingresa tus apellidos.' : 'Tus apellidos deben tener al menos 2 letras válidas (sin números).';
-  } else if (!isTrainerMode && !valCedulaRaw) {
+  } else if (!valCedulaRaw) {
     errorField = 'reg_cedula';
     errorMsg   = 'Por favor ingresa tu número de cédula (solo números).';
-  } else if (!isTrainerMode && !valCedulaNorm) {
+  } else if (!valCedulaNorm) {
     errorField = 'reg_cedula';
     errorMsg   = 'La cédula debe contener entre 5 y 8 números sin letras.';
   } else if (!isTrainerMode && (!valCodigoEnt || valCodigoEnt.length < 3)) {
@@ -3462,9 +3453,7 @@ async function submitRegistration(isOmitido = false) {
   };
 
   const btn = isTrainerMode ? document.getElementById('btnWizardStep1Next') : document.getElementById('btnRegister');
-  const origBtnHtml = isTrainerMode
-    ? '<i class="ti ti-shield-check" style="vertical-align:middle;margin-right:6px;"></i> SOLICITAR ACCESO COMO ENTRENADOR'
-    : origRegister;
+  const origBtnHtml = origRegister;
   setBtn(btn, true, origBtnHtml);
 
   try {
