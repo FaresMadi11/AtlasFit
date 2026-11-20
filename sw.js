@@ -78,6 +78,19 @@ function homePathForRole(role) {
   return '';
 }
 
+function normalizeApiCacheUrl(rawUrl) {
+  try {
+    const u = new URL(rawUrl);
+    u.searchParams.delete('_t');
+    u.searchParams.delete('t');
+    u.searchParams.delete('nocache');
+    u.searchParams.delete('cb');
+    return u.toString();
+  } catch (_) {
+    return rawUrl;
+  }
+}
+
 function fetchWithTimeout(reqOrPromise, ms) {
   return new Promise((resolve, reject) => {
     let settled = false;
@@ -173,7 +186,7 @@ self.addEventListener('activate', event => {
   );
 });
 
-// Resolver el HTML offline correcto para las 3 vistas (Cliente, Entrenador, Admin)
+// Resolver el HTML offline correcto para las 3 vistas (Cliente, Entrenador, Admin) sin falsas redirecciones a Inicio
 async function resolveOfflineHtml(userCache, req, pathname) {
   const keys = await userCache.keys();
   const base = getScopeBase();
@@ -183,12 +196,13 @@ async function resolveOfflineHtml(userCache, req, pathname) {
     pathname.endsWith('/index.php')
   );
 
-  // 1. Coincidencia exacta (respetando query si existe, por ej. perfil-cliente?id=5)
+  // 1. Coincidencia exacta (respetando query ?id=..., ?dia=..., etc.)
   const exactMatch = await userCache.match(req);
   if (exactMatch) return exactMatch;
 
-  // 2. Coincidencia por ruta base ignorando query (excepto raíz para no servir vista equivocada)
-  if (!isRootPath && !pathname.includes('/auth/')) {
+  // 2. Coincidencia por ruta limpia ignorando query (NO mezclar perfiles de distintos atletas ?id=X)
+  const isEntityParameterized = pathname.includes('/perfil-cliente') || pathname.includes('/estadisticas-cliente') || pathname.includes('/revisar-modificacion');
+  if (!isRootPath && !pathname.includes('/auth/') && !isEntityParameterized) {
     const cleanMatch = await userCache.match(req, { ignoreSearch: true });
     if (cleanMatch) return cleanMatch;
   }
@@ -197,7 +211,7 @@ async function resolveOfflineHtml(userCache, req, pathname) {
   const metaRole = (meta && meta.role) ? meta.role : '';
   const metaHome = (meta && meta.homePath) ? meta.homePath : homePathForRole(metaRole);
 
-  // 3. Si es raíz (start_url) o un /auth/login rescatado offline con sesión previa activa
+  // 3. Raíz (start_url) o rescate offline de /auth/login con sesión activa previa
   if (isRootPath || pathname.includes('/auth/login') || pathname.endsWith('/auth')) {
     if (metaHome) {
       const homeRes = await userCache.match(base + metaHome, { ignoreSearch: true });
@@ -225,27 +239,30 @@ async function resolveOfflineHtml(userCache, req, pathname) {
     return null;
   }
 
-  // 4. Fallbacks semánticos por vista y módulo (sin cruzar vistas entre roles)
+  // 4. Coincidencia semántica ESTRICTA por módulo exacto (NUNCA redirigir silenciosamente a Inicio si falta otra subpágina)
   if (pathname.includes('/admin/')) {
-    const adminTargets = ['/admin/rutina', '/admin/gestion', '/admin/configuracion'];
-    if (pathname.includes('/gestion')) {
-      const k = keys.find(item => item.url.toLowerCase().includes('/admin/gestion'));
-      if (k) return await userCache.match(k);
-    }
-    if (pathname.includes('/configuracion')) {
-      const k = keys.find(item => item.url.toLowerCase().includes('/admin/configuracion'));
-      if (k) return await userCache.match(k);
-    }
-    for (const p of adminTargets) {
-      const k = keys.find(item => item.url.toLowerCase().includes(p));
-      if (k) return await userCache.match(k);
+    const mapAdmin = [
+      ['/gestion', '/admin/gestion'],
+      ['/configuracion', '/admin/configuracion'],
+      ['/notificaciones', '/admin/notificaciones'],
+      ['/rutina', '/admin/rutina'],
+      ['/dashboard', '/admin/rutina']
+    ];
+    for (const [needle, target] of mapAdmin) {
+      if (pathname.includes(needle)) {
+        const res = await userCache.match(base + target, { ignoreSearch: true });
+        if (res) return res;
+      }
     }
     return null;
   }
 
   if (pathname.includes('/entrenador/')) {
     const mapEnt = [
-      ['/perfil-cliente', '/entrenador/perfil-cliente'],
+      ['/pagos-recibidos', '/entrenador/pagos-recibidos'],
+      ['/metodos-pago', '/entrenador/metodos-pago'],
+      ['/registrar-cliente', '/entrenador/registrar-cliente'],
+      ['/notificaciones', '/entrenador/notificaciones'],
       ['/crear-rutina', '/entrenador/crear-rutina'],
       ['/clientes', '/entrenador/clientes'],
       ['/asistencias', '/entrenador/asistencias'],
@@ -254,32 +271,33 @@ async function resolveOfflineHtml(userCache, req, pathname) {
     ];
     for (const [needle, target] of mapEnt) {
       if (pathname.includes(needle)) {
-        const k = keys.find(item => item.url.toLowerCase().includes(target));
-        if (k) return await userCache.match(k);
+        const res = await userCache.match(base + target, { ignoreSearch: true });
+        if (res) return res;
       }
     }
-    const fallbackEnt = keys.find(item => item.url.toLowerCase().includes('/entrenador/dashboard'))
-      || keys.find(item => item.url.toLowerCase().includes('/entrenador/'));
-    if (fallbackEnt) return await userCache.match(fallbackEnt);
     return null;
   }
 
   if (pathname.includes('/cliente/')) {
     const mapCli = [
-      ['/rutina', '/cliente/rutina-dia'],
+      ['/rutina-dia', '/cliente/rutina-dia'],
+      ['/rutinas', '/cliente/rutinas'],
       ['/estadisticas', '/cliente/estadisticas'],
       ['/perfil', '/cliente/perfil'],
+      ['/pago', '/cliente/pago'],
+      ['/notificaciones', '/cliente/notificaciones'],
       ['/dashboard', '/cliente/dashboard']
     ];
     for (const [needle, target] of mapCli) {
       if (pathname.includes(needle)) {
-        const k = keys.find(item => item.url.toLowerCase().includes(target));
-        if (k) return await userCache.match(k);
+        const res = await userCache.match(base + target, { ignoreSearch: true });
+        if (res) return res;
       }
     }
-    const fallbackCli = keys.find(item => item.url.toLowerCase().includes('/cliente/dashboard'))
-      || keys.find(item => item.url.toLowerCase().includes('/cliente/'));
-    if (fallbackCli) return await userCache.match(fallbackCli);
+    if (pathname.includes('/rutina')) {
+      const res = await userCache.match(base + '/cliente/rutina-dia', { ignoreSearch: true });
+      if (res) return res;
+    }
   }
 
   return null;
@@ -378,21 +396,24 @@ self.addEventListener('fetch', event => {
     return;
   }
 
-  // ── REGLA 1.5: APIs DE LECTURA (Fast-Race 600ms con respaldo instantáneo en USER_CACHE + revalidación silenciosa) ──
+  // ── REGLA 1.5: APIs DE LECTURA (Fast-Race 600ms con clave normalizada sin _t/t y respaldo en USER_CACHE) ──
   const isReadOnlyApi = (
     pathname.includes('/api-') ||
     pathname.includes('api_') ||
-    pathname.includes('/asistencias-data')
+    pathname.includes('/asistencias-data') ||
+    pathname.includes('/grafica-ejercicio')
   );
   if (isReadOnlyApi) {
     event.respondWith((async () => {
       const userCache = await caches.open(USER_CACHE);
-      const cached = await userCache.match(req);
+      const normUrl = normalizeApiCacheUrl(req.url);
+      const cacheKeyReq = new Request(normUrl);
+      const cached = (await userCache.match(cacheKeyReq)) || (await userCache.match(req));
       const netPromise = fetch(req).then(networkResponse => {
         const ct = (networkResponse.headers.get('content-type') || '').toLowerCase();
         const finalUrl = (networkResponse.url || req.url).toLowerCase();
         if (networkResponse.ok && ct.includes('application/json') && !finalUrl.includes('/auth/')) {
-          safeCachePut(USER_CACHE, req, networkResponse);
+          safeCachePut(USER_CACHE, cacheKeyReq, networkResponse);
         }
         return networkResponse;
       });
@@ -483,7 +504,7 @@ self.addEventListener('fetch', event => {
         const lateFallback = await resolveOfflineHtml(userCache, req, pathname);
         if (lateFallback) return lateFallback;
         return new Response(
-          `<!DOCTYPE html><html lang="es" data-theme="dark"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Modo Sin Conexión – Atlas Fit</title><style>body{background:#0a0a0f;color:#fff;font-family:system-ui,-apple-system,sans-serif;display:grid;place-items:center;min-height:100vh;margin:0;padding:20px;box-sizing:border-box;text-align:center}.card{background:rgba(20,20,30,0.85);border:1px solid rgba(138,43,226,0.3);border-radius:24px;padding:32px 24px;max-width:380px;box-shadow:0 12px 40px rgba(0,0,0,0.6);backdrop-filter:blur(16px)}h1{font-size:1.35rem;color:#f8fafc;margin:0 0 10px 0;font-weight:800}.icon{width:56px;height:56px;border-radius:16px;background:rgba(138,43,226,0.18);border:1px solid rgba(138,43,226,0.35);color:#c084fc;display:grid;place-items:center;font-size:1.75rem;margin:0 auto 18px}p{color:#94a3b8;font-size:.88rem;line-height:1.5;margin:0 0 24px}.btn{background:linear-gradient(135deg,#8a2be2,#6d28d9);color:#fff;padding:12px 24px;border-radius:12px;text-decoration:none;font-weight:700;display:inline-block;box-shadow:0 4px 18px rgba(138,43,226,0.45);cursor:pointer;border:none;font-size:0.9rem}</style></head><body><div class="card"><div class="icon">⚡</div><h1>Atlas Fit · Modo Offline</h1><p>Estás sin conexión a internet. Abre la app con señal al menos unos segundos hasta que el estado marque <strong>Online</strong> para guardar todos los módulos offline.</p><button onclick="window.location.reload()" class="btn">Reintentar</button></div></body></html>`,
+          `<!DOCTYPE html><html lang="es" data-theme="dark"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Modo Sin Conexión – Atlas Fit</title><style>body{background:#0a0a0f;color:#fff;font-family:system-ui,-apple-system,sans-serif;display:grid;place-items:center;min-height:100vh;margin:0;padding:20px;box-sizing:border-box;text-align:center}.card{background:rgba(20,20,30,0.88);border:1px solid rgba(138,43,226,0.32);border-radius:24px;padding:30px 22px;max-width:380px;box-shadow:0 12px 40px rgba(0,0,0,0.6)}h1{font-size:1.28rem;color:#f8fafc;margin:0 0 10px 0;font-weight:800}.icon{width:54px;height:54px;border-radius:16px;background:rgba(138,43,226,0.18);border:1px solid rgba(138,43,226,0.35);color:#c084fc;display:grid;place-items:center;font-size:1.65rem;margin:0 auto 16px}p{color:#94a3b8;font-size:.86rem;line-height:1.5;margin:0 0 22px}.actions{display:flex;gap:10px;justify-content:center}.btn{background:linear-gradient(135deg,#8a2be2,#6d28d9);color:#fff;padding:11px 18px;border-radius:12px;text-decoration:none;font-weight:700;cursor:pointer;border:none;font-size:0.86rem}.btn-sec{background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.15);color:#e2e8f0}</style></head><body><div class="card"><div class="icon">⚡</div><h1>Sección no guardada offline</h1><p>Esta vista puntual aún no está en tu caché local. Ábrela una vez con señal para guardarla o vuelve a la pantalla anterior.</p><div class="actions"><button onclick="history.back()" class="btn btn-sec">Volver</button><button onclick="window.location.reload()" class="btn">Reintentar</button></div></div></body></html>`,
           { headers: { 'Content-Type': 'text/html; charset=utf-8' } }
         );
       }

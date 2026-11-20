@@ -135,29 +135,45 @@
       const nowLocal = new Date();
       const todayIso = `${nowLocal.getFullYear()}-${String(nowLocal.getMonth() + 1).padStart(2, '0')}-${String(nowLocal.getDate()).padStart(2, '0')}`;
 
-      // Paquete completo por vista (HTML de todos los módulos + APIs críticas de lectura)
+      // Paquete completo por vista (TODOS los módulos, subpáginas y APIs de lectura de cada rol)
       const bundle = isAtleta
         ? [
             { path: '/cliente/dashboard', type: 'html' },
-            { path: '/cliente/rutina-dia', type: 'html' },
+            { path: '/cliente/rutina-dia', type: 'html', extractWeekDays: true },
             { path: '/cliente/estadisticas', type: 'html', extractStats: true },
-            { path: '/cliente/perfil', type: 'html' }
+            { path: '/cliente/perfil', type: 'html' },
+            { path: '/cliente/pago', type: 'html' },
+            { path: '/cliente/notificaciones', type: 'html' },
+            { path: '/cliente/api-peso-historial', type: 'api' },
+            { path: '/cliente/api-tasa-bcv', type: 'api' },
+            { path: '/cliente/api-tienda-get', type: 'api' },
+            { path: '/cliente/api-notificaciones', type: 'api' }
           ]
         : isEntrenador
           ? [
               { path: '/entrenador/dashboard', type: 'html' },
-              { path: '/entrenador/clientes', type: 'html' },
+              { path: '/entrenador/clientes', type: 'html', extractAthleteProfiles: true },
               { path: '/entrenador/asistencias', type: 'html' },
               { path: '/entrenador/configuracion', type: 'html' },
+              { path: '/entrenador/pagos-recibidos', type: 'html' },
+              { path: '/entrenador/metodos-pago', type: 'html' },
               { path: '/entrenador/crear-rutina', type: 'html' },
+              { path: '/entrenador/registrar-cliente', type: 'html' },
+              { path: '/entrenador/notificaciones', type: 'html' },
               { path: '/entrenador/api-catalogo-list', type: 'api' },
-              { path: '/entrenador/asistencias-data?fecha=' + encodeURIComponent(todayIso), type: 'api' }
+              { path: '/entrenador/api-listar-plantillas-catalogo', type: 'api' },
+              { path: '/entrenador/api-tienda-get', type: 'api' },
+              { path: '/entrenador/api-notificaciones', type: 'api' },
+              { path: '/entrenador/asistencias-data?date=' + encodeURIComponent(todayIso), type: 'api', extractAsistenciasAthletes: true }
             ]
           : [
               { path: '/admin/rutina', type: 'html' },
               { path: '/admin/gestion', type: 'html' },
               { path: '/admin/configuracion', type: 'html' },
+              { path: '/admin/notificaciones', type: 'html' },
               { path: '/admin/api-catalogo-list', type: 'api' },
+              { path: '/admin/api-listar-plantillas-catalogo', type: 'api' },
+              { path: '/admin/api-notificaciones', type: 'api' },
               { path: '/admin/api-dia-detalle?fecha=' + encodeURIComponent(todayIso), type: 'api' }
             ];
 
@@ -201,11 +217,21 @@
           return;
         }
 
-        const totalItems = showProgressUI ? bundle.length : targets.length;
+        // Rutas dinámicas descubiertas (rutinas de atletas de hoy en Asistencias, días de la semana en Cliente, perfiles recientes)
+        const dynamicPrimaryQueue = [];
+        const dynamicBgQueue = [];
+        const seenDyn = new Set();
+        const pushDyn = (arr, item) => {
+          if (!item || !item.path || seenDyn.has(item.path)) return;
+          seenDyn.add(item.path);
+          arr.push(item);
+        };
+
+        let totalItems = showProgressUI ? bundle.length : targets.length;
         let completedItems = showProgressUI ? Math.max(0, bundle.length - targets.length) : 0;
 
         if (showProgressUI) {
-          const startPct = Math.min(95, Math.max(8, Math.round((completedItems / Math.max(1, totalItems)) * 100)));
+          const startPct = Math.min(95, Math.max(6, Math.round((completedItems / Math.max(1, totalItems)) * 100)));
           this._cacheProgress = { pct: startPct, done: completedItems, total: totalItems };
           this.updatePillUI('caching');
         }
@@ -215,7 +241,7 @@
           const fullUrl = base + item.path;
           const opts = item.type === 'html'
             ? { credentials: 'same-origin', headers: { 'Accept': 'text/html' } }
-            : { credentials: 'same-origin', headers: { 'Accept': 'application/json' } };
+            : { credentials: 'same-origin', headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' } };
 
           const res = await fetch(fullUrl, opts).catch(() => null);
           if (!res || !res.ok) return false;
@@ -232,6 +258,83 @@
           // Guardar el home del rol también como '/' (start_url de la PWA)
           if (item.path === homePath) {
             await cache.put(base + '/', res.clone()).catch(() => {});
+          }
+
+          // Extraer atletas del día desde asistencias-data para precargar sus rutinas (api-dia-detalle) y evitar "Sin conexión" en Asistencias
+          if (item.extractAsistenciasAthletes) {
+            try {
+              const json = await res.clone().json().catch(() => null);
+              if (json) {
+                const lists = [
+                  ...(json.pendientes || []),
+                  ...(json.verificar || []),
+                  ...(json.completadas || []),
+                  ...(json.modificaciones || []),
+                  ...(json.sinAsignar || []),
+                  ...(json.sin_asignar || [])
+                ];
+                const ids = [];
+                lists.forEach(row => {
+                  const cid = parseInt(row && (row.cliente_id || row.id) || 0, 10);
+                  if (cid > 0 && !ids.includes(cid)) ids.push(cid);
+                });
+                ids.forEach(cid => {
+                  pushDyn(dynamicPrimaryQueue, {
+                    path: `/entrenador/api-dia-detalle?cliente_id=${cid}&fecha=${encodeURIComponent(todayIso)}`,
+                    type: 'api'
+                  });
+                });
+                // Si hay solicitudes de modificación pendientes, precargar también su variante con solicitud_id
+                (json.modificaciones || []).forEach(mRow => {
+                  const cid = parseInt(mRow && mRow.cliente_id || 0, 10);
+                  const sid = parseInt(mRow && mRow.rutina_id || 0, 10);
+                  if (cid > 0 && sid > 0) {
+                    pushDyn(dynamicPrimaryQueue, {
+                      path: `/entrenador/api-dia-detalle?cliente_id=${cid}&fecha=${encodeURIComponent(todayIso)}&solicitud_id=${sid}`,
+                      type: 'api'
+                    });
+                  }
+                });
+                ids.slice(0, 8).forEach(cid => {
+                  pushDyn(dynamicBgQueue, { path: `/entrenador/perfil-cliente?id=${cid}`, type: 'html' });
+                  pushDyn(dynamicBgQueue, { path: `/entrenador/api-pagos-cliente?cliente_id=${cid}`, type: 'api' });
+                });
+              }
+            } catch (_) {}
+          }
+
+          // Extraer enlaces de perfiles de atletas visibles en /entrenador/clientes para precarga silenciosa en segundo plano
+          if (item.extractAthleteProfiles) {
+            try {
+              const html = await res.clone().text().catch(() => '');
+              const re = /entrenador\/perfil-cliente\?id=(\d+)/g;
+              let m;
+              let count = 0;
+              while ((m = re.exec(html)) !== null && count < 8) {
+                const cid = parseInt(m[1], 10);
+                if (cid > 0) {
+                  pushDyn(dynamicBgQueue, { path: `/entrenador/perfil-cliente?id=${cid}`, type: 'html' });
+                  pushDyn(dynamicBgQueue, { path: `/entrenador/api-dia-detalle?cliente_id=${cid}&fecha=${encodeURIComponent(todayIso)}`, type: 'api' });
+                  pushDyn(dynamicBgQueue, { path: `/entrenador/api-pagos-cliente?cliente_id=${cid}`, type: 'api' });
+                  count++;
+                }
+              }
+            } catch (_) {}
+          }
+
+          // Extraer los otros días de la semana en /cliente/rutina-dia para consultar toda la semana offline
+          if (item.extractWeekDays) {
+            try {
+              const html = await res.clone().text().catch(() => '');
+              const re = /\/cliente\/rutina-dia\?dia=\d+(?:&amp;rutina=\d+|&rutina=\d+)?/g;
+              let m;
+              let count = 0;
+              while ((m = re.exec(html)) !== null && count < 7) {
+                const cleanPath = m[0].replace(/&amp;/g, '&');
+                pushDyn(dynamicBgQueue, { path: cleanPath, type: 'html' });
+                count++;
+              }
+            } catch (_) {}
           }
 
           // Extraer snapshot JSON de estadísticas para que el calendario y gráficas funcionen 100% offline
@@ -265,29 +368,41 @@
           return true;
         };
 
-        // Descargar en lotes de 2 en paralelo (rápido sin saturar Render/TiDB)
+        // Descargar en lotes paralelos de 3 (rápido y equilibrado)
         const waitIdle = (ms) => new Promise(r => setTimeout(r, ms));
         let okCount = 0;
-        for (let i = 0; i < targets.length; i += 2) {
-          if (!navigator.onLine) break;
-          while (document.body && document.body.classList.contains('is-typing')) {
-            await waitIdle(450);
-          }
-          const batch = targets.slice(i, i + 2);
-          const results = await Promise.all(batch.map(it => fetchOne(it)));
-          results.forEach(ok => {
-            if (ok) okCount++;
-            completedItems++;
-            if (showProgressUI) {
-              const pct = Math.min(99, Math.round((completedItems / Math.max(1, totalItems)) * 100));
-              this._cacheProgress = { pct, done: completedItems, total: totalItems };
-              this.updatePillUI('caching');
+        const runBatchList = async (list, batchSize, updatePct) => {
+          for (let i = 0; i < list.length; i += batchSize) {
+            if (!navigator.onLine) break;
+            while (document.body && document.body.classList.contains('is-typing')) {
+              await waitIdle(450);
             }
-          });
-          if (i + 2 < targets.length) await waitIdle(120);
+            const batch = list.slice(i, i + batchSize);
+            const results = await Promise.all(batch.map(it => fetchOne(it)));
+            results.forEach(ok => {
+              if (ok) okCount++;
+              if (updatePct) {
+                completedItems++;
+                if (showProgressUI) {
+                  const pct = Math.min(99, Math.round((completedItems / Math.max(1, totalItems)) * 100));
+                  this._cacheProgress = { pct, done: completedItems, total: totalItems };
+                  this.updatePillUI('caching');
+                }
+              }
+            });
+            if (i + batchSize < list.length) await waitIdle(80);
+          }
+        };
+
+        await runBatchList(targets, 3, true);
+
+        // Fase 2 dentro del 100%: rutinas de hoy de todos los atletas en Asistencias (rápido, JSONs ligeros)
+        if (dynamicPrimaryQueue.length > 0 && navigator.onLine) {
+          totalItems += dynamicPrimaryQueue.length;
+          await runBatchList(dynamicPrimaryQueue, 4, true);
         }
 
-        // Asegurar que la pantalla actual y '/' queden siempre respaldadas
+        // Asegurar que '/' quede siempre respaldado con el home del rol
         const homeResAfter = await cache.match(base + homePath, { ignoreSearch: true });
         if (homeResAfter) {
           await cache.put(base + '/', homeResAfter.clone()).catch(() => {});
@@ -310,6 +425,20 @@
           }, 650);
         } else {
           this._cacheProgress = null;
+        }
+
+        // Fase 3 silenciosa en segundo plano (sin bloquear el paso a Online): perfiles de atletas activos y días de la semana
+        if (dynamicBgQueue.length > 0 && navigator.onLine) {
+          setTimeout(async () => {
+            const toFetchBg = [];
+            for (const it of dynamicBgQueue) {
+              const ex = await cache.match(base + it.path).catch(() => null);
+              if (!ex) toFetchBg.push(it);
+            }
+            if (toFetchBg.length > 0) {
+              await runBatchList(toFetchBg, 2, false);
+            }
+          }, 900);
         }
       } catch (_) {
         this._cacheProgress = null;

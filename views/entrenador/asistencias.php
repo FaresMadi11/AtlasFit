@@ -2172,7 +2172,8 @@ function iniciarPolling() {
   if (isPollingActive) return;
   isPollingActive = true;
   setInterval(() => {
-    // Evitar sondeo si la pestaña no es visible, si hay un drawer cargando o si el usuario está escribiendo/en modal
+    // Evitar sondeo si estamos sin red, si la pestaña no es visible, si hay un drawer cargando o si el usuario está escribiendo/en modal
+    if (!navigator.onLine) return;
     if (document.hidden || document.visibilityState !== 'visible') return;
     if (activeDrawerFetches > 0) return;
     if (document.querySelector('.swal2-container, .drill-modal.open, .cdd-bs-sheet.is-open, .cdd-modal-backdrop.is-open, input:focus, textarea:focus')) return;
@@ -2207,17 +2208,21 @@ let prevPendientesJson = '';
 let prevCompletadasJson = '';
 let prevAlertasJson = '';
 
-/* Pre-carga silenciosa en lotes paralelos de las rutinas de los atletas del día (apertura en 0ms) */
+/* Pre-carga silenciosa en lotes paralelos de las rutinas de los atletas del día (apertura en 0ms y 100% offline) */
 function prefetchRutinasDelDia(data, fecha) {
   if (!data || !navigator.onLine) return;
-  const lista = [...(data.pendientes || []), ...(data.verificar || [])]
+  const lista = [
+    ...(data.pendientes || []),
+    ...(data.verificar || []),
+    ...(data.completadas || []),
+    ...(data.modificaciones || [])
+  ]
     .map(item => parseInt(item.cliente_id || item.id || 0, 10))
-    .filter((cid, idx, arr) => cid > 0 && arr.indexOf(cid) === idx)
-    .slice(0, 8);
+    .filter((cid, idx, arr) => cid > 0 && arr.indexOf(cid) === idx);
   if (!lista.length) return;
 
   setTimeout(async () => {
-    const batchSize = 3;
+    const batchSize = 4;
     for (let i = 0; i < lista.length; i += batchSize) {
       if (fechaGlobal !== fecha || !navigator.onLine) break;
       const chunk = lista.slice(i, i + batchSize);
@@ -2242,10 +2247,9 @@ function prefetchRutinasDelDia(data, fecha) {
 
 // Precalentar las rutinas de los atletas de hoy al iniciar la vista
 document.addEventListener('DOMContentLoaded', () => {
-  const initialIds = Array.from(document.querySelectorAll('#panelPendientes .cd-item-wrapper, #panelCompletadas .cd-item-wrapper'))
-    .map(el => (el.id || '').replace(/^item-(pen|comp|ver)-/, ''))
-    .filter(Boolean)
-    .slice(0, 8);
+  const initialIds = Array.from(document.querySelectorAll('#panelPendientes .cd-item-wrapper, #panelCompletadas .cd-item-wrapper, #panelAlertas .cd-item-wrapper'))
+    .map(el => (el.id || '').replace(/^item-(pen|comp|ver|mod|al)-/, ''))
+    .filter(Boolean);
   if (initialIds.length > 0 && navigator.onLine) {
     prefetchRutinasDelDia({ pendientes: initialIds.map(id => ({ cliente_id: id })) }, fechaGlobal);
   }
