@@ -30,9 +30,9 @@
     "semantic_hash": ""
   },
   "controllers/AuthController.php": {
-    "mtime": 1795110845.037047,
-    "seen": 1795111709.4930975,
-    "ast_hash": "5c65bd1ed6ed9d072845ad89a3ce8179",
+    "mtime": 1795130444.7980466,
+    "seen": 1795130705.2071698,
+    "ast_hash": "98fcd7976ab97e936cc49b6d40f319aa",
     "semantic_hash": ""
   },
   "controllers/ClienteController.php": {
@@ -48,9 +48,9 @@
     "semantic_hash": ""
   },
   "controllers/GoogleAuthController.php": {
-    "mtime": 1795110845.1605675,
-    "seen": 1795111709.4938772,
-    "ast_hash": "a018a607e964302ff7f9d997330d8d54",
+    "mtime": 1795130535.6609206,
+    "seen": 1795130705.207818,
+    "ast_hash": "1d1c5ca4db1f29f96255fe95f12fc0ee",
     "semantic_hash": ""
   },
   "controllers/LegalController.php": {
@@ -84,9 +84,9 @@
     "semantic_hash": ""
   },
   "core/helpers.php": {
-    "mtime": 1795110845.3178148,
-    "seen": 1795111709.4981508,
-    "ast_hash": "72c07d4623c1ea6d86622d8e4283baa1",
+    "mtime": 1795130433.3003964,
+    "seen": 1795130705.2112675,
+    "ast_hash": "9e82139772ce3bcc0934307b4967d409",
     "semantic_hash": ""
   },
   "core/rate_limiter.php": {
@@ -204,9 +204,9 @@
     "semantic_hash": "cead14bbbd55af74900dba44166ed8c8"
   },
   "models/UsuarioModel.php": {
-    "mtime": 1795110845.530687,
-    "seen": 1795111709.502239,
-    "ast_hash": "f6d7e4768b0e89e92aff0e5541a96513",
+    "mtime": 1795130436.0764854,
+    "seen": 1795130705.2205591,
+    "ast_hash": "32908147de5641d4912257dc42619be6",
     "semantic_hash": ""
   },
   "models/UsuarioSistemaModel.php": {
@@ -216,9 +216,9 @@
     "semantic_hash": "ca6328d41cbcf6112d6fc81c7e2c8325"
   },
   "views/auth/login.php": {
-    "mtime": 1795111685.7264814,
-    "seen": 1795111709.5030587,
-    "ast_hash": "59feb86d97f2578e5538ea98c32fc85b",
+    "mtime": 1795130631.8540616,
+    "seen": 1795130705.222352,
+    "ast_hash": "3b2b438e6059f9c6073ea9abbd57aa1b",
     "semantic_hash": ""
   },
   "views/auth/recuperar.php": {
@@ -360,9 +360,9 @@
     "semantic_hash": ""
   },
   "views/layout/header.php": {
-    "mtime": 1795110673.730411,
-    "seen": 1795110758.028067,
-    "ast_hash": "0622abbef84ee3b8897da33d2d815a28",
+    "mtime": 1795130560.589431,
+    "seen": 1795130705.2322268,
+    "ast_hash": "c28d0840f4676b8418c16ec35eebfccf",
     "semantic_hash": ""
   },
   "views/legal/privacidad.php": {
@@ -444,9 +444,9 @@
     "semantic_hash": ""
   },
   "sw.js": {
-    "mtime": 1794880830.1361437,
-    "seen": 1794881440.5868769,
-    "ast_hash": "717005e243a2c382e5d60d83f824c38f",
+    "mtime": 1795130544.5845802,
+    "seen": 1795130705.220905,
+    "ast_hash": "0da90f04229bfc53a914943872970c27",
     "semantic_hash": ""
   },
   "core/media_storage.php": {

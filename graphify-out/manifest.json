@@ -30,8 +30,8 @@
     "semantic_hash": ""
   },
   "controllers/AuthController.php": {
-    "mtime": 1795130444.7980466,
-    "seen": 1795130705.2071698,
+    "mtime": 1795130761.5279274,
+    "seen": 1795133669.389357,
     "ast_hash": "98fcd7976ab97e936cc49b6d40f319aa",
     "semantic_hash": ""
   },
@@ -48,9 +48,9 @@
     "semantic_hash": ""
   },
   "controllers/GoogleAuthController.php": {
-    "mtime": 1795130535.6609206,
-    "seen": 1795130705.207818,
-    "ast_hash": "1d1c5ca4db1f29f96255fe95f12fc0ee",
+    "mtime": 1795133630.4505844,
+    "seen": 1795133669.3900137,
+    "ast_hash": "06eb7f37198ebaaf6ecff1ba1a706996",
     "semantic_hash": ""
   },
   "controllers/LegalController.php": {
@@ -84,8 +84,8 @@
     "semantic_hash": ""
   },
   "core/helpers.php": {
-    "mtime": 1795130433.3003964,
-    "seen": 1795130705.2112675,
+    "mtime": 1795130761.8027017,
+    "seen": 1795133669.3929324,
     "ast_hash": "9e82139772ce3bcc0934307b4967d409",
     "semantic_hash": ""
   },
@@ -204,8 +204,8 @@
     "semantic_hash": "cead14bbbd55af74900dba44166ed8c8"
   },
   "models/UsuarioModel.php": {
-    "mtime": 1795130436.0764854,
-    "seen": 1795130705.2205591,
+    "mtime": 1795130761.9003215,
+    "seen": 1795133669.396281,
     "ast_hash": "32908147de5641d4912257dc42619be6",
     "semantic_hash": ""
   },
@@ -216,8 +216,8 @@
     "semantic_hash": "ca6328d41cbcf6112d6fc81c7e2c8325"
   },
   "views/auth/login.php": {
-    "mtime": 1795130631.8540616,
-    "seen": 1795130705.222352,
+    "mtime": 1795130762.1216063,
+    "seen": 1795133669.3968346,
     "ast_hash": "3b2b438e6059f9c6073ea9abbd57aa1b",
     "semantic_hash": ""
   },
@@ -360,8 +360,8 @@
     "semantic_hash": ""
   },
   "views/layout/header.php": {
-    "mtime": 1795130560.589431,
-    "seen": 1795130705.2322268,
+    "mtime": 1795130762.289191,
+    "seen": 1795133669.3995895,
     "ast_hash": "c28d0840f4676b8418c16ec35eebfccf",
     "semantic_hash": ""
   },
@@ -444,8 +444,8 @@
     "semantic_hash": ""
   },
   "sw.js": {
-    "mtime": 1795130544.5845802,
-    "seen": 1795130705.220905,
+    "mtime": 1795130762.0697768,
+    "seen": 1795133669.396402,
     "ast_hash": "0da90f04229bfc53a914943872970c27",
     "semantic_hash": ""
   },

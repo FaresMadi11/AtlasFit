@@ -7,11 +7,11 @@ declare(strict_types=1);
  * Obtener la URI de redirección de OAuth 2.0 garantizando coincidencia exacta con Google Console.
  */
 function getGoogleRedirectUri(): string {
-    $envUri = env('GOOGLE_REDIRECT_URI', '');
-    if (!empty($envUri)) {
+    $envUri = trim((string)env('GOOGLE_REDIRECT_URI', ''));
+    if ($envUri !== '') {
         return rtrim($envUri, '/');
     }
-    $base = rtrim(str_replace(' ', '%20', APP_URL), '/');
+    $base = rtrim(str_replace(' ', '%20', trim((string)APP_URL)), '/');
     return $base . '/auth/google-callback';
 }
 
@@ -61,7 +61,7 @@ function googleRedirect(): void {
     header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
     header('Pragma: no-cache');
 
-    $clientId    = env('GOOGLE_CLIENT_ID', '');
+    $clientId    = trim((string)env('GOOGLE_CLIENT_ID', ''));
     $redirectUri = getGoogleRedirectUri();
 
     if (empty($clientId) || $clientId === 'PENDIENTE_CONFIGURAR') {
@@ -71,10 +71,18 @@ function googleRedirect(): void {
 
     // ── Generar state CSRF firmado y persistirlo en sesión + cookie SameSite=Lax ──
     $state = googleBuildSignedState();
-    $_SESSION['oauth_state'] = $state;
-    $_SESSION['oauth_state_time'] = time();
+    $_SESSION['oauth_state']        = $state;
+    $_SESSION['oauth_state_time']   = time();
+    $_SESSION['oauth_redirect_uri'] = $redirectUri;
 
     @setcookie('xp_oauth_state', $state, [
+        'expires'  => time() + 600,
+        'path'     => '/',
+        'secure'   => googleOAuthIsHttps(),
+        'httponly' => true,
+        'samesite' => 'Lax',
+    ]);
+    @setcookie('xp_oauth_redir', $redirectUri, [
         'expires'  => time() + 600,
         'path'     => '/',
         'secure'   => googleOAuthIsHttps(),
@@ -114,10 +122,26 @@ function googleCallback(): void {
     $expectedState = (string)($_SESSION['oauth_state'] ?? '');
     $stateTime     = (int)($_SESSION['oauth_state_time'] ?? 0);
     $cookieState   = (string)($_COOKIE['xp_oauth_state'] ?? '');
+    $savedRedirUri = trim((string)($_SESSION['oauth_redirect_uri'] ?? ($_COOKIE['xp_oauth_redir'] ?? '')));
 
-    // Limpiar state de sesión y cookie
-    unset($_SESSION['oauth_state'], $_SESSION['oauth_state_time']);
+    // Si una petición paralela/duplicada del mismo callback ya inició la sesión, evitar canjear el code dos veces
+    if (!empty($_SESSION['user_id']) && !empty($_SESSION['_via']) && $_SESSION['_via'] === 'google' && (time() - (int)($_SESSION['_login_at'] ?? 0)) <= 15) {
+        $destDup = ($_SESSION['rol'] ?? '') === 'admin'
+            ? 'admin/rutina'
+            : (($_SESSION['rol'] ?? '') === 'entrenador' ? 'entrenador/dashboard' : 'cliente/dashboard');
+        redirect($destDup);
+    }
+
+    // Limpiar state de sesión y cookies
+    unset($_SESSION['oauth_state'], $_SESSION['oauth_state_time'], $_SESSION['oauth_redirect_uri']);
     @setcookie('xp_oauth_state', '', [
+        'expires'  => time() - 3600,
+        'path'     => '/',
+        'secure'   => googleOAuthIsHttps(),
+        'httponly' => true,
+        'samesite' => 'Lax',
+    ]);
+    @setcookie('xp_oauth_redir', '', [
         'expires'  => time() - 3600,
         'path'     => '/',
         'secure'   => googleOAuthIsHttps(),
@@ -158,8 +182,8 @@ function googleCallback(): void {
     }
 
     try {
-        // ── Paso A: Intercambiar code por tokens ──
-        $tokens = googleExchangeCode($code);
+        // ── Paso A: Intercambiar code por tokens usando exactamente el redirect_uri de Paso 1 ──
+        $tokens = googleExchangeCode($code, $savedRedirUri);
 
         if (empty($tokens['id_token'])) {
             throw new \RuntimeException('No se recibió id_token de Google.');
@@ -288,8 +312,13 @@ function googleCallback(): void {
         return;
 
     } catch (\Throwable $e) {
-        error_log('[Xprod Fit][OAuth] Error en callback: ' . $e->getMessage());
-        setFlash('error', 'Error al iniciar sesión con Google. Intenta de nuevo o usa el login tradicional.');
+        $errTxt = $e->getMessage();
+        error_log('[Xprod Fit][OAuth] Error en callback: ' . $errTxt . ' | redir=' . ($savedRedirUri !== '' ? $savedRedirUri : getGoogleRedirectUri()) . ' | host=' . ($_SERVER['HTTP_HOST'] ?? ''));
+        $safeCode = '';
+        if (preg_match('/\b(invalid_grant|redirect_uri_mismatch|invalid_client|unauthorized_client|invalid_request)\b/i', $errTxt, $mErr)) {
+            $safeCode = ' (' . strtolower($mErr[1]) . ')';
+        }
+        setFlash('error', 'Error al iniciar sesión con Google' . $safeCode . '. Intenta de nuevo o usa el login tradicional.');
         if (session_status() === PHP_SESSION_ACTIVE) {
             session_write_close();
         }
@@ -356,8 +385,13 @@ function googleHttpPost(string $url, array $params): array {
     $data = json_decode((string)$response, true);
 
     if ($httpCode !== 200 || empty($data)) {
-        $errorMsg = $data['error_description'] ?? $data['error'] ?? "Código HTTP {$httpCode}";
-        throw new \RuntimeException("Error al intercambiar código: {$errorMsg}");
+        $errCode = is_array($data) ? trim((string)($data['error'] ?? '')) : '';
+        $errDesc = is_array($data) ? trim((string)($data['error_description'] ?? '')) : '';
+        $detail  = trim($errCode . ($errDesc !== '' ? (': ' . $errDesc) : ''));
+        if ($detail === '') {
+            $detail = "Código HTTP {$httpCode}";
+        }
+        throw new \RuntimeException("Error al intercambiar código [HTTP {$httpCode}]: {$detail}");
     }
 
     return $data;
@@ -419,10 +453,10 @@ function googleHttpGet(string $url): array {
 /**
  * Intercambia el código de autorización por tokens de acceso.
  */
-function googleExchangeCode(string $code): array {
-    $clientId     = env('GOOGLE_CLIENT_ID', '');
-    $clientSecret = env('GOOGLE_CLIENT_SECRET', '');
-    $redirectUri  = getGoogleRedirectUri();
+function googleExchangeCode(string $code, string $overrideRedirectUri = ''): array {
+    $clientId     = trim((string)env('GOOGLE_CLIENT_ID', ''));
+    $clientSecret = trim((string)env('GOOGLE_CLIENT_SECRET', ''));
+    $redirectUri  = $overrideRedirectUri !== '' ? rtrim($overrideRedirectUri, '/') : getGoogleRedirectUri();
 
     return googleHttpPost('https://oauth2.googleapis.com/token', [
         'code'          => $code,
