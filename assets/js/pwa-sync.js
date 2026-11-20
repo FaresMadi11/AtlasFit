@@ -47,7 +47,7 @@
         fetch(href, { credentials: 'same-origin', headers: { 'Accept': 'text/html' }, priority: 'low' })
           .then(res => {
             if (res && res.ok && 'caches' in window) {
-              const cName = window.XP_CACHE_NAME || ('atlas-fit-' + (window.XP_SW_VER || '4.4'));
+              const cName = window.XP_USER_CACHE || ('atlas-fit-user-' + (window.XP_SW_VER || '5.0'));
               caches.open(cName).then(c => c.put(href, res.clone()).catch(() => {})).catch(() => {});
             }
           })
@@ -56,16 +56,30 @@
       document.addEventListener('pointerdown', triggerTabPrefetch, { passive: true });
       document.addEventListener('touchstart', triggerTabPrefetch, { passive: true });
 
-      // Al tocar cualquier botón de Cerrar Sesión, limpiar el estado persistente local antes de salir
+      // Al tocar cualquier botón de Cerrar Sesión, limpiar SOLO la sesión y caché privada del usuario (mantener App Shell estático)
       document.addEventListener('click', (e) => {
         const logoutLink = e.target && e.target.closest ? e.target.closest('a[href*="auth/logout"]') : null;
         if (logoutLink) {
           try {
             localStorage.removeItem('xp_auth_active');
             localStorage.removeItem('xp_auth_role');
+            localStorage.removeItem('xp_auth_uid');
             localStorage.removeItem('xp_auth_home');
+            localStorage.removeItem('xp_offline_ready_sig');
             sessionStorage.removeItem('xp_prewarm_ts');
           } catch (_) { }
+          if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+            try { navigator.serviceWorker.controller.postMessage({ type: 'CLEAR_USER_CACHE' }); } catch (_) {}
+          }
+          if ('caches' in window) {
+            caches.keys().then(ks => {
+              ks.forEach(k => {
+                if (k.startsWith('atlas-fit-user-') || (k.startsWith('atlas-fit-') && !k.startsWith('atlas-fit-static-'))) {
+                  caches.delete(k).catch(() => {});
+                }
+              });
+            }).catch(() => {});
+          }
         }
       }, true);
 
@@ -73,6 +87,7 @@
       window.addEventListener('online', () => {
         this.updatePillUI();
         this.flushQueue();
+        setTimeout(() => this.runOfflinePrewarm(false), 700);
       });
 
       window.addEventListener('offline', () => {
@@ -88,106 +103,219 @@
         setTimeout(() => this.flushQueue(), 1200);
       }
 
-      // Precalentar y guardar directamente en Cache Storage todos los módulos del rol tras iniciar sesión
-      // Así, aunque el usuario solo inicie sesión y no entre a ningún otro módulo antes de quedarse sin red,
-      // todos los módulos estarán disponibles offline.
+      // Precalentar todos los módulos de las 3 vistas (Cliente, Entrenador, Admin) con progreso real % solo cuando falta caché
       if (navigator.onLine && 'caches' in window) {
-        const runPrewarm = async () => {
-          try {
-            const CACHE_NAME = window.XP_CACHE_NAME || ('atlas-fit-' + (window.XP_SW_VER || '4.4'));
-            const curBuild = String(window.XP_SW_VER || '4.4');
-            let prevBuild = '';
-            try { prevBuild = localStorage.getItem('xp_prewarm_build') || ''; } catch (_) {}
-            if (prevBuild !== curBuild) {
-              try { sessionStorage.removeItem('xp_prewarm_ts'); } catch (_) {}
-            }
-            const cache = await caches.open(CACHE_NAME);
-            const base = (window.APP || window.location.origin).replace(/\/+$/, '');
-            const curPath = window.location.pathname;
-            const role = localStorage.getItem('xp_auth_role') || '';
-            const isAtleta = curPath.includes('/cliente') || role === 'cliente';
-            const isEntrenador = curPath.includes('/entrenador') || role === 'entrenador';
-            if (!isAtleta && !isEntrenador) return;
+        setTimeout(() => this.runOfflinePrewarm(false), 350);
+      }
+    },
 
-            const lastPrewarm = parseInt(sessionStorage.getItem('xp_prewarm_ts') || '0', 10);
-            const nowTs = Date.now();
-            const isStale = (nowTs - lastPrewarm) > 600000;
+    // Estado interno del progreso de descarga offline
+    _cacheProgress: null,
+    _isPrewarming: false,
 
-            const urls = isAtleta
-              ? ['/cliente/dashboard', '/cliente/rutina-dia', '/cliente/estadisticas', '/cliente/perfil']
-              : ['/entrenador/dashboard', '/entrenador/clientes', '/entrenador/asistencias', '/entrenador/configuracion'];
+    async runOfflinePrewarm(forceRefresh = false) {
+      if (this._isPrewarming || !navigator.onLine || !('caches' in window)) return;
+      const curPath = window.location.pathname.toLowerCase();
+      if (curPath.includes('/auth/')) return;
 
-            const htmlOpts = { credentials: 'same-origin', headers: { 'Accept': 'text/html' } };
-            const waitIdle = (ms) => new Promise(res => setTimeout(res, ms));
+      const role = (window.XP_AUTH_ROLE || localStorage.getItem('xp_auth_role') || '').toLowerCase();
+      const isAdmin      = curPath.includes('/admin') || role === 'admin';
+      const isEntrenador = !isAdmin && (curPath.includes('/entrenador') || role === 'entrenador');
+      const isAtleta     = !isAdmin && !isEntrenador && (curPath.includes('/cliente') || role === 'cliente');
+      if (!isAtleta && !isEntrenador && !isAdmin) return;
 
-            // 1. Asegurar que la pantalla actual quede guardada directamente en la caché
-            const curCached = await cache.match(window.location.href, { ignoreSearch: true });
-            if (!curCached || isStale) {
-              const curRes = await fetch(window.location.href, htmlOpts).catch(() => null);
-              if (curRes && curRes.ok) {
-                await cache.put(window.location.href, curRes.clone()).catch(() => { });
-                if (curPath.includes('/dashboard') || curPath.includes('/perfil')) {
-                  await cache.put(base + '/', curRes.clone()).catch(() => { });
-                }
-              }
-            }
+      const effectiveRole = isAdmin ? 'admin' : (isEntrenador ? 'entrenador' : 'cliente');
+      const homePath = isAdmin ? '/admin/rutina' : (isEntrenador ? '/entrenador/dashboard' : '/cliente/dashboard');
+      const curBuild = String(window.XP_SW_VER || '5.0');
+      const uid      = String(window.XP_AUTH_UID || localStorage.getItem('xp_auth_uid') || '0');
+      const readySig = `${curBuild}|${effectiveRole}|${uid}`;
+      const userCacheName = window.XP_USER_CACHE || ('atlas-fit-user-' + curBuild);
+      const base = (window.APP || window.location.origin).replace(/\/+$/, '');
 
-            // 2. Descargar y guardar en Cache Storage cada módulo faltante (o desactualizado)
-            for (const u of urls) {
-              if (!navigator.onLine) break;
-              const fullUrl = base + u;
-              const existing = await cache.match(fullUrl, { ignoreSearch: true });
+      const nowLocal = new Date();
+      const todayIso = `${nowLocal.getFullYear()}-${String(nowLocal.getMonth() + 1).padStart(2, '0')}-${String(nowLocal.getDate()).padStart(2, '0')}`;
 
-              // Si ya está en caché y no han pasado 10 min, saltar (salvo estadísticas si falta el snapshot en localStorage)
-              const needStatsSnapshot = (u === '/cliente/estadisticas' && !localStorage.getItem('xprod_stats_snapshot_v1'));
-              if (existing && !isStale && !needStatsSnapshot) continue;
+      // Paquete completo por vista (HTML de todos los módulos + APIs críticas de lectura)
+      const bundle = isAtleta
+        ? [
+            { path: '/cliente/dashboard', type: 'html' },
+            { path: '/cliente/rutina-dia', type: 'html' },
+            { path: '/cliente/estadisticas', type: 'html', extractStats: true },
+            { path: '/cliente/perfil', type: 'html' }
+          ]
+        : isEntrenador
+          ? [
+              { path: '/entrenador/dashboard', type: 'html' },
+              { path: '/entrenador/clientes', type: 'html' },
+              { path: '/entrenador/asistencias', type: 'html' },
+              { path: '/entrenador/configuracion', type: 'html' },
+              { path: '/entrenador/crear-rutina', type: 'html' },
+              { path: '/entrenador/api-catalogo-list', type: 'api' },
+              { path: '/entrenador/asistencias-data?fecha=' + encodeURIComponent(todayIso), type: 'api' }
+            ]
+          : [
+              { path: '/admin/rutina', type: 'html' },
+              { path: '/admin/gestion', type: 'html' },
+              { path: '/admin/configuracion', type: 'html' },
+              { path: '/admin/api-catalogo-list', type: 'api' },
+              { path: '/admin/api-dia-detalle?fecha=' + encodeURIComponent(todayIso), type: 'api' }
+            ];
 
-              while (document.body && document.body.classList.contains('is-typing')) {
-                await waitIdle(600);
-              }
+      this._isPrewarming = true;
+      try {
+        const cache = await caches.open(userCacheName);
+        const metaUrl = base + '/__atlas_offline_meta__';
 
-              const res = await fetch(fullUrl, htmlOpts).catch(() => null);
-              if (res && res.ok && res.url && (res.url.includes('/cliente/') || res.url.includes('/entrenador/'))) {
-                await cache.put(fullUrl, res.clone()).catch(() => { });
+        // Asegurar metadatos de sesión offline para el Service Worker (rescate de start_url '/' sin red)
+        await cache.put(
+          metaUrl,
+          new Response(JSON.stringify({ role: effectiveRole, homePath, uid, updatedAt: Date.now() }), {
+            headers: { 'Content-Type': 'application/json; charset=utf-8' }
+          })
+        ).catch(() => {});
 
-                // Si es el módulo de estadísticas, extraer también el snapshot JSON para el calendario y grupos musculares offline
-                if (u === '/cliente/estadisticas') {
-                  const html = await res.text().catch(() => '');
-                  const m = html ? html.match(/<script id="xpStatsOfflineSnapshot" type="application\/json">([\s\S]*?)<\/script>/) : null;
-                  if (m && m[1]) {
-                    try {
-                      const parsed = JSON.parse(m[1]);
-                      if (parsed && parsed.cliente_id) {
-                        localStorage.setItem('xprod_stats_snapshot_v1', JSON.stringify(parsed));
-                        if (parsed.dias_historial) {
-                          Object.entries(parsed.dias_historial).forEach(([f, det]) => {
-                            localStorage.setItem('xprod_cal_dia_' + f, JSON.stringify(det));
-                          });
-                        }
-                        if (parsed.grupos_ejercicios) {
-                          Object.entries(parsed.grupos_ejercicios).forEach(([g, gData]) => {
-                            localStorage.setItem('xprod_st_ej_' + g, JSON.stringify(gData));
-                          });
-                        }
-                        if (parsed.ejercicios_historial) {
-                          Object.entries(parsed.ejercicios_historial).forEach(([nom, hData]) => {
-                            localStorage.setItem('xprod_st_hist_' + nom, JSON.stringify(hData));
-                          });
-                        }
-                      }
-                    } catch (_) { }
+        // Verificar qué módulos realmente faltan en Cache Storage (0 descargas si ya está todo guardado)
+        const missing = [];
+        for (const item of bundle) {
+          const fullUrl = base + item.path;
+          const matchOpts = item.type === 'html' ? { ignoreSearch: true } : undefined;
+          const existing = await cache.match(fullUrl, matchOpts);
+          const needStats = Boolean(item.extractStats && !localStorage.getItem('xprod_stats_snapshot_v1'));
+          if (!existing || needStats) {
+            missing.push(item);
+          }
+        }
+        const rootCached = await cache.match(base + '/', { ignoreSearch: true });
+        const hasReadySig = (localStorage.getItem('xp_offline_ready_sig') === readySig);
+        const lastPrewarm = parseInt(sessionStorage.getItem('xp_prewarm_ts') || '0', 10);
+        const isStale = forceRefresh || ((Date.now() - lastPrewarm) > 900000); // 15 min
+
+        // Si ya tenemos el 100% de los módulos + raíz + firma vigente -> entrar directo a Online sin mostrar %
+        const showProgressUI = (missing.length > 0 || !rootCached || !hasReadySig);
+        const targets = showProgressUI
+          ? (missing.length > 0 ? missing : bundle.filter(b => b.path === homePath))
+          : (isStale ? bundle : []);
+
+        if (targets.length === 0) {
+          this._isPrewarming = false;
+          return;
+        }
+
+        const totalItems = showProgressUI ? bundle.length : targets.length;
+        let completedItems = showProgressUI ? Math.max(0, bundle.length - targets.length) : 0;
+
+        if (showProgressUI) {
+          const startPct = Math.min(95, Math.max(8, Math.round((completedItems / Math.max(1, totalItems)) * 100)));
+          this._cacheProgress = { pct: startPct, done: completedItems, total: totalItems };
+          this.updatePillUI('caching');
+        }
+
+        const fetchOne = async (item) => {
+          if (!navigator.onLine) return false;
+          const fullUrl = base + item.path;
+          const opts = item.type === 'html'
+            ? { credentials: 'same-origin', headers: { 'Accept': 'text/html' } }
+            : { credentials: 'same-origin', headers: { 'Accept': 'application/json' } };
+
+          const res = await fetch(fullUrl, opts).catch(() => null);
+          if (!res || !res.ok) return false;
+          const finalUrl = (res.url || fullUrl).toLowerCase();
+          if (finalUrl.includes('/auth/')) return false;
+
+          if (item.type === 'api') {
+            const ct = (res.headers.get('content-type') || '').toLowerCase();
+            if (!ct.includes('application/json')) return false;
+          }
+
+          await cache.put(fullUrl, res.clone()).catch(() => {});
+
+          // Guardar el home del rol también como '/' (start_url de la PWA)
+          if (item.path === homePath) {
+            await cache.put(base + '/', res.clone()).catch(() => {});
+          }
+
+          // Extraer snapshot JSON de estadísticas para que el calendario y gráficas funcionen 100% offline
+          if (item.extractStats) {
+            const html = await res.text().catch(() => '');
+            const m = html ? html.match(/<script id="xpStatsOfflineSnapshot" type="application\/json">([\s\S]*?)<\/script>/) : null;
+            if (m && m[1]) {
+              try {
+                const parsed = JSON.parse(m[1]);
+                if (parsed && parsed.cliente_id) {
+                  localStorage.setItem('xprod_stats_snapshot_v1', JSON.stringify(parsed));
+                  if (parsed.dias_historial) {
+                    Object.entries(parsed.dias_historial).forEach(([f, det]) => {
+                      localStorage.setItem('xprod_cal_dia_' + f, JSON.stringify(det));
+                    });
+                  }
+                  if (parsed.grupos_ejercicios) {
+                    Object.entries(parsed.grupos_ejercicios).forEach(([g, gData]) => {
+                      localStorage.setItem('xprod_st_ej_' + g, JSON.stringify(gData));
+                    });
+                  }
+                  if (parsed.ejercicios_historial) {
+                    Object.entries(parsed.ejercicios_historial).forEach(([nom, hData]) => {
+                      localStorage.setItem('xprod_st_hist_' + nom, JSON.stringify(hData));
+                    });
                   }
                 }
-              }
-              await waitIdle(250);
+              } catch (_) {}
             }
-
-            sessionStorage.setItem('xp_prewarm_ts', String(Date.now()));
-            try { localStorage.setItem('xp_prewarm_build', curBuild); } catch (_) {}
-          } catch (_) { }
+          }
+          return true;
         };
 
-        setTimeout(() => runPrewarm(), 600);
+        // Descargar en lotes de 2 en paralelo (rápido sin saturar Render/TiDB)
+        const waitIdle = (ms) => new Promise(r => setTimeout(r, ms));
+        let okCount = 0;
+        for (let i = 0; i < targets.length; i += 2) {
+          if (!navigator.onLine) break;
+          while (document.body && document.body.classList.contains('is-typing')) {
+            await waitIdle(450);
+          }
+          const batch = targets.slice(i, i + 2);
+          const results = await Promise.all(batch.map(it => fetchOne(it)));
+          results.forEach(ok => {
+            if (ok) okCount++;
+            completedItems++;
+            if (showProgressUI) {
+              const pct = Math.min(99, Math.round((completedItems / Math.max(1, totalItems)) * 100));
+              this._cacheProgress = { pct, done: completedItems, total: totalItems };
+              this.updatePillUI('caching');
+            }
+          });
+          if (i + 2 < targets.length) await waitIdle(120);
+        }
+
+        // Asegurar que la pantalla actual y '/' queden siempre respaldadas
+        const homeResAfter = await cache.match(base + homePath, { ignoreSearch: true });
+        if (homeResAfter) {
+          await cache.put(base + '/', homeResAfter.clone()).catch(() => {});
+        }
+
+        if (navigator.onLine && (okCount > 0 || !showProgressUI)) {
+          try {
+            localStorage.setItem('xp_offline_ready_sig', readySig);
+            localStorage.setItem('xp_prewarm_build', curBuild);
+            sessionStorage.setItem('xp_prewarm_ts', String(Date.now()));
+          } catch (_) {}
+        }
+
+        if (showProgressUI && navigator.onLine) {
+          this._cacheProgress = { pct: 100, done: totalItems, total: totalItems };
+          this.updatePillUI('caching');
+          setTimeout(() => {
+            this._cacheProgress = null;
+            this.updatePillUI();
+          }, 650);
+        } else {
+          this._cacheProgress = null;
+        }
+      } catch (_) {
+        this._cacheProgress = null;
+        this.updatePillUI();
+      } finally {
+        this._isPrewarming = false;
       }
     },
 
@@ -374,13 +502,30 @@
       const count = queue.length;
       const isOffline = !navigator.onLine;
 
-      // 1. Sincronizando: mini loader morado girando mientras se sube
+      // 1. Sincronizando outbox: mini loader morado girando mientras se sube
       if (stateOverride === 'syncing') {
+        pill.style.removeProperty('--xp-cache-pct');
         pill.className = 'xp-pwa-header-pill syncing';
         pill.innerHTML = '<span class="xp-status-loader" aria-hidden="true"></span><span class="xp-status-text">Sync</span>';
         pill.title = 'Sincronizando series con el servidor...';
         return;
       }
+
+      // 1.5. Descargando paquete offline (solo cuando faltan módulos por guardar en el dispositivo)
+      if ((stateOverride === 'caching' || this._cacheProgress) && !isOffline) {
+        const pct = Math.max(0, Math.min(100, (this._cacheProgress && this._cacheProgress.pct) || 0));
+        pill.className = 'xp-pwa-header-pill caching' + (pct >= 100 ? ' is-done' : '');
+        pill.style.setProperty('--xp-cache-pct', pct + '%');
+        if (pct >= 100) {
+          pill.innerHTML = '<span class="xp-status-dot"></span><span class="xp-status-text">100%</span>';
+          pill.title = 'Todos los módulos están guardados para usar sin conexión';
+        } else {
+          pill.innerHTML = `<span class="xp-status-loader" aria-hidden="true"></span><span class="xp-status-text">${pct}%</span>`;
+          pill.title = `Preparando modo offline (${pct}%)...`;
+        }
+        return;
+      }
+      pill.style.removeProperty('--xp-cache-pct');
 
       // 2. Éxito al sincronizar: pasa a verde "Listo" y luego al color correspondiente
       if (stateOverride === 'success') {

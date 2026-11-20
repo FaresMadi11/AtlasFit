@@ -10,6 +10,9 @@ $route   = $route ?? (($segment[0] ?? '') . '/' . ($segment[1] ?? ''));
 
 // Añadir security headers (antes de cualquier output HTML)
 addSecurityHeaders();
+if ($rolUser !== '' && !headers_sent()) {
+    header('X-Atlas-Auth-Role: ' . $rolUser);
+}
 
 $temaInfoUser = ['tema' => 'classic', 'tema_global' => 'classic', 'global_ver' => 1, 'global_activo' => false];
 try {
@@ -118,9 +121,13 @@ $temaGlobalVer     = (int)($temaInfoUser['global_ver'] ?? 1);
     window.APP           = '<?= APP_URL ?>';
     window.BASE_PATH     = '<?= BASE_PATH ?>';
     window.CSRF          = '<?= $csrf ?>';
-    window.XP_SW_VER     = '<?= e($xpBuildVer) ?>';
-    window.XP_CACHE_NAME = '<?= e($xpCacheName) ?>';
-    window.XP_SW_URL     = window.APP + '/sw.js?v=<?= e($xpBuildVer) ?>';
+    window.XP_SW_VER       = '<?= e($xpBuildVer) ?>';
+    window.XP_CACHE_NAME   = '<?= e($xpCacheName) ?>';
+    window.XP_STATIC_CACHE = 'atlas-fit-static-<?= e($xpBuildVer) ?>';
+    window.XP_USER_CACHE   = 'atlas-fit-user-<?= e($xpBuildVer) ?>';
+    window.XP_AUTH_ROLE    = '<?= e($rolUser) ?>';
+    window.XP_AUTH_UID     = '<?= (int)($_SESSION['user_id'] ?? 0) ?>';
+    window.XP_SW_URL       = window.APP + '/sw.js?v=<?= e($xpBuildVer) ?>';
     const APP            = window.APP;
     const CSRF           = window.CSRF;
 
@@ -147,10 +154,12 @@ $temaGlobalVer     = (int)($temaInfoUser['global_ver'] ?? 1);
       // Bloquear la altura inicial del fondo para que el teclado móvil nunca lo achique ni cambie su escala
       const initH = Math.max(window.innerHeight || 0, document.documentElement.clientHeight || 0);
       if (initH > 0) rootEl.style.setProperty('--xp-init-vh', initH + 'px');
-      <?php if ($rolUser): $homePathJs = $rolUser === 'admin' ? 'admin/dashboard' : ($rolUser === 'entrenador' ? 'entrenador/dashboard' : 'cliente/dashboard'); ?>try { localStorage.setItem('xp_auth_active', '1'); localStorage.setItem('xp_auth_role', '<?= e($rolUser) ?>'); localStorage.setItem('xp_auth_home', window.APP + '/<?= $homePathJs ?>'); } catch (_) {}<?php endif; ?>
+      <?php if ($rolUser): $homePathJs = $rolUser === 'admin' ? 'admin/rutina' : ($rolUser === 'entrenador' ? 'entrenador/dashboard' : 'cliente/dashboard'); ?>try { localStorage.setItem('xp_auth_active', '1'); localStorage.setItem('xp_auth_role', '<?= e($rolUser) ?>'); localStorage.setItem('xp_auth_uid', '<?= (int)($_SESSION['user_id'] ?? 0) ?>'); localStorage.setItem('xp_auth_home', window.APP + '/<?= $homePathJs ?>'); } catch (_) {}<?php endif; ?>
       if ('caches' in window) {
         caches.keys().then(function(ks) {
-          ks.forEach(function(k) { if (k !== window.XP_CACHE_NAME) caches.delete(k); });
+          ks.forEach(function(k) {
+            if (k !== window.XP_STATIC_CACHE && k !== window.XP_USER_CACHE) caches.delete(k);
+          });
         }).catch(function(){});
       }
       if ('serviceWorker' in navigator) {
@@ -195,7 +204,9 @@ $temaGlobalVer     = (int)($temaInfoUser['global_ver'] ?? 1);
               if (!data || !data.v || data.v === window.XP_SW_VER) return;
               if ('caches' in window) {
                 caches.keys().then(function(ks) {
-                  ks.forEach(function(k) { if (k !== ('atlas-fit-' + data.v)) caches.delete(k); });
+                  ks.forEach(function(k) {
+                    if (k !== ('atlas-fit-static-' + data.v) && k !== ('atlas-fit-user-' + data.v)) caches.delete(k);
+                  });
                 }).catch(function(){});
               }
               navigator.serviceWorker.register(window.APP + '/sw.js?v=' + encodeURIComponent(data.v), {

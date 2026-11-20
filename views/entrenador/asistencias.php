@@ -2662,11 +2662,12 @@ function abrirModalEjercicioAsistencias(ej) {
     });
   }
 
-  // 2. Demostración
+  // 2. Demostración (imagen/GIF/WebP o video corto MP4/WebM/MOV)
   if (ej.imagen_demo_path) {
     const src = ej.imagen_demo_path.startsWith('http') ? ej.imagen_demo_path : `${appBase}/${ej.imagen_demo_path}`;
+    const isDemoVid = /\.(mp4|webm|mov)(\?.*)?$/i.test(src);
     carouselSlides.push({
-      tipo: 'imagen',
+      tipo: isDemoVid ? 'video' : 'imagen',
       etiqueta: 'Demostración',
       src: src
     });
@@ -2708,7 +2709,7 @@ function abrirModalEjercicioAsistencias(ej) {
         mediaHtml = `<iframe src="https://www.youtube.com/embed/${ytId}?rel=0" allowfullscreen allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture"></iframe>`;
       } else {
         const fullV = vUrl.startsWith('http') ? vUrl : `${appBase}/${vUrl}`;
-        mediaHtml = `<video controls playsinline preload="metadata"><source src="${fullV}"></video>`;
+        mediaHtml = `<video controls autoplay loop muted playsinline preload="metadata"><source src="${fullV}"></video>`;
       }
     } else {
       mediaHtml = `

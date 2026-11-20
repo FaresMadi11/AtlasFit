@@ -1585,23 +1585,30 @@ $diaHoyNum = ($diaHoyNumRaw >= 1 && $diaHoyNumRaw <= 5) ? $diaHoyNumRaw : 5;
           <?php endfor; ?>
         </div>
         <?php
-          $hasMedia = !empty($ej['video_path']) || !empty($ej['video_url']) || !empty($ej['imagen_path']);
+          $hasMedia = !empty($ej['video_path']) || !empty($ej['video_url']) || !empty($ej['imagen_path']) || !empty($ej['imagen_demo_path']);
           if ($hasMedia):
-            $mediaImg = !empty($ej['imagen_path']) ? APP_URL . '/' . $ej['imagen_path'] : '';
-            $mediaVid = !empty($ej['video_path']) ? APP_URL . '/' . $ej['video_path'] : '';
-            $mediaUrl = !empty($ej['video_url']) ? $ej['video_url'] : '';
+            $mediaImg  = !empty($ej['imagen_path']) ? xpMediaUrl($ej['imagen_path']) : '';
+            $mediaDemo = !empty($ej['imagen_demo_path']) ? xpMediaUrl($ej['imagen_demo_path']) : '';
+            $mediaVid  = !empty($ej['video_path']) ? xpMediaUrl($ej['video_path']) : '';
+            $mediaUrl  = !empty($ej['video_url']) ? $ej['video_url'] : '';
+            // Si la demostración es un video (.mp4/.webm/.mov) y no hay video_path, reproducirla en el reproductor de video en bucle
+            $demoIsVideo = $mediaDemo !== '' && preg_match('/\.(mp4|webm|mov)(\?.*)?$/i', $mediaDemo);
+            if ($demoIsVideo && $mediaVid === '') {
+                $mediaVid = $mediaDemo;
+            }
+            $thumbImg  = $mediaImg !== '' ? $mediaImg : (!$demoIsVideo ? $mediaDemo : '');
             $mediaDesc = !empty($ej['nota_biomecanica']) ? $ej['nota_biomecanica'] : '';
             $mediaData = htmlspecialchars(json_encode([
               'nombre'  => $ej['nombre'],
-              'imagen'  => $mediaImg,
+              'imagen'  => $demoIsVideo ? $mediaImg : ($mediaDemo ?: $mediaImg),
               'video'   => $mediaVid,
               'youtube' => $mediaUrl,
               'desc'    => $mediaDesc,
             ]), ENT_QUOTES);
         ?>
         <button class="wd-media-btn" onclick="event.stopPropagation(); abrirMedia(<?= $mediaData ?>)" title="Ver video / imagen">
-          <?php if ($mediaImg): ?>
-            <img src="<?= $mediaImg ?>" alt="<?= e($ej['nombre']) ?>" loading="lazy">
+          <?php if ($thumbImg): ?>
+            <img src="<?= e($thumbImg) ?>" alt="<?= e($ej['nombre']) ?>" loading="lazy">
             <?php if ($mediaVid || $mediaUrl): ?><div class="wd-media-btn-icon"><i class="ti ti-player-play-filled"></i></div><?php endif; ?>
           <?php else: ?>
             <div class="wd-media-btn-only"><i class="ti ti-player-play-filled"></i></div>
@@ -4037,6 +4044,8 @@ function abrirMedia(data) {
     vid.src = data.video;
     vid.controls = true;
     vid.autoplay = true;
+    vid.loop = true;
+    vid.muted = true;
     vid.playsInline = true;
     bodyEl.appendChild(vid);
   } else if (data.imagen) {

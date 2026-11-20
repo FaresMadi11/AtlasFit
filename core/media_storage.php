@@ -1,6 +1,232 @@
 <?php
-// core/media_storage.php — Almacenamiento permanente comprimido en TiDB Cloud + Caché en disco (Self-Healing)
+// core/media_storage.php — Almacenamiento permanente híbrido: Cloudflare R2 (preferido) + TiDB Cloud (fallback) + Caché local
 declare(strict_types=1);
+
+/**
+ * Lee y normaliza la configuración de Cloudflare R2 desde variables de entorno.
+ */
+function r2Config(): array {
+    return [
+        'account_id' => trim((string)(function_exists('env') ? env('R2_ACCOUNT_ID', '') : (getenv('R2_ACCOUNT_ID') ?: ''))),
+        'access_key' => trim((string)(function_exists('env') ? env('R2_ACCESS_KEY_ID', '') : (getenv('R2_ACCESS_KEY_ID') ?: ''))),
+        'secret_key' => trim((string)(function_exists('env') ? env('R2_SECRET_ACCESS_KEY', '') : (getenv('R2_SECRET_ACCESS_KEY') ?: ''))),
+        'bucket'     => trim((string)(function_exists('env') ? env('R2_BUCKET', '') : (getenv('R2_BUCKET') ?: ''))),
+        'public_url' => rtrim(trim((string)(function_exists('env') ? env('R2_PUBLIC_URL', '') : (getenv('R2_PUBLIC_URL') ?: ''))), '/'),
+    ];
+}
+
+/**
+ * Indica si Cloudflare R2 está completamente configurado para recibir subidas.
+ */
+function r2IsConfigured(): bool {
+    $cfg = r2Config();
+    return $cfg['account_id'] !== ''
+        && $cfg['access_key'] !== ''
+        && $cfg['secret_key'] !== ''
+        && $cfg['bucket'] !== '';
+}
+
+/**
+ * Devuelve la URL pública en Cloudflare R2 para una ruta relativa, o null si no aplica.
+ */
+function r2PublicUrl(string $relativePath): ?string {
+    $cfg = r2Config();
+    if ($cfg['public_url'] === '') {
+        return null;
+    }
+    $clean = ltrim(str_replace('\\', '/', trim($relativePath)), '/');
+    if ($clean === '') return null;
+    $encoded = implode('/', array_map('rawurlencode', explode('/', $clean)));
+    return $cfg['public_url'] . '/' . $encoded;
+}
+
+/**
+ * Resuelve la URL final de cualquier media (URL externa, Cloudflare R2 o archivo local).
+ */
+function xpMediaUrl(?string $path): string {
+    $clean = trim((string)$path);
+    if ($clean === '') return '';
+    if (preg_match('#^https?://#i', $clean) || str_starts_with($clean, 'data:')) {
+        return $clean;
+    }
+    $rel = ltrim(str_replace('\\', '/', $clean), '/');
+    $isUserMedia = (
+        str_starts_with($rel, 'uploads/') ||
+        str_starts_with($rel, 'public/uploads/') ||
+        str_starts_with($rel, 'assets/img/tienda/')
+    );
+    if ($isUserMedia && r2IsConfigured()) {
+        $r2Url = r2PublicUrl($rel);
+        if ($r2Url !== null) {
+            return $r2Url;
+        }
+    }
+    $base = defined('APP_URL') ? rtrim((string)APP_URL, '/') : '';
+    return ($base !== '' ? ($base . '/') : '') . $rel;
+}
+
+/**
+ * Firma y ejecuta una petición S3 AWS Signature Version 4 contra Cloudflare R2 (puro PHP).
+ *
+ * @return array{ok:bool,status:int,body:string,error:string}
+ */
+function r2SignAndSend(string $method, string $objectKey, string $body = '', string $contentType = '', string $cacheControl = ''): array {
+    $cfg = r2Config();
+    if (!r2IsConfigured()) {
+        return ['ok' => false, 'status' => 0, 'body' => '', 'error' => 'R2 no configurado'];
+    }
+
+    $method     = strtoupper($method);
+    $host       = $cfg['account_id'] . '.r2.cloudflarestorage.com';
+    $cleanKey   = ltrim(str_replace('\\', '/', $objectKey), '/');
+    $encodedKey = implode('/', array_map('rawurlencode', explode('/', $cleanKey)));
+    $canonicalUri = '/' . rawurlencode($cfg['bucket']) . '/' . $encodedKey;
+
+    $amzDate     = gmdate('Ymd\THis\Z');
+    $dateStamp   = gmdate('Ymd');
+    $region      = 'auto';
+    $service     = 's3';
+    $payloadHash = hash('sha256', $body);
+
+    $headersMap = [
+        'host'                 => $host,
+        'x-amz-content-sha256' => $payloadHash,
+        'x-amz-date'           => $amzDate,
+    ];
+    if ($contentType !== '') {
+        $headersMap['content-type'] = $contentType;
+    }
+    if ($cacheControl !== '') {
+        $headersMap['cache-control'] = $cacheControl;
+    }
+    ksort($headersMap);
+
+    $canonicalHeaders = '';
+    foreach ($headersMap as $k => $v) {
+        $canonicalHeaders .= $k . ':' . trim($v) . "\n";
+    }
+    $signedHeaders = implode(';', array_keys($headersMap));
+
+    $canonicalRequest = implode("\n", [
+        $method,
+        $canonicalUri,
+        '', // query string
+        $canonicalHeaders,
+        $signedHeaders,
+        $payloadHash,
+    ]);
+
+    $credentialScope = "{$dateStamp}/{$region}/{$service}/aws4_request";
+    $stringToSign = implode("\n", [
+        'AWS4-HMAC-SHA256',
+        $amzDate,
+        $credentialScope,
+        hash('sha256', $canonicalRequest),
+    ]);
+
+    $kDate    = hash_hmac('sha256', $dateStamp, 'AWS4' . $cfg['secret_key'], true);
+    $kRegion  = hash_hmac('sha256', $region, $kDate, true);
+    $kService = hash_hmac('sha256', $service, $kRegion, true);
+    $kSigning = hash_hmac('sha256', 'aws4_request', $kService, true);
+    $signature = hash_hmac('sha256', $stringToSign, $kSigning);
+
+    $authHeader = sprintf(
+        'AWS4-HMAC-SHA256 Credential=%s/%s, SignedHeaders=%s, Signature=%s',
+        $cfg['access_key'],
+        $credentialScope,
+        $signedHeaders,
+        $signature
+    );
+
+    $httpHeaders = [
+        'Authorization: ' . $authHeader,
+        'x-amz-content-sha256: ' . $payloadHash,
+        'x-amz-date: ' . $amzDate,
+    ];
+    if ($contentType !== '') {
+        $httpHeaders[] = 'Content-Type: ' . $contentType;
+    }
+    if ($cacheControl !== '') {
+        $httpHeaders[] = 'Cache-Control: ' . $cacheControl;
+    }
+
+    $url = 'https://' . $host . $canonicalUri;
+
+    if (function_exists('curl_init')) {
+        $ch = curl_init($url);
+        $opts = [
+            CURLOPT_CUSTOMREQUEST  => $method,
+            CURLOPT_HTTPHEADER     => $httpHeaders,
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_TIMEOUT        => 25,
+            CURLOPT_CONNECTTIMEOUT => 8,
+        ];
+        if ($method === 'PUT' || $method === 'POST') {
+            $opts[CURLOPT_POSTFIELDS] = $body;
+        }
+        curl_setopt_array($ch, $opts);
+        $respBody = (string)curl_exec($ch);
+        $status   = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $err      = curl_error($ch);
+        return [
+            'ok'     => ($err === '' && $status >= 200 && $status < 300),
+            'status' => $status,
+            'body'   => $respBody,
+            'error'  => $err,
+        ];
+    }
+
+    $httpHeaders[] = 'Content-Length: ' . strlen($body);
+    $httpHeaders[] = 'Connection: close';
+    $ctx = stream_context_create([
+        'http' => [
+            'method'        => $method,
+            'header'        => implode("\r\n", $httpHeaders) . "\r\n",
+            'content'       => ($method === 'PUT' || $method === 'POST') ? $body : '',
+            'timeout'       => 25,
+            'ignore_errors' => true,
+        ],
+    ]);
+    $respBody = @file_get_contents($url, false, $ctx);
+    $status = 0;
+    $respHeaders = function_exists('http_get_last_response_headers') ? (http_get_last_response_headers() ?? []) : ($http_response_header ?? []);
+    if (!empty($respHeaders) && preg_match('/HTTP\/\d\.\d\s+(\d+)/', (string)($respHeaders[0] ?? ''), $m)) {
+        $status = (int)$m[1];
+    }
+    return [
+        'ok'     => ($respBody !== false && $status >= 200 && $status < 300),
+        'status' => $status,
+        'body'   => (string)($respBody ?: ''),
+        'error'  => $respBody === false ? 'Error HTTP stream hacia R2' : '',
+    ];
+}
+
+function r2UploadBytes(string $objectKey, string $bytes, string $mimeType): bool {
+    $res = r2SignAndSend('PUT', $objectKey, $bytes, $mimeType, 'public, max-age=31536000, immutable');
+    if (!$res['ok']) {
+        error_log('[Xprod Fit R2] Fallo PUT ' . $objectKey . ' (HTTP ' . $res['status'] . '): ' . ($res['error'] ?: substr($res['body'], 0, 200)));
+    }
+    return $res['ok'];
+}
+
+function r2DeleteObject(string $objectKey): bool {
+    $res = r2SignAndSend('DELETE', $objectKey);
+    return $res['ok'] || $res['status'] === 404;
+}
+
+/**
+ * Detecta si los bytes corresponden a un GIF o WebP animado para NO aplanarlo con GD.
+ */
+function esImagenAnimada(string $rawBytes, string $ext): bool {
+    $ext = strtolower($ext);
+    if ($ext === 'webp') {
+        return str_contains(substr($rawBytes, 0, 200), 'ANIM');
+    }
+    if ($ext === 'gif') {
+        return preg_match_all('#\x00\x21\xF9\x04.{4}\x00[\x2C\x21]#s', $rawBytes) > 1;
+    }
+    return false;
+}
 
 /**
  * Garantiza que la tabla archivos_media exista en la base de datos.
@@ -33,6 +259,16 @@ function comprimirImagenGD(string $rawBytes, string $ext, int $maxDim = 800, int
     if ($ext === 'mp4') {
         return ['bytes' => $rawBytes, 'mime' => 'video/mp4'];
     }
+    if ($ext === 'webm') {
+        return ['bytes' => $rawBytes, 'mime' => 'video/webm'];
+    }
+    if ($ext === 'mov') {
+        return ['bytes' => $rawBytes, 'mime' => 'video/quicktime'];
+    }
+    // Preservar GIF y WebP animados intactos sin perder sus frames
+    if (($ext === 'gif' || $ext === 'webp') && esImagenAnimada($rawBytes, $ext)) {
+        return ['bytes' => $rawBytes, 'mime' => $ext === 'gif' ? 'image/gif' : 'image/webp'];
+    }
 
     if (!function_exists('imagecreatefromstring')) {
         $mime = match ($ext) {
@@ -46,7 +282,13 @@ function comprimirImagenGD(string $rawBytes, string $ext, int $maxDim = 800, int
 
     $src = @imagecreatefromstring($rawBytes);
     if (!$src) {
-        return ['bytes' => $rawBytes, 'mime' => 'image/jpeg'];
+        $fallbackMime = match ($ext) {
+            'png'  => 'image/png',
+            'webp' => 'image/webp',
+            'gif'  => 'image/gif',
+            default => 'image/jpeg',
+        };
+        return ['bytes' => $rawBytes, 'mime' => $fallbackMime];
     }
 
     $w = imagesx($src);
@@ -61,15 +303,24 @@ function comprimirImagenGD(string $rawBytes, string $ext, int $maxDim = 800, int
             $newW = max(1, (int)round(($w * $maxDim) / $h));
         }
         $dst = imagecreatetruecolor($newW, $newH);
-        // Fondo blanco por si viene de PNG transparente a JPEG
-        $white = imagecolorallocate($dst, 255, 255, 255);
-        imagefilledrectangle($dst, 0, 0, $newW, $newH, $white);
+        if ($ext === 'webp' || $ext === 'png') {
+            imagealphablending($dst, false);
+            imagesavealpha($dst, true);
+            $trans = imagecolorallocatealpha($dst, 0, 0, 0, 127);
+            imagefilledrectangle($dst, 0, 0, $newW, $newH, $trans);
+        } else {
+            $white = imagecolorallocate($dst, 255, 255, 255);
+            imagefilledrectangle($dst, 0, 0, $newW, $newH, $white);
+        }
         imagecopyresampled($dst, $src, 0, 0, 0, 0, $newW, $newH, $w, $h);
         $src = $dst;
     }
 
     ob_start();
     if (function_exists('imagewebp') && $ext === 'webp') {
+        imagepalettetotruecolor($src);
+        imagealphablending($src, true);
+        imagesavealpha($src, true);
         imagewebp($src, null, $quality);
         $mime = 'image/webp';
     } else {
@@ -80,14 +331,14 @@ function comprimirImagenGD(string $rawBytes, string $ext, int $maxDim = 800, int
     unset($src);
 
     if ($compressed === '') {
-        return ['bytes' => $rawBytes, 'mime' => 'image/jpeg'];
+        return ['bytes' => $rawBytes, 'mime' => $ext === 'webp' ? 'image/webp' : 'image/jpeg'];
     }
 
     return ['bytes' => $compressed, 'mime' => $mime];
 }
 
 /**
- * Comprime y guarda un archivo en disco local Y en TiDB Cloud (archivos_media).
+ * Comprime y guarda un archivo en disco local + Cloudflare R2 (si está configurado) o TiDB Cloud (respaldo).
  */
 function guardarMediaPermanente(
     string $rawBytes,
@@ -109,7 +360,14 @@ function guardarMediaPermanente(
     // 1. Guardar en caché de disco local
     $okDisk = (@file_put_contents($fullPath, $processed['bytes']) !== false);
 
-    // 2. Respaldar en TiDB Cloud para persistencia ante redeploys en Render
+    // 2. Prioridad 1: Cloudflare R2 (almacenamiento de objetos sin consumir cuota de TiDB Cloud)
+    if (r2IsConfigured()) {
+        if (r2UploadBytes($relativePath, $processed['bytes'], $processed['mime'])) {
+            return true;
+        }
+    }
+
+    // 3. Prioridad 2 (Fallback): Respaldar en TiDB Cloud para persistencia ante redeploys en Render
     try {
         $db = getDB();
         ensureMediaTable($db);
@@ -136,7 +394,7 @@ function guardarMediaPermanente(
 }
 
 /**
- * Elimina un archivo tanto del disco local como de TiDB Cloud.
+ * Elimina un archivo del disco local, Cloudflare R2 (si está activo) y TiDB Cloud.
  */
 function eliminarMediaPermanente(?string $relativePath): void {
     $relativePath = ltrim(str_replace('\\', '/', trim((string)$relativePath)), '/');
@@ -145,6 +403,14 @@ function eliminarMediaPermanente(?string $relativePath): void {
     $fullPath = BASE_DIR . '/' . $relativePath;
     if (file_exists($fullPath)) {
         @unlink($fullPath);
+    }
+
+    if (r2IsConfigured()) {
+        try {
+            r2DeleteObject($relativePath);
+        } catch (\Throwable $e) {
+            error_log('[Xprod Fit R2] Error eliminando objeto: ' . $e->getMessage());
+        }
     }
 
     try {
@@ -157,7 +423,8 @@ function eliminarMediaPermanente(?string $relativePath): void {
 }
 
 /**
- * Restaura y sirve un archivo desde TiDB Cloud si el contenedor de Render se reinició y no está en disco.
+ * Restaura y sirve un archivo desde TiDB Cloud o redirige a Cloudflare R2 si no existe en disco local.
+ * Incluye soporte HTTP Range (206 Partial Content) para reproducción de videos MP4/WebM en Safari/iOS.
  */
 function intentarServirMediaRespaldado(string $route): bool {
     $route = ltrim(str_replace('\\', '/', trim($route)), '/');
@@ -176,7 +443,16 @@ function intentarServirMediaRespaldado(string $route): bool {
         $stmt = $db->prepare("SELECT mime_type, contenido FROM archivos_media WHERE ruta = ? LIMIT 1");
         $stmt->execute([$route]);
         $row = $stmt->fetch(PDO::FETCH_ASSOC);
+
         if (!$row || empty($row['contenido'])) {
+            // Si no está en TiDB pero R2 está activo, redirigir al CDN público de Cloudflare R2
+            if (r2IsConfigured()) {
+                $r2Url = r2PublicUrl($route);
+                if ($r2Url !== null) {
+                    header('Location: ' . $r2Url, true, 302);
+                    exit;
+                }
+            }
             return false;
         }
 
@@ -188,10 +464,29 @@ function intentarServirMediaRespaldado(string $route): bool {
         }
         @file_put_contents($fullPath, $row['contenido']);
 
-        header('Content-Type: ' . ($row['mime_type'] ?: 'image/jpeg'));
+        $bytes = (string)$row['contenido'];
+        $total = strlen($bytes);
+        $mime  = $row['mime_type'] ?: 'image/jpeg';
+
+        header('Content-Type: ' . $mime);
         header('Cache-Control: public, max-age=2592000');
-        header('Content-Length: ' . strlen($row['contenido']));
-        echo $row['contenido'];
+        header('Accept-Ranges: bytes');
+
+        if (!empty($_SERVER['HTTP_RANGE']) && preg_match('/bytes=(\d*)-(\d*)/', (string)$_SERVER['HTTP_RANGE'], $m)) {
+            $start = $m[1] !== '' ? (int)$m[1] : 0;
+            $end   = $m[2] !== '' ? min((int)$m[2], $total - 1) : ($total - 1);
+            if ($start <= $end && $start < $total) {
+                $length = $end - $start + 1;
+                http_response_code(206);
+                header("Content-Range: bytes {$start}-{$end}/{$total}");
+                header('Content-Length: ' . $length);
+                echo substr($bytes, $start, $length);
+                exit;
+            }
+        }
+
+        header('Content-Length: ' . $total);
+        echo $bytes;
         exit;
     } catch (\Throwable $e) {
         error_log('[Xprod Fit Media] Error sirviendo media respaldado: ' . $e->getMessage());

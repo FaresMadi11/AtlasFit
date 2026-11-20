@@ -101,12 +101,22 @@ $metaColorLogin = $mapaMetaColorLogin[$temaGlobalLogin] ?? '#02040a';
     try {
       localStorage.removeItem('xp_auth_active');
       localStorage.removeItem('xp_auth_role');
+      localStorage.removeItem('xp_auth_uid');
       localStorage.removeItem('xp_auth_home');
+      localStorage.removeItem('xp_offline_ready_sig');
       sessionStorage.removeItem('xp_prewarm_ts');
     } catch (_) {}
+    // Al cerrar sesión borramos SOLO los HTML/datos privados del usuario, manteniendo el App Shell estático en caché
+    if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+      try { navigator.serviceWorker.controller.postMessage({ type: 'CLEAR_USER_CACHE' }); } catch (_) {}
+    }
     if ('caches' in window) {
       caches.keys().then(function(ks) {
-        ks.forEach(function(k) { caches.delete(k); });
+        ks.forEach(function(k) {
+          if (k.indexOf('atlas-fit-user-') === 0 || (k.indexOf('atlas-fit-') === 0 && k.indexOf('atlas-fit-static-') !== 0)) {
+            caches.delete(k);
+          }
+        });
       }).catch(function(){});
     }
   } else if (!navigator.onLine && qs.indexOf('ref=') === -1) {
@@ -152,7 +162,9 @@ $metaColorLogin = $mapaMetaColorLogin[$temaGlobalLogin] ?? '#02040a';
           if (!data || !data.v || data.v === xpSwVer) return;
           if ('caches' in window) {
             caches.keys().then(function(ks) {
-              ks.forEach(function(k) { if (k !== ('atlas-fit-' + data.v)) caches.delete(k); });
+              ks.forEach(function(k) {
+                if (k !== ('atlas-fit-static-' + data.v) && k !== ('atlas-fit-user-' + data.v)) caches.delete(k);
+              });
             }).catch(function(){});
           }
           navigator.serviceWorker.register(appBase + '/sw.js?v=' + encodeURIComponent(data.v), {
@@ -1906,7 +1918,7 @@ $esStandbyEntrenador = ($esStandby && (($_GET['rol'] ?? '') === 'entrenador'));
               <i class="ti ti-circle-check"></i> <span id="badgeCoachRefNombre">Coach: <?= e($refEntrenadorInfo['entrenador_nombre'] ?? '') ?></span>
             </span>
           </div>
-          <input type="text" id="reg_codigo_entrenador" name="codigo_entrenador" value="<?= e($refCodigoActivo) ?>" placeholder="Ej: SABEH-FIT" maxlength="40" required autocomplete="off" spellcheck="false" style="text-transform:uppercase;font-weight:700;letter-spacing:0.6px;" aria-required="true" aria-describedby="err_codigo_entrenador">
+          <input type="text" id="reg_codigo_entrenador" name="codigo_entrenador" value="<?= e($refCodigoActivo) ?>" placeholder="Ej: ENTRENADOR-FIT" maxlength="40" required autocomplete="off" spellcheck="false" style="text-transform:uppercase;font-weight:700;letter-spacing:0.6px;" aria-required="true" aria-describedby="err_codigo_entrenador">
           <div class="trainer-mode-hint" id="trainerModeHint">
             <i class="ti ti-shield-check" style="font-size:0.95rem;flex-shrink:0;"></i>
             <span>Tu solicitud se enviará al administrador para aprobar tu cuenta de entrenador.</span>
@@ -2566,7 +2578,7 @@ function updateStandbyCopy(esEntrenador) {
 
   const origStep1SubText = step1Sub ? step1Sub.textContent : '';
   const origStep1BtnHtml = btnStep1 ? btnStep1.innerHTML : 'SIGUIENTE <i class="ti ti-arrow-right" style="vertical-align:middle;margin-left:4px;"></i>';
-  const origPlaceholder  = inpRef.getAttribute('placeholder') || 'Ej: SABEH-FIT';
+  const origPlaceholder  = inpRef.getAttribute('placeholder') || 'Ej: ENTRENADOR-FIT';
   let savedRefCode       = inpRef.value || '';
 
   let timerRef = null;

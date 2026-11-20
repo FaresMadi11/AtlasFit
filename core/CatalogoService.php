@@ -76,14 +76,21 @@ class CatalogoService {
             return null;
         }
         $ext = strtolower(pathinfo((string)$fileInfo['name'], PATHINFO_EXTENSION));
-        $validExts = ['jpg', 'jpeg', 'png', 'webp', 'mp4', 'mov', 'webm'];
+        $validExts = ['jpg', 'jpeg', 'png', 'webp', 'gif', 'mp4', 'mov', 'webm'];
         if (!in_array($ext, $validExts, true)) {
             return null;
         }
-        $saveExt = in_array($ext, ['jpg', 'jpeg', 'png'], true) ? 'jpg' : $ext;
+        $isVideo = in_array($ext, ['mp4', 'mov', 'webm'], true);
+        $maxBytes = $isVideo ? (15 * 1024 * 1024) : (10 * 1024 * 1024);
+        if (!empty($fileInfo['size']) && (int)$fileInfo['size'] > $maxBytes) {
+            return null;
+        }
+        $saveExt = in_array($ext, ['jpg', 'jpeg', 'png'], true)
+            ? (function_exists('imagewebp') ? 'webp' : 'jpg')
+            : $ext;
         $relMedia = 'public/uploads/ejercicios/' . uniqid($prefijo) . '.' . $saveExt;
         $rawBytes = (string)@file_get_contents($fileInfo['tmp_name']);
-        if ($rawBytes !== '' && guardarMediaPermanente($rawBytes, $relMedia, 800, 80, false)) {
+        if ($rawBytes !== '' && strlen($rawBytes) <= $maxBytes && guardarMediaPermanente($rawBytes, $relMedia, 800, 80, false)) {
             return $relMedia;
         }
         return null;

@@ -296,12 +296,16 @@ function adminApiCrearRutinaPropia(): void {
             $pesosValores = [];
             if (!empty($seriesRaw)) {
                 foreach ($seriesRaw as $sIdx => $sData) {
-                    $sNum = (int)($sData['numero_serie'] ?? ($sData['numero'] ?? ($sIdx + 1)));
-                    $sKg  = isset($sData['peso']) && $sData['peso'] !== '' && $sData['peso'] !== null && is_numeric($sData['peso']) ? (float)$sData['peso'] : null;
+                    $sNum  = (int)($sData['numero_serie'] ?? ($sData['numero'] ?? ($sIdx + 1)));
+                    $sTipo = strtolower(trim((string)($sData['tipo_serie'] ?? ($sData['tipo'] ?? 'normal'))));
+                    if (!in_array($sTipo, ['normal', 'calentamiento', 'fallo', 'drop'], true)) {
+                        $sTipo = 'normal';
+                    }
+                    $sKg   = isset($sData['peso']) && $sData['peso'] !== '' && $sData['peso'] !== null && is_numeric($sData['peso']) ? (float)$sData['peso'] : null;
                     if ($imp === 'sin_peso') $sKg = null;
-                    $sRep = isset($sData['reps']) && is_numeric($sData['reps']) ? (int)$sData['reps'] : (int)$reps;
-                    $sRir = isset($sData['rir']) && $sData['rir'] !== '' && $sData['rir'] !== null && is_numeric($sData['rir']) ? max(0, min(5, (int)$sData['rir'])) : $rirVal;
-                    $stInsPlS->execute([$plEjId, $sNum, 'normal', $sKg, $sRep, $sRir]);
+                    $sRep  = isset($sData['reps']) && is_numeric($sData['reps']) ? (int)$sData['reps'] : (int)$reps;
+                    $sRir  = isset($sData['rir']) && $sData['rir'] !== '' && $sData['rir'] !== null && is_numeric($sData['rir']) ? max(0, min(5, (int)$sData['rir'])) : $rirVal;
+                    $stInsPlS->execute([$plEjId, $sNum, $sTipo, $sKg, $sRep, $sRir]);
                     if ($sKg !== null) {
                         $pesosValores[] = $sKg;
                     }
@@ -489,12 +493,16 @@ function adminApiActualizarRutinaCompleta(): void {
             $pesosValores = [];
             if (!empty($seriesRaw)) {
                 foreach ($seriesRaw as $sIdx => $sData) {
-                    $sNum = (int)($sData['numero_serie'] ?? ($sData['numero'] ?? ($sIdx + 1)));
-                    $sKg  = isset($sData['peso']) && $sData['peso'] !== '' && $sData['peso'] !== null && is_numeric($sData['peso']) ? (float)$sData['peso'] : null;
+                    $sNum  = (int)($sData['numero_serie'] ?? ($sData['numero'] ?? ($sIdx + 1)));
+                    $sTipo = strtolower(trim((string)($sData['tipo_serie'] ?? ($sData['tipo'] ?? 'normal'))));
+                    if (!in_array($sTipo, ['normal', 'calentamiento', 'fallo', 'drop'], true)) {
+                        $sTipo = 'normal';
+                    }
+                    $sKg   = isset($sData['peso']) && $sData['peso'] !== '' && $sData['peso'] !== null && is_numeric($sData['peso']) ? (float)$sData['peso'] : null;
                     if ($imp === 'sin_peso') $sKg = null;
-                    $sRep = isset($sData['reps']) && is_numeric($sData['reps']) ? (int)$sData['reps'] : (int)$reps;
-                    $sRir = isset($sData['rir']) && $sData['rir'] !== '' && $sData['rir'] !== null && is_numeric($sData['rir']) ? max(0, min(5, (int)$sData['rir'])) : $rirVal;
-                    $stInsPlS->execute([$plEjId, $sNum, 'normal', $sKg, $sRep, $sRir]);
+                    $sRep  = isset($sData['reps']) && is_numeric($sData['reps']) ? (int)$sData['reps'] : (int)$reps;
+                    $sRir  = isset($sData['rir']) && $sData['rir'] !== '' && $sData['rir'] !== null && is_numeric($sData['rir']) ? max(0, min(5, (int)$sData['rir'])) : $rirVal;
+                    $stInsPlS->execute([$plEjId, $sNum, $sTipo, $sKg, $sRep, $sRir]);
                     if ($sKg !== null) {
                         $pesosValores[] = $sKg;
                     }

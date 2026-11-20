@@ -552,7 +552,7 @@ function cliRutinaDia(): void {
                         COALESCE(e.unidad_carga, 'kg')       AS unidad_carga,
                         COALESCE(s.completado, 0) AS completado, COALESCE(s.reps_realizadas, 0) AS reps_realizadas,
                         s.peso_usado,
-                        e.imagen_path, e.video_path, e.video_url
+                        e.imagen_path, e.imagen_demo_path, e.video_path, e.video_url
                  FROM ejercicios e
                  LEFT JOIN sesiones s ON s.ejercicio_id = e.id
                    AND s.cliente_id = ? AND s.fecha = CURDATE()
@@ -566,9 +566,11 @@ function cliRutinaDia(): void {
                 $meta = $catMapaEnt[mb_strtolower(trim((string)($ejItem['nombre'] ?? '')), 'UTF-8')] ?? null;
                 $ejItem['categoria_id']   = (int)($meta['categoria_id'] ?? 0);
                 $ejItem['grupo_muscular'] = (string)($meta['grupo_muscular'] ?? '');
-                if (empty($ejItem['imagen_path']) && !empty($meta['imagen_path'])) $ejItem['imagen_path'] = $meta['imagen_path'];
-                if (empty($ejItem['video_path']) && !empty($meta['video_path']))   $ejItem['video_path']  = $meta['video_path'];
-                if (empty($ejItem['video_url']) && !empty($meta['video_url']))     $ejItem['video_url']   = $meta['video_url'];
+                if (empty($ejItem['imagen_path']) && !empty($meta['imagen_path']))           $ejItem['imagen_path']      = $meta['imagen_path'];
+                if (empty($ejItem['imagen_demo_path']) && !empty($meta['imagen_demo_path'])) $ejItem['imagen_demo_path'] = $meta['imagen_demo_path'];
+                if (empty($ejItem['video_path']) && !empty($meta['video_path']))             $ejItem['video_path']       = $meta['video_path'];
+                if (empty($ejItem['video_url']) && !empty($meta['video_url']))               $ejItem['video_url']        = $meta['video_url'];
+                if (empty($ejItem['nota_biomecanica']) && !empty($meta['indicaciones']))     $ejItem['nota_biomecanica'] = $meta['indicaciones'];
             }
             unset($ejItem);
 

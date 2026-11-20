@@ -5584,6 +5584,27 @@ html[data-theme="light"] .dash-metas-section {
   color: #d8b4fe;
 }
 
+/* Estado 4.5: Descargando paquete offline (% real con relleno progresivo sutil) */
+.xp-pwa-header-pill.caching {
+  border-color: rgba(168, 85, 247, 0.42) !important;
+  background: linear-gradient(
+    90deg,
+    rgba(138, 43, 226, 0.28) 0%,
+    rgba(168, 85, 247, 0.22) var(--xp-cache-pct, 0%),
+    rgba(255, 255, 255, 0.05) var(--xp-cache-pct, 0%)
+  ) !important;
+  color: #e9d5ff !important;
+}
+.xp-pwa-header-pill.caching.is-done {
+  border-color: rgba(16, 185, 129, 0.45) !important;
+  background: rgba(16, 185, 129, 0.14) !important;
+  color: #6ee7b7 !important;
+}
+.xp-pwa-header-pill.caching.is-done .xp-status-dot {
+  background-color: #10b981;
+  box-shadow: 0 0 8px rgba(16, 185, 129, 0.7);
+}
+
 /* Estado 5: Éxito (Verde tras completar sync) */
 .xp-pwa-header-pill.success {
   border-color: rgba(16, 185, 129, 0.4);

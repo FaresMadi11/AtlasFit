@@ -140,6 +140,9 @@ document.addEventListener('DOMContentLoaded', () => {
   function obtenerModuloDestino(url) {
     if (!url) return 'default';
     const u = url.toLowerCase();
+    if (u.includes('admin/gestion')) return 'entrenador_clientes';
+    if (u.includes('admin/configuracion')) return 'entrenador_configuracion';
+    if (u.includes('admin/rutina') || u.includes('admin/dashboard')) return 'cliente_rutina';
     if (u.includes('perfil-cliente') || u.includes('perfil_cliente')) return 'entrenador_perfil_cliente';
     if (u.includes('asistencia')) return 'entrenador_asistencias';
     if (u.includes('cliente/rutina') || u.includes('rutina-dia') || u.includes('rutina_dia')) return 'cliente_rutina';
@@ -602,11 +605,37 @@ document.addEventListener('DOMContentLoaded', () => {
       scheduleSkeletonRemoval();
     };
 
-    // Solo mostrar el esqueleto si la carga realmente demora (> 320ms); si carga al instante, entra directo sin parpadeo
     if (immediate) {
       injectOverlay();
+      return;
+    }
+
+    // Si estamos offline o el módulo ya está en caché, el SW responde en <=500ms (o <10ms offline):
+    // evitar cualquier parpadeo de skeleton cuando hay caché disponible; mostrarlo solo si realmente no hay caché y demora.
+    const scheduleWithDelay = (delayMs) => {
+      if (xpSkShowDelayTimer) clearTimeout(xpSkShowDelayTimer);
+      xpSkShowDelayTimer = setTimeout(injectOverlay, delayMs);
+    };
+
+    if (!navigator.onLine) {
+      scheduleWithDelay(900);
+      return;
+    }
+
+    if ('caches' in window && targetUrl) {
+      const userCacheName = window.XP_USER_CACHE || ('atlas-fit-user-' + (window.XP_SW_VER || '5.0'));
+      scheduleWithDelay(780);
+      caches.open(userCacheName)
+        .then(cache => cache.match(targetUrl, { ignoreSearch: true }))
+        .then(cached => {
+          if (!cached && xpSkShowDelayTimer) {
+            // Módulo nunca cacheado: mostrar skeleton antes (380ms) solo porque sí necesita red
+            scheduleWithDelay(380);
+          }
+        })
+        .catch(() => {});
     } else {
-      xpSkShowDelayTimer = setTimeout(injectOverlay, 320);
+      scheduleWithDelay(450);
     }
   }
 

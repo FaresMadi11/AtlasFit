@@ -2168,7 +2168,19 @@ svg.silueta-interactive {
   background: rgba(139,92,246,.14);
   color: #a78bfa;
   justify-self: center;
+  cursor: pointer;
+  padding: 0;
+  user-select: none;
+  transition: transform .15s, border-color .15s, background .15s;
 }
+.set-badge:active { transform: scale(.92); }
+.set-badge[data-type="normal"]        { background:rgba(139,92,246,.14); color:#a78bfa; border-color:rgba(139,92,246,.35); }
+.set-badge[data-type="calentamiento"] { background:rgba(251,191,36,.16); color:#fbbf24; border-color:rgba(251,191,36,.4); }
+.set-badge[data-type="fallo"]         { background:rgba(248,113,113,.16); color:#f87171; border-color:rgba(248,113,113,.4); }
+.set-badge[data-type="drop"]          { background:rgba(96,165,250,.16); color:#60a5fa; border-color:rgba(96,165,250,.4); }
+.crdi-st-badge-serie[data-type="calentamiento"] { background:rgba(251,191,36,.16); color:#fbbf24; border-color:rgba(251,191,36,.35); }
+.crdi-st-badge-serie[data-type="fallo"]         { background:rgba(248,113,113,.16); color:#f87171; border-color:rgba(248,113,113,.35); }
+.crdi-st-badge-serie[data-type="drop"]          { background:rgba(96,165,250,.16); color:#60a5fa; border-color:rgba(96,165,250,.35); }
 .set-input {
   width: 100%;
   background: rgba(255,255,255,0.05);
@@ -2928,6 +2940,334 @@ svg.silueta-interactive {
 }
 .dm-grafica-sesion-wrap {
   animation: fadeIn 0.25s ease;
+}
+
+/* ── Bottom Sheets en Perfil Atleta (Catálogo Visual + Tipo de Serie — idéntico a Crear Rutina) ── */
+.pf-bs-overlay {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0,0,0,.68);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  z-index: 9998;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .26s ease;
+}
+.pf-bs-overlay.is-open { opacity: 1; pointer-events: all; }
+.pf-bs-sheet {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  z-index: 9999;
+  background: #12121a;
+  border-radius: 24px 24px 0 0;
+  border-top: 1px solid rgba(255,255,255,.1);
+  transform: translateY(100%);
+  transition: transform .34s cubic-bezier(0.32,0.72,0,1);
+  max-height: 86vh;
+  overflow-y: auto;
+  padding-bottom: env(safe-area-inset-bottom, 20px);
+  box-shadow: 0 -12px 48px rgba(0,0,0,.65);
+  will-change: transform;
+  scrollbar-width: none;
+}
+.pf-bs-sheet::-webkit-scrollbar { display: none; }
+.pf-bs-sheet.is-open { transform: translateY(0); }
+.pf-bs-handle {
+  width: 40px;
+  height: 4px;
+  background: rgba(255,255,255,.2);
+  border-radius: 2px;
+  margin: 14px auto 16px;
+}
+.pf-bs-title {
+  font-size: .95rem;
+  font-weight: 700;
+  color: #f8fafc;
+  text-align: center;
+  padding: 0 20px 14px;
+  border-bottom: 1px solid rgba(255,255,255,.08);
+}
+.pf-bs-item {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 10px 20px;
+  min-height: 58px;
+  cursor: pointer;
+  transition: background .18s ease;
+  border-bottom: 1px solid rgba(255,255,255,.06);
+  font-size: .94rem;
+  color: #f8fafc;
+  font-weight: 500;
+  user-select: none;
+}
+.pf-bs-item:last-child { border-bottom: none; }
+.pf-bs-item:hover { background: rgba(255,255,255,.05); }
+.pf-bs-item:active { background: rgba(255,255,255,.09); }
+.pf-bs-item.danger { color: #f87171; }
+.pf-bs-item.danger i { color: #f87171; font-size: 1.2rem; }
+.pf-bs-badge-pill {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  display: grid;
+  place-items: center;
+  font-size: .88rem;
+  font-weight: 800;
+  flex-shrink: 0;
+}
+.pf-cats-sticky {
+  position: sticky;
+  top: 0;
+  background: #12121a;
+  z-index: 20;
+  border-bottom: 1px solid rgba(255,255,255,.08);
+  padding-bottom: 12px;
+}
+.pf-cats-header-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 2px 14px 10px;
+}
+.pf-cats-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 38px;
+  padding: 6px 11px;
+  background: rgba(255,255,255,.06);
+  border: 1px solid rgba(255,255,255,.1);
+  border-radius: 12px;
+  color: #c4b5fd;
+  font-size: .82rem;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.pf-cats-back.hidden { display: none; }
+.pf-cats-title {
+  flex: 1;
+  font-size: .96rem;
+  font-weight: 800;
+  color: #f8fafc;
+  text-align: center;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pf-cats-close {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  background: rgba(255,255,255,.06);
+  border: 1px solid rgba(255,255,255,.1);
+  color: #cbd5e1;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.pf-cats-search-wrap {
+  padding: 0 14px;
+  position: relative;
+}
+.pf-cats-search-wrap i {
+  position: absolute;
+  left: 26px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: #94a3b8;
+  font-size: 1rem;
+  pointer-events: none;
+}
+.pf-cats-search {
+  width: 100%;
+  background: rgba(255,255,255,.05);
+  border: 1px solid rgba(255,255,255,.12);
+  border-radius: 12px;
+  padding: 10px 14px 10px 38px;
+  color: #f8fafc;
+  font-size: .88rem;
+  outline: none;
+  box-sizing: border-box;
+}
+.pf-cats-search:focus { border-color: #8a2be2; }
+.pf-cats-panel.hidden { display: none; }
+.pf-cat-section {
+  font-size: .68rem;
+  font-weight: 800;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  color: #94a3b8;
+  padding: 14px 18px 8px;
+}
+.pf-cat-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  padding: 0 14px 4px;
+}
+.pf-cat-card {
+  background: rgba(255,255,255,.04);
+  border: 1px solid rgba(255,255,255,.08);
+  border-radius: 14px;
+  padding: 12px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  font-size: .86rem;
+  font-weight: 600;
+  color: #f8fafc;
+  min-height: 56px;
+  position: relative;
+  transition: background .18s, border-color .18s, transform .15s;
+}
+.pf-cat-card:hover { background: rgba(139,92,246,.14); border-color: rgba(139,92,246,.42); }
+.pf-cat-card:active { transform: scale(.97); }
+.pf-cat-card::after {
+  content: '';
+  display: block;
+  width: 6px;
+  height: 6px;
+  border-right: 2px solid #94a3b8;
+  border-top: 2px solid #94a3b8;
+  transform: rotate(45deg);
+  position: absolute;
+  right: 13px;
+  opacity: .55;
+}
+.pf-cat-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: rgba(139,92,246,.14);
+  display: grid;
+  place-items: center;
+  font-size: 1.08rem;
+  color: #c4b5fd;
+  flex-shrink: 0;
+}
+.pf-ex-list {
+  display: flex;
+  flex-direction: column;
+  padding: 14px 14px 96px;
+  gap: 7px;
+}
+.pf-ex-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  border-radius: 14px;
+  border: 1.5px solid rgba(255,255,255,.08);
+  background: rgba(255,255,255,.03);
+  cursor: pointer;
+  min-height: 62px;
+  user-select: none;
+  transition: background .16s, border-color .16s, transform .12s;
+}
+.pf-ex-item:hover { background: rgba(255,255,255,.06); }
+.pf-ex-item:active { transform: scale(.985); }
+.pf-ex-item.selected {
+  border-color: #8a2be2;
+  background: rgba(138,43,226,.14);
+}
+.pf-ex-thumb {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  overflow: hidden;
+  background: rgba(139,92,246,.15);
+  border: 1.5px solid rgba(139,92,246,.28);
+  display: grid;
+  place-items: center;
+  font-size: 1.15rem;
+  color: #c4b5fd;
+  position: relative;
+}
+.pf-ex-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 50%;
+  position: absolute;
+  inset: 0;
+}
+.pf-ex-body { flex: 1; min-width: 0; }
+.pf-ex-name {
+  font-size: .9rem;
+  font-weight: 700;
+  color: #f8fafc;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pf-ex-desc {
+  font-size: .74rem;
+  color: #94a3b8;
+  margin-top: 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pf-ex-check {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: #8a2be2;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  opacity: 0;
+  transform: scale(.5);
+  transition: opacity .16s, transform .18s cubic-bezier(0.34,1.56,0.64,1);
+  color: #fff;
+  font-size: .75rem;
+}
+.pf-ex-item.selected .pf-ex-check { opacity: 1; transform: scale(1); }
+.pf-cats-confirm-bar {
+  position: sticky;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  padding: 12px 16px;
+  padding-bottom: max(12px, env(safe-area-inset-bottom, 12px));
+  background: linear-gradient(to top, #12121a 72%, transparent);
+  display: none;
+  z-index: 25;
+}
+.pf-cats-confirm-bar.visible { display: block; }
+.pf-cats-btn-confirm {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 50px;
+  background: linear-gradient(135deg, #8a2be2, #9d4edd);
+  border: none;
+  border-radius: 16px;
+  color: #fff;
+  font-size: .96rem;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: 0 6px 24px rgba(138,43,226,.45);
+}
+.pf-cats-btn-confirm .confirm-count {
+  background: rgba(255,255,255,.25);
+  border-radius: 8px;
+  padding: 2px 9px;
+  font-size: .84rem;
+  font-weight: 800;
 }
 </style>
 
@@ -6206,6 +6546,7 @@ if (document.readyState === 'complete') {
                 const sPesoParsed = (s.peso !== null && s.peso !== undefined && s.peso !== '' && !isNaN(parseFloat(s.peso))) ? parseFloat(s.peso) : null;
                 return {
                   numero: s.numero || 1,
+                  tipo_serie: s.tipo_serie || s.tipo || 'normal',
                   peso: sPesoParsed,
                   reps: s.reps || e.repeticiones || '10',
                   rir: sRirParsed !== null ? sRirParsed : rirFallback,
@@ -6220,6 +6561,7 @@ if (document.readyState === 'complete') {
                 const pDef = pesosArr[s - 1] !== undefined ? pesosArr[s - 1] : (pesosArr.length > 0 ? pesosArr[pesosArr.length - 1] : null);
                 sets.push({
                   numero: s,
+                  tipo_serie: 'normal',
                   peso: pDef,
                   reps: e.repeticiones || '10',
                   rir: rirFallback,
@@ -6383,15 +6725,19 @@ if (document.readyState === 'complete') {
         else if (impl === 'mancuerna') labelColWeight = 'KG (c/u) ×2';
 
         let setRowsHtml = '';
+        let workingNumEdit = 0;
         sets.forEach((s, sIdx) => {
           const wVal = (s.peso !== null && s.peso !== undefined && s.peso !== '') ? s.peso : '';
           const rVal = (s.reps !== null && s.reps !== undefined) ? s.reps : '';
           const rirVal = (hasRir && s.rir !== null && s.rir !== undefined) ? s.rir : '';
           const pPh = (impl === 'sin_peso' || uEj === 'ninguna') ? 'Sin peso' : (uEj === 'placas' ? 'Placas' : (uEj === 'lbs' ? 'Lbs' : 'Kg'));
+          const tipoSerie = (s.tipo_serie || s.tipo || 'normal').toLowerCase();
+          if (tipoSerie !== 'calentamiento') workingNumEdit++;
+          const badgeTxt = tipoSerie === 'calentamiento' ? 'W' : (tipoSerie === 'fallo' ? 'F' : (tipoSerie === 'drop' ? 'D' : String(workingNumEdit || (sIdx + 1))));
 
           setRowsHtml += `
             <div class="set-row" data-serie-idx="${sIdx}">
-              <div class="set-badge" title="Serie ${sIdx + 1}">${sIdx + 1}</div>
+              <button type="button" class="set-badge" data-type="${esc(tipoSerie)}" onclick="abrirSelectorTipoSerieInline(${idx}, ${sIdx})" title="Toca para cambiar tipo de serie" aria-label="Serie ${sIdx + 1}, tipo ${esc(tipoSerie)}. Toca para cambiar">${badgeTxt}</button>
               <input type="number" step="${uEj === 'placas' ? '1' : '0.5'}" class="set-input set-input-weight" value="${wVal}" placeholder="${pPh}" oninput="actualizarSerieValor(${idx}, ${sIdx}, 'peso', this.value)" ${impl === 'sin_peso' ? 'disabled' : ''}>
               <input type="text" class="set-input set-input-reps" value="${esc(rVal)}" placeholder="—" oninput="actualizarSerieValor(${idx}, ${sIdx}, 'reps', this.value)">
               <input type="number" min="0" max="5" class="set-input set-input-rir" value="${rirVal}" placeholder="RIR" oninput="actualizarSerieValor(${idx}, ${sIdx}, 'rir', this.value)" ${!hasRir ? 'disabled style="opacity:0.2;"' : ''}>
@@ -6527,8 +6873,12 @@ if (document.readyState === 'complete') {
         }
 
         let seriesRows = '';
-        setsList.forEach(s => {
+        let workingNumRead = 0;
+        setsList.forEach((s, sIdx) => {
           const u = (s.unidad || uEj).toLowerCase();
+          const tipoSerie = (s.tipo_serie || s.tipo || 'normal').toLowerCase();
+          if (tipoSerie !== 'calentamiento') workingNumRead++;
+          const badgeReadTxt = tipoSerie === 'calentamiento' ? 'W' : (tipoSerie === 'fallo' ? 'F' : (tipoSerie === 'drop' ? 'D' : `S${workingNumRead || s.numero || (sIdx + 1)}`));
           let pVal = '—';
           const pNum = (s.peso !== null && s.peso !== '' && s.peso !== undefined && !isNaN(parseFloat(s.peso))) ? parseFloat(s.peso) : null;
           if (pNum !== null && pNum > 0) {
@@ -6565,7 +6915,7 @@ if (document.readyState === 'complete') {
 
           seriesRows += `
             <div class="crdi-st-row ${!hasRir ? 'no-rir' : ''}">
-              <span class="crdi-st-badge-serie">S${s.numero || 1}</span>
+              <span class="crdi-st-badge-serie" data-type="${esc(tipoSerie)}">${badgeReadTxt}</span>
               <span class="crdi-st-val">${pVal}</span>
               <span class="crdi-st-val">${rVal}</span>
               ${rirCol}
@@ -6716,6 +7066,7 @@ if (document.readyState === 'complete') {
 
     ej.series_detalle.push({
       numero: currentNum + 1,
+      tipo_serie: 'normal',
       peso: lastSet.peso !== undefined ? lastSet.peso : ej.peso,
       reps: lastSet.reps || ej.repeticiones || '10',
       rir: lastSet.rir !== undefined ? lastSet.rir : ej.rir
@@ -6723,6 +7074,84 @@ if (document.readyState === 'complete') {
     ej.series = ej.series_detalle.length;
     renderizarRutinaInline();
   }
+
+  // ── Selector de Tipo de Serie (Bottom Sheet idéntico a Crear Rutina) ──
+  let pfActiveSerieTarget = null;
+
+  function abrirSheetPerfil(sheetId, overlayId) {
+    const sh = document.getElementById(sheetId);
+    const ov = document.getElementById(overlayId);
+    if (ov) {
+      ov.classList.add('is-open');
+      ov.setAttribute('aria-hidden', 'false');
+    }
+    if (sh) {
+      sh.classList.add('is-open');
+      sh.setAttribute('aria-hidden', 'false');
+    }
+    document.body.style.overflow = 'hidden';
+  }
+
+  function cerrarSheetPerfil(sheetId, overlayId) {
+    const sh = document.getElementById(sheetId);
+    const ov = document.getElementById(overlayId);
+    if (sh) {
+      sh.classList.remove('is-open');
+      sh.setAttribute('aria-hidden', 'true');
+    }
+    if (ov) {
+      ov.classList.remove('is-open');
+      ov.setAttribute('aria-hidden', 'true');
+    }
+    document.body.style.overflow = '';
+  }
+
+  function abrirSelectorTipoSerieInline(ejIdx, sIdx) {
+    if (!rutinaInlineState || !rutinaInlineState.ejercicios[ejIdx] || !rutinaInlineState.ejercicios[ejIdx].series_detalle[sIdx]) return;
+    pfActiveSerieTarget = { ejIdx, sIdx };
+    abrirSheetPerfil('sheetSetTypePerfil', 'overlaySetTypePerfil');
+  }
+
+  function aplicarTipoSerieInline(nuevoTipo) {
+    if (!pfActiveSerieTarget || !rutinaInlineState) return;
+    const { ejIdx, sIdx } = pfActiveSerieTarget;
+    const ej = rutinaInlineState.ejercicios[ejIdx];
+    if (ej && ej.series_detalle && ej.series_detalle[sIdx]) {
+      ej.series_detalle[sIdx].tipo_serie = nuevoTipo;
+      ej.series_detalle[sIdx].tipo = nuevoTipo;
+    }
+    cerrarSheetPerfil('sheetSetTypePerfil', 'overlaySetTypePerfil');
+    pfActiveSerieTarget = null;
+    renderizarRutinaInline();
+  }
+
+  function eliminarSerieInline() {
+    if (!pfActiveSerieTarget || !rutinaInlineState) return;
+    const { ejIdx, sIdx } = pfActiveSerieTarget;
+    const ej = rutinaInlineState.ejercicios[ejIdx];
+    cerrarSheetPerfil('sheetSetTypePerfil', 'overlaySetTypePerfil');
+    pfActiveSerieTarget = null;
+    if (!ej || !Array.isArray(ej.series_detalle)) return;
+    if (ej.series_detalle.length <= 1) {
+      if (typeof Xp !== 'undefined' && Xp.toast) {
+        Xp.toast('warning', 'El ejercicio debe tener al menos 1 serie.');
+      }
+      return;
+    }
+    ej.series_detalle.splice(sIdx, 1);
+    ej.series_detalle.forEach((s, i) => { s.numero = i + 1; });
+    ej.series = ej.series_detalle.length;
+    renderizarRutinaInline();
+  }
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape') return;
+    if (document.getElementById('sheetSetTypePerfil')?.classList.contains('is-open')) {
+      cerrarSheetPerfil('sheetSetTypePerfil', 'overlaySetTypePerfil');
+    } else if (document.getElementById('sheetCatsPerfil')?.classList.contains('is-open')) {
+      cerrarSheetPerfil('sheetCatsPerfil', 'overlayCatsPerfil');
+    }
+  });
 
   // ── Funciones de Cardio (Identicas a Crear Rutina) ──
   function toggleCardioPanelInline(forceState) {
@@ -6892,51 +7321,314 @@ if (document.readyState === 'complete') {
     return catalogoEjerciciosCache;
   }
 
-  // Reemplazar ejercicio
-  async function abrirModalReemplazarEjercicio(idx) {
-    const ej = rutinaInlineState.ejercicios[idx];
-    const catalogo = await obtenerCatalogoEjercicios();
+  // ── Catálogo Visual de Ejercicios (Bottom Sheet idéntico a Crear Rutina) ──
+  const pfCategoriasDB = <?= json_encode($categoriasCatalogo ?? [], JSON_HEX_TAG | JSON_HEX_APOS | JSON_UNESCAPED_UNICODE) ?>;
+  const pfFallbackCats = [
+    { grupo: 'upper_body', nombre: 'Pecho',      icono: 'ti-heart' },
+    { grupo: 'upper_body', nombre: 'Espalda',    icono: 'ti-arrow-autofit-up' },
+    { grupo: 'upper_body', nombre: 'Hombros',    icono: 'ti-arrow-up-circle' },
+    { grupo: 'upper_body', nombre: 'Bíceps',     icono: 'ti-arm' },
+    { grupo: 'upper_body', nombre: 'Tríceps',    icono: 'ti-wave-sine' },
+    { grupo: 'upper_body', nombre: 'Trapecio',   icono: 'ti-triangle' },
+    { grupo: 'upper_body', nombre: 'Antebrazos', icono: 'ti-hand-finger' },
+    { grupo: 'upper_body', nombre: 'Cuello',     icono: 'ti-man' },
+    { grupo: 'lower_body', nombre: 'Cuádriceps', icono: 'ti-run' },
+    { grupo: 'lower_body', nombre: 'Femoral',    icono: 'ti-run' },
+    { grupo: 'lower_body', nombre: 'Glúteos',    icono: 'ti-user' },
+    { grupo: 'lower_body', nombre: 'Gemelos',    icono: 'ti-anchor' },
+    { grupo: 'lower_body', nombre: 'Abductores', icono: 'ti-layout-sidebar' },
+    { grupo: 'lower_body', nombre: 'Aductores',  icono: 'ti-layout-sidebar-right' },
+    { grupo: 'other',      nombre: 'Abdomen',    icono: 'ti-layout-bottombar' },
+    { grupo: 'other',      nombre: 'Full Body',  icono: 'ti-body-scan' },
+    { grupo: 'other',      nombre: 'Cardio',     icono: 'ti-heart-rate-monitor' },
+    { grupo: 'other',      nombre: 'Otro',       icono: 'ti-dots' }
+  ];
+  const pfIconMap = {
+    'pecho':'ti-heart','espalda':'ti-arrow-autofit-up','dorsales':'ti-arrow-autofit-up',
+    'hombros':'ti-arrow-up-circle','hombro':'ti-arrow-up-circle','biceps':'ti-arm','bíceps':'ti-arm',
+    'triceps':'ti-wave-sine','tríceps':'ti-wave-sine','trapecio':'ti-triangle','antebrazos':'ti-hand-finger',
+    'cuello':'ti-man','cuadriceps':'ti-run','cuádriceps':'ti-run','femoral':'ti-run','isquiotibiales':'ti-run',
+    'gluteos':'ti-user','glúteos':'ti-user','gemelos':'ti-anchor','pantorrillas':'ti-anchor',
+    'abductores':'ti-layout-sidebar','aductores':'ti-layout-sidebar-right','abdomen':'ti-layout-bottombar',
+    'abdominales':'ti-layout-bottombar','full body':'ti-body-scan','cuerpo entero':'ti-body-scan',
+    'cardio':'ti-heart-rate-monitor','otro':'ti-dots'
+  };
 
-    let datalistOptions = catalogo.map(c => `<option value="${esc(c.nombre)}">${esc(c.grupo_muscular || '')}</option>`).join('');
+  let pfSelectedEjercicios = new Map();
+  let pfCurrentCategory = null;
+  let pfReplaceIdx = null;
+  let pfCatGridBuilt = false;
 
-    const { value: formValues } = await Swal.fire({
-      title: 'Reemplazar Ejercicio',
-      html: `
-        <div style="text-align:left;font-size:0.85rem;">
-          <p style="color:#94a3b8;margin-bottom:12px;">Ejercicio actual: <b>${esc(ej.nombre)}</b></p>
-          <label style="font-weight:700;color:#d8b4fe;display:block;margin-bottom:6px;">Seleccionar nuevo ejercicio:</label>
-          <input id="swalNuevoEjNombre" list="catListReemplazar" class="swal2-input" placeholder="Escribe o selecciona..." style="width:100%;box-sizing:border-box;margin:0 0 10px;background:#1a1a24;color:#fff;border:1px solid rgba(255,255,255,0.15);border-radius:10px;">
-          <datalist id="catListReemplazar">${datalistOptions}</datalist>
-        </div>
-      `,
-      showCancelButton: true,
-      confirmButtonText: 'Reemplazar',
-      cancelButtonText: 'Cancelar',
-      confirmButtonColor: '#8a2be2',
-      cancelButtonColor: '#475569',
-      background: '#12121a',
-      color: '#ffffff',
-      preConfirm: () => {
-        const val = document.getElementById('swalNuevoEjNombre').value;
-        if (!val || !val.trim()) {
-          Swal.showValidationMessage('Debes indicar el nombre del nuevo ejercicio.');
-          return false;
-        }
-        return val.trim();
-      }
-    });
+  function pfCanonicalGroup(str) {
+    if (!str) return 'otro';
+    const s = String(str).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+    if (s.includes('pech') || s.includes('pector')) return 'pecho';
+    if (s.includes('espalda') || s.includes('dorsal')) return 'espalda';
+    if (s.includes('hombr') || s.includes('deltoid')) return 'hombros';
+    if (s.includes('bicep')) return 'biceps';
+    if (s.includes('tricep')) return 'triceps';
+    if (s.includes('trapeci')) return 'trapecio';
+    if (s.includes('antebraz')) return 'antebrazos';
+    if (s.includes('cuello')) return 'cuello';
+    if (s.includes('cuadicep') || s.includes('cuadricep')) return 'cuadriceps';
+    if (s.includes('femor') || s.includes('isquio')) return 'femoral';
+    if (s.includes('glute')) return 'gluteos';
+    if (s.includes('gemel') || s.includes('pantorrill')) return 'gemelos';
+    if (s.includes('abduct')) return 'abductores';
+    if (s.includes('aduct')) return 'aductores';
+    if (s.includes('abdom') || s.includes('core')) return 'abdomen';
+    if (s.includes('cardio') || s.includes('aerob')) return 'cardio';
+    if (s.includes('full') || s.includes('cuerpo') || s.includes('entero')) return 'full_body';
+    return 'otro';
+  }
 
-    if (formValues) {
-      ej.nombre = formValues;
-      const matched = catalogo.find(c => c.nombre.toLowerCase().trim() === formValues.toLowerCase().trim());
-      if (matched && matched.imagen_path) {
-        ej.imagen_path = matched.imagen_path;
-      }
-      renderizarRutinaInline();
-      if (typeof Xp !== 'undefined' && Xp.toast) {
-        Xp.toast('success', `Ejercicio cambiado a "${formValues}"`);
+  function pfInferImplemento(ex) {
+    let impl = ex.tipo_implemento || null;
+    let unit = ex.unidad_carga || 'kg';
+    if (!impl) {
+      const nomLower = (ex.nombre || '').toLowerCase();
+      if (nomLower.includes('mancuerna') || nomLower.includes('dumbbell')) {
+        impl = 'mancuerna'; unit = 'kg';
+      } else if (nomLower.includes('polea') || nomLower.includes('cable') || nomLower.includes('maquina') || nomLower.includes('máquina') || nomLower.includes('prensa') || nomLower.includes('jalon') || nomLower.includes('jalón')) {
+        impl = 'polea_maquina'; unit = (unit === 'placas') ? 'placas' : 'kg';
+      } else if (nomLower.includes('dominada') || nomLower.includes('fondo') || nomLower.includes('flexion') || nomLower.includes('flexión') || nomLower.includes('push up') || nomLower.includes('pull up') || nomLower.includes('abdominal') || nomLower.includes('crunch') || nomLower.includes('plancha') || nomLower.includes('bodyweight')) {
+        impl = 'sin_peso'; unit = 'ninguna';
+      } else {
+        impl = 'barra'; unit = 'kg';
       }
     }
+    if (impl === 'sin_peso') unit = 'ninguna';
+    return { impl, unit };
+  }
+
+  function pfBuildCategoryGrid() {
+    if (pfCatGridBuilt) return;
+    const cats = (Array.isArray(pfCategoriasDB) && pfCategoriasDB.length) ? pfCategoriasDB : pfFallbackCats;
+    const grids = { upper_body: 'pfCatGridUpper', lower_body: 'pfCatGridLower', other: 'pfCatGridOther' };
+    cats.forEach(cat => {
+      const grid = document.getElementById(grids[cat.grupo]);
+      if (!grid) return;
+      const icon = cat.icono || pfIconMap[(cat.nombre || '').toLowerCase()] || 'ti-dumbbell';
+      const card = document.createElement('div');
+      card.className = 'pf-cat-card';
+      card.setAttribute('role', 'listitem');
+      card.setAttribute('tabindex', '0');
+      card.innerHTML = `<div class="pf-cat-icon" aria-hidden="true"><i class="ti ${esc(icon)}"></i></div><span>${esc(cat.nombre)}</span>`;
+      card.addEventListener('click', () => pfCatsDrillInto(cat.nombre));
+      card.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') pfCatsDrillInto(cat.nombre); });
+      grid.appendChild(card);
+    });
+    pfCatGridBuilt = true;
+  }
+
+  function pfUpdateConfirmBar() {
+    const count = pfSelectedEjercicios.size;
+    const bar = document.getElementById('pfCatsConfirmBar');
+    const cnt = document.getElementById('pfConfirmCount');
+    if (cnt) cnt.textContent = count;
+    if (bar) bar.classList.toggle('visible', count > 0 && pfReplaceIdx === null);
+  }
+
+  function pfCatsDrillBack() {
+    pfCurrentCategory = null;
+    const titleEl = document.getElementById('pfCatsHeaderTitle');
+    const backBtn = document.getElementById('pfCatsBtnBack');
+    const searchInp = document.getElementById('pfCatsSearchInput');
+    const pCats = document.getElementById('pfPanelCats');
+    const pEx = document.getElementById('pfPanelExercises');
+    if (titleEl) titleEl.textContent = pfReplaceIdx !== null ? 'Reemplazar Ejercicio' : 'Grupo Muscular';
+    if (backBtn) backBtn.classList.add('hidden');
+    if (searchInp) searchInp.value = '';
+    if (pCats) pCats.classList.remove('hidden');
+    if (pEx) pEx.classList.add('hidden');
+    const sh = document.getElementById('sheetCatsPerfil');
+    if (sh) sh.scrollTop = 0;
+    pfUpdateConfirmBar();
+  }
+
+  async function pfCatsDrillInto(catNombre) {
+    pfCurrentCategory = catNombre;
+    const titleEl = document.getElementById('pfCatsHeaderTitle');
+    const backBtn = document.getElementById('pfCatsBtnBack');
+    const searchInp = document.getElementById('pfCatsSearchInput');
+    const pCats = document.getElementById('pfPanelCats');
+    const pEx = document.getElementById('pfPanelExercises');
+    if (titleEl) titleEl.textContent = catNombre;
+    if (backBtn) backBtn.classList.remove('hidden');
+    if (searchInp) searchInp.value = '';
+    if (pCats) pCats.classList.add('hidden');
+    if (pEx) pEx.classList.remove('hidden');
+    const sh = document.getElementById('sheetCatsPerfil');
+    if (sh) sh.scrollTop = 0;
+    await pfRenderExerciseList(catNombre, '');
+  }
+
+  async function pfRenderExerciseList(catNombre, filter) {
+    const list = document.getElementById('pfExList');
+    if (!list) return;
+    const catalogo = await obtenerCatalogoEjercicios();
+    let exercises = Array.isArray(catalogo) ? [...catalogo] : [];
+
+    if (catNombre) {
+      const targetCanon = pfCanonicalGroup(catNombre);
+      exercises = exercises.filter(e => {
+        if (e.categoria_nombre && pfCanonicalGroup(e.categoria_nombre) === targetCanon) return true;
+        return pfCanonicalGroup(e.grupo_muscular) === targetCanon;
+      });
+    }
+
+    if (filter && filter.trim()) {
+      const q = filter.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+      exercises = exercises.filter(ex => {
+        const nom = (ex.nombre || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+        const grp = (ex.grupo_muscular || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+        const eqp = (ex.equipamiento || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+        return nom.includes(q) || grp.includes(q) || eqp.includes(q);
+      });
+    }
+
+    list.innerHTML = '';
+    if (!exercises.length) {
+      list.innerHTML = `<div style="text-align:center;padding:38px 18px;color:#94a3b8;font-size:.88rem;"><i class="ti ti-mood-empty" style="font-size:2rem;display:block;margin-bottom:8px;"></i>Sin ejercicios encontrados</div>`;
+      return;
+    }
+
+    const isSingle = (pfReplaceIdx !== null);
+    exercises.forEach(ex => {
+      const key = String(ex.id || ex.nombre);
+      const isSelected = pfSelectedEjercicios.has(key);
+      const item = document.createElement('div');
+      item.className = 'pf-ex-item' + (isSelected ? ' selected' : '');
+      item.setAttribute('role', isSingle ? 'button' : 'checkbox');
+      item.setAttribute('aria-checked', isSelected ? 'true' : 'false');
+      item.setAttribute('tabindex', '0');
+
+      const thumbInner = ex.imagen_path
+        ? `<img src="${getExerciseThumbUrl(ex.imagen_path)}" alt="${esc(ex.nombre)}" loading="lazy">`
+        : `<i class="ti ti-dumbbell" aria-hidden="true"></i>`;
+      const metaText = [ex.grupo_muscular, ex.equipamiento].filter(Boolean).join(' · ');
+
+      item.innerHTML = `
+        <div class="pf-ex-thumb" aria-hidden="true">${thumbInner}</div>
+        <div class="pf-ex-body">
+          <div class="pf-ex-name">${esc(ex.nombre)}</div>
+          ${metaText ? `<div class="pf-ex-desc">${esc(metaText)}</div>` : ''}
+        </div>
+        <div class="pf-ex-check" aria-hidden="true"><i class="ti ti-check"></i></div>
+      `;
+
+      const onSelect = () => {
+        if (isSingle) {
+          const targetIdx = pfReplaceIdx;
+          pfReplaceIdx = null;
+          pfSelectedEjercicios.clear();
+          cerrarSheetPerfil('sheetCatsPerfil', 'overlayCatsPerfil');
+          if (rutinaInlineState && rutinaInlineState.ejercicios[targetIdx]) {
+            const targetEj = rutinaInlineState.ejercicios[targetIdx];
+            const { impl, unit } = pfInferImplemento(ex);
+            targetEj.nombre = ex.nombre;
+            targetEj.imagen_path = ex.imagen_path || null;
+            targetEj.tipo_implemento = impl;
+            targetEj.unidad_carga = unit;
+            renderizarRutinaInline();
+            if (typeof Xp !== 'undefined' && Xp.toast) {
+              Xp.toast('success', `Ejercicio cambiado a "${ex.nombre}"`);
+            }
+          }
+          return;
+        }
+        if (pfSelectedEjercicios.has(key)) {
+          pfSelectedEjercicios.delete(key);
+          item.classList.remove('selected');
+          item.setAttribute('aria-checked', 'false');
+        } else {
+          pfSelectedEjercicios.set(key, ex);
+          item.classList.add('selected');
+          item.setAttribute('aria-checked', 'true');
+        }
+        pfUpdateConfirmBar();
+      };
+
+      item.addEventListener('click', onSelect);
+      item.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onSelect(); } });
+      list.appendChild(item);
+    });
+  }
+
+  let pfSearchTimer = null;
+  function pfCatsFilterExercises(val) {
+    if (pfSearchTimer) clearTimeout(pfSearchTimer);
+    pfSearchTimer = setTimeout(() => {
+      const q = (val || '').trim();
+      const pCats = document.getElementById('pfPanelCats');
+      const pEx = document.getElementById('pfPanelExercises');
+      const backBtn = document.getElementById('pfCatsBtnBack');
+      if (!pfCurrentCategory) {
+        if (q.length > 0) {
+          if (pCats) pCats.classList.add('hidden');
+          if (pEx) pEx.classList.remove('hidden');
+          if (backBtn) backBtn.classList.remove('hidden');
+          pfRenderExerciseList(null, q);
+        } else {
+          if (pCats) pCats.classList.remove('hidden');
+          if (pEx) pEx.classList.add('hidden');
+          if (backBtn) backBtn.classList.add('hidden');
+        }
+      } else {
+        pfRenderExerciseList(pfCurrentCategory, q);
+      }
+    }, 80);
+  }
+
+  function pfConfirmarEjerciciosCatalogo() {
+    if (!rutinaInlineState || pfSelectedEjercicios.size === 0) return;
+    const toAdd = [...pfSelectedEjercicios.values()];
+    pfSelectedEjercicios.clear();
+    cerrarSheetPerfil('sheetCatsPerfil', 'overlayCatsPerfil');
+    pfUpdateConfirmBar();
+
+    toAdd.forEach(ex => {
+      const { impl, unit } = pfInferImplemento(ex);
+      const sets = [];
+      for (let s = 1; s <= 3; s++) {
+        sets.push({
+          numero: s,
+          tipo_serie: 'normal',
+          peso: null,
+          reps: '10',
+          rir: 2,
+          unidad: unit
+        });
+      }
+      rutinaInlineState.ejercicios.push({
+        id: 0,
+        nombre: ex.nombre,
+        imagen_path: ex.imagen_path || null,
+        series: 3,
+        repeticiones: '10',
+        rir: 2,
+        peso: null,
+        tipo_implemento: impl,
+        unidad_carga: unit,
+        descanso: null,
+        series_detalle: sets
+      });
+    });
+
+    renderizarRutinaInline();
+    if (typeof Xp !== 'undefined' && Xp.toast) {
+      Xp.toast('success', toAdd.length === 1 ? `"${toAdd[0].nombre}" agregado.` : `${toAdd.length} ejercicios agregados.`);
+    }
+  }
+
+  // Reemplazar ejercicio usando el Catálogo Visual
+  async function abrirModalReemplazarEjercicio(idx) {
+    pfBuildCategoryGrid();
+    pfReplaceIdx = idx;
+    pfSelectedEjercicios.clear();
+    pfCatsDrillBack();
+    abrirSheetPerfil('sheetCatsPerfil', 'overlayCatsPerfil');
+    obtenerCatalogoEjercicios();
   }
 
   // Eliminar ejercicio de la lista
@@ -6964,85 +7656,14 @@ if (document.readyState === 'complete') {
     }
   }
 
-  // Agregar nuevo ejercicio a la rutina
+  // Agregar nuevo ejercicio a la rutina usando el Catálogo Visual completo
   async function abrirModalAgregarEjercicio() {
-    const catalogo = await obtenerCatalogoEjercicios();
-    let datalistOptions = catalogo.map(c => `<option value="${esc(c.nombre)}">${esc(c.grupo_muscular || '')}</option>`).join('');
-
-    const { value: formValues } = await Swal.fire({
-      title: 'Agregar Ejercicio',
-      html: `
-        <div style="text-align:left;font-size:0.85rem;display:flex;flex-direction:column;gap:12px;">
-          <div>
-            <label style="color:#cbd5e1;font-size:0.75rem;font-weight:700;">Nombre del Ejercicio:</label>
-            <input id="swalAddNombre" list="catListAgregar" class="swal2-input" placeholder="Escribe o selecciona del catálogo..." style="width:100%;margin:4px 0 0;box-sizing:border-box;background:#1a1a24;color:#fff;border:1px solid rgba(255,255,255,0.15);border-radius:8px;">
-            <datalist id="catListAgregar">${datalistOptions}</datalist>
-          </div>
-
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
-            <div>
-              <label style="color:#cbd5e1;font-size:0.75rem;font-weight:700;">Series iniciales:</label>
-              <input id="swalAddSeries" type="number" min="1" max="25" value="3" class="swal2-input" style="width:100%;margin:4px 0 0;box-sizing:border-box;background:#1a1a24;color:#fff;border:1px solid rgba(255,255,255,0.15);border-radius:8px;">
-            </div>
-            <div>
-              <label style="color:#cbd5e1;font-size:0.75rem;font-weight:700;">Repeticiones:</label>
-              <input id="swalAddReps" type="text" value="10" class="swal2-input" placeholder="Ej: 10 o 12" style="width:100%;margin:4px 0 0;box-sizing:border-box;background:#1a1a24;color:#fff;border:1px solid rgba(255,255,255,0.15);border-radius:8px;">
-            </div>
-          </div>
-        </div>
-      `,
-      showCancelButton: true,
-      confirmButtonText: '+ Agregar',
-      cancelButtonText: 'Cancelar',
-      confirmButtonColor: '#8a2be2',
-      cancelButtonColor: '#475569',
-      background: '#12121a',
-      color: '#ffffff',
-      preConfirm: () => {
-        const nom = document.getElementById('swalAddNombre').value.trim();
-        if (!nom) {
-          Swal.showValidationMessage('Debes ingresar o seleccionar un ejercicio.');
-          return false;
-        }
-        const series = parseInt(document.getElementById('swalAddSeries').value) || 3;
-        const reps   = document.getElementById('swalAddReps').value.trim() || '10';
-        return { nombre: nom, series, reps };
-      }
-    });
-
-    if (formValues) {
-      const sets = [];
-      for (let s = 1; s <= formValues.series; s++) {
-        sets.push({
-          numero: s,
-          peso: null,
-          reps: formValues.reps,
-          rir: 2
-        });
-      }
-
-      const matched = catalogo.find(c => c.nombre.toLowerCase().trim() === formValues.nombre.toLowerCase().trim());
-      const imgPath = matched?.imagen_path || null;
-
-      rutinaInlineState.ejercicios.push({
-        id: 0,
-        nombre: formValues.nombre,
-        imagen_path: imgPath,
-        series: formValues.series,
-        repeticiones: formValues.reps,
-        rir: 2,
-        peso: null,
-        tipo_implemento: 'barra',
-        unidad_carga: 'kg',
-        descanso: null,
-        series_detalle: sets
-      });
-
-      renderizarRutinaInline();
-      if (typeof Xp !== 'undefined' && Xp.toast) {
-        Xp.toast('success', `"${formValues.nombre}" agregado.`);
-      }
-    }
+    pfBuildCategoryGrid();
+    pfReplaceIdx = null;
+    pfSelectedEjercicios.clear();
+    pfCatsDrillBack();
+    abrirSheetPerfil('sheetCatsPerfil', 'overlayCatsPerfil');
+    obtenerCatalogoEjercicios();
   }
 
   // Guardar cambios masivos en el backend
@@ -7069,16 +7690,20 @@ if (document.readyState === 'complete') {
       const rows = block.querySelectorAll('.set-row');
       const sets = [];
       rows.forEach((r, sIdx) => {
+        const badgeEl = r.querySelector('.set-badge');
         const wInp = r.querySelector('.set-input-weight');
         const rInp = r.querySelector('.set-input-reps');
         const rirInp = r.querySelector('.set-input-rir');
 
+        const existingSet = (Array.isArray(ej.series_detalle) && ej.series_detalle[sIdx]) ? ej.series_detalle[sIdx] : {};
+        const tipoVal = (badgeEl && badgeEl.dataset.type) ? badgeEl.dataset.type : (existingSet.tipo_serie || existingSet.tipo || 'normal');
         const pesoVal = (wInp && wInp.value !== '' && !wInp.disabled) ? parseFloat(wInp.value) : null;
         const repsVal = (rInp && rInp.value !== '') ? rInp.value.trim() : '10';
         const rirVal  = (rirInp && rirInp.value !== '' && !rirInp.disabled) ? parseInt(rirInp.value, 10) : null;
 
         sets.push({
           numero: sIdx + 1,
+          tipo_serie: tipoVal,
           peso: pesoVal,
           reps: repsVal,
           rir: rirVal
@@ -7121,6 +7746,7 @@ if (document.readyState === 'complete') {
           orden: index + 1,
           series_detalle: (Array.isArray(e.series_detalle) ? e.series_detalle : []).map((s, sIdx) => ({
             numero_serie: s.numero || s.numero_serie || (sIdx + 1),
+            tipo_serie: s.tipo_serie || s.tipo || 'normal',
             peso: (s.peso !== null && s.peso !== undefined && s.peso !== '' && !isNaN(parseFloat(s.peso))) ? parseFloat(s.peso) : null,
             reps: (s.reps !== null && s.reps !== undefined && s.reps !== '') ? String(s.reps).trim() : (e.repeticiones || '10'),
             rir: (s.rir !== null && s.rir !== undefined && s.rir !== '' && !isNaN(parseInt(s.rir, 10))) ? parseInt(s.rir, 10) : null
@@ -7235,6 +7861,13 @@ if (document.readyState === 'complete') {
   window.abrirModalReemplazarEjercicio = abrirModalReemplazarEjercicio;
   window.eliminarEjercicioEdicion = eliminarEjercicioEdicion;
   window.abrirModalAgregarEjercicio = abrirModalAgregarEjercicio;
+  window.abrirSelectorTipoSerieInline = abrirSelectorTipoSerieInline;
+  window.aplicarTipoSerieInline = aplicarTipoSerieInline;
+  window.eliminarSerieInline = eliminarSerieInline;
+  window.cerrarSheetPerfil = cerrarSheetPerfil;
+  window.pfCatsDrillBack = pfCatsDrillBack;
+  window.pfCatsFilterExercises = pfCatsFilterExercises;
+  window.pfConfirmarEjerciciosCatalogo = pfConfirmarEjerciciosCatalogo;
   window.guardarCambiosRutinaEdicion = guardarCambiosRutinaEdicion;
   window.seleccionarDiaRutina = seleccionarDiaRutina;
 })();
@@ -8022,6 +8655,86 @@ document.addEventListener('DOMContentLoaded', function() {
 
 
 </script>
+
+<!-- ════ BOTTOM SHEET: Tipo de Serie (Edición de Rutina en Perfil Atleta) ════ -->
+<div class="pf-bs-overlay" id="overlaySetTypePerfil" aria-hidden="true" onclick="cerrarSheetPerfil('sheetSetTypePerfil','overlaySetTypePerfil')"></div>
+<div class="pf-bs-sheet" id="sheetSetTypePerfil" role="dialog" aria-modal="true" aria-hidden="true" aria-label="Tipo de serie">
+  <div class="pf-bs-handle" aria-hidden="true"></div>
+  <div class="pf-bs-title">Tipo de Serie</div>
+  <div class="pf-bs-item" onclick="aplicarTipoSerieInline('calentamiento')" role="button" tabindex="0">
+    <span class="pf-bs-badge-pill" style="background:rgba(251,191,36,.18);color:#fbbf24" aria-hidden="true">W</span>
+    <div>
+      <div style="font-weight:700">Calentamiento</div>
+      <div style="font-size:.75rem;color:#94a3b8;margin-top:2px">No cuenta para volumen total</div>
+    </div>
+  </div>
+  <div class="pf-bs-item" onclick="aplicarTipoSerieInline('normal')" role="button" tabindex="0">
+    <span class="pf-bs-badge-pill" style="background:rgba(139,92,246,.18);color:#a78bfa" aria-hidden="true">1</span>
+    <div>
+      <div style="font-weight:700">Normal</div>
+      <div style="font-size:.75rem;color:#94a3b8;margin-top:2px">Serie estándar con reps y peso</div>
+    </div>
+  </div>
+  <div class="pf-bs-item" onclick="aplicarTipoSerieInline('fallo')" role="button" tabindex="0">
+    <span class="pf-bs-badge-pill" style="background:rgba(248,113,113,.18);color:#f87171" aria-hidden="true">F</span>
+    <div>
+      <div style="font-weight:700">Al Fallo</div>
+      <div style="font-size:.75rem;color:#94a3b8;margin-top:2px">Máximas reps hasta el fallo</div>
+    </div>
+  </div>
+  <div class="pf-bs-item" onclick="aplicarTipoSerieInline('drop')" role="button" tabindex="0">
+    <span class="pf-bs-badge-pill" style="background:rgba(96,165,250,.18);color:#60a5fa" aria-hidden="true">D</span>
+    <div>
+      <div style="font-weight:700">Drop Set</div>
+      <div style="font-size:.75rem;color:#94a3b8;margin-top:2px">Reducir peso sin descanso</div>
+    </div>
+  </div>
+  <div class="pf-bs-item danger" onclick="eliminarSerieInline()" role="button" tabindex="0">
+    <i class="ti ti-trash" aria-hidden="true"></i> Eliminar esta Serie
+  </div>
+</div>
+
+<!-- ════ BOTTOM SHEET: Catálogo Visual de Ejercicios (Edición de Rutina en Perfil Atleta) ════ -->
+<div class="pf-bs-overlay" id="overlayCatsPerfil" aria-hidden="true" onclick="cerrarSheetPerfil('sheetCatsPerfil','overlayCatsPerfil')"></div>
+<div class="pf-bs-sheet" id="sheetCatsPerfil" role="dialog" aria-modal="true" aria-hidden="true" aria-label="Catálogo de ejercicios">
+  <div class="pf-bs-handle" aria-hidden="true"></div>
+  <div class="pf-cats-sticky">
+    <div class="pf-cats-header-bar">
+      <button type="button" class="pf-cats-back hidden" id="pfCatsBtnBack" onclick="pfCatsDrillBack()" aria-label="Volver a categorías">
+        <i class="ti ti-arrow-left" aria-hidden="true"></i> Categorías
+      </button>
+      <span class="pf-cats-title" id="pfCatsHeaderTitle">Grupo Muscular</span>
+      <button type="button" class="pf-cats-close" onclick="cerrarSheetPerfil('sheetCatsPerfil','overlayCatsPerfil')" aria-label="Cerrar catálogo">
+        <i class="ti ti-x" aria-hidden="true"></i>
+      </button>
+    </div>
+    <div class="pf-cats-search-wrap">
+      <i class="ti ti-search" aria-hidden="true"></i>
+      <input type="search" class="pf-cats-search" id="pfCatsSearchInput" placeholder="Buscar ejercicio en todo el catálogo…" aria-label="Buscar ejercicio" oninput="pfCatsFilterExercises(this.value)">
+    </div>
+  </div>
+
+  <div class="pf-cats-panel" id="pfPanelCats" role="list">
+    <div class="pf-cat-section">Upper Body</div>
+    <div class="pf-cat-grid" id="pfCatGridUpper" role="list"></div>
+    <div class="pf-cat-section">Lower Body</div>
+    <div class="pf-cat-grid" id="pfCatGridLower" role="list"></div>
+    <div class="pf-cat-section">Other</div>
+    <div class="pf-cat-grid" id="pfCatGridOther" role="list"></div>
+    <div style="height:18px;"></div>
+  </div>
+
+  <div class="pf-cats-panel hidden" id="pfPanelExercises" role="list" aria-label="Ejercicios del catálogo">
+    <div class="pf-ex-list" id="pfExList"></div>
+  </div>
+
+  <div class="pf-cats-confirm-bar" id="pfCatsConfirmBar">
+    <button type="button" class="pf-cats-btn-confirm" onclick="pfConfirmarEjerciciosCatalogo()">
+      <i class="ti ti-plus" aria-hidden="true"></i>
+      Agregar <span class="confirm-count" id="pfConfirmCount">0</span> Ejercicio(s)
+    </button>
+  </div>
+</div>
 
 <?php require __DIR__ . '/../layout/footer.php'; ?>
 
