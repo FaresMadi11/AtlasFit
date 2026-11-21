@@ -371,6 +371,7 @@ function adminGuardarPlantillaRutina(): void {
     }
 
     CatalogoService::asegurarColumnasScope($db);
+    ensureAdminNotifSchema($db);
     try {
         $db->beginTransaction();
 
@@ -596,6 +597,7 @@ function adminApiCrearRutinaPropia(): void {
     }
 
     CatalogoService::asegurarColumnasScope($db);
+    ensureAdminNotifSchema($db);
     try {
         $db->beginTransaction();
 
@@ -805,8 +807,13 @@ function adminApiActualizarRutinaCompleta(): void {
 
     $ejercicios = $payload['ejercicios'] ?? [];
     if (!is_array($ejercicios)) $ejercicios = [];
+    $ejercicios = array_values(array_filter($ejercicios, static fn($e) => trim((string)($e['nombre'] ?? '')) !== ''));
+    if (empty($ejercicios)) {
+        jsonOut(false, 'La rutina debe contener al menos un ejercicio válido.', [], 422);
+    }
 
     CatalogoService::asegurarColumnasScope($db);
+    ensureAdminNotifSchema($db);
     try {
         $db->beginTransaction();
 
@@ -878,7 +885,7 @@ function adminApiActualizarRutinaCompleta(): void {
         $stUp = $db->prepare("
             UPDATE ejercicios
             SET nombre = ?, series = ?, repeticiones = ?, rir = ?, orden = ?,
-                tipo_implemento = ?, unidad_carga = ?, descripcion = ?
+                tipo_implemento = ?, unidad_carga = ?, descripcion = ?, grupo_muscular = ?
             WHERE id = ? AND rutina_id = ?
         ");
         $stIns = $db->prepare("
@@ -925,8 +932,11 @@ function adminApiActualizarRutinaCompleta(): void {
                     }
                     $sKg   = isset($sData['peso']) && $sData['peso'] !== '' && $sData['peso'] !== null && is_numeric($sData['peso']) ? max(0.0, min(9999.0, (float)$sData['peso'])) : null;
                     if ($imp === 'sin_peso') $sKg = null;
-                    $sRepRaw = isset($sData['reps']) && is_numeric($sData['reps']) ? (int)$sData['reps'] : ((int)preg_replace('/\D/', '', (string)($sData['reps'] ?? $reps)) ?: 10);
-                    $sRep  = max(1, min(250, $sRepRaw));
+                    $sRepSrc = (string)($sData['reps'] ?? $reps);
+                    $sRepRaw = is_numeric($sRepSrc)
+                        ? (int)$sRepSrc
+                        : (preg_match('/\d+/', $sRepSrc, $mRep) ? (int)$mRep[0] : 10);
+                    $sRep  = max(1, min(100, $sRepRaw));
                     $sRir  = isset($sData['rir']) && $sData['rir'] !== '' && $sData['rir'] !== null && is_numeric($sData['rir']) ? max(0, min(5, (int)$sData['rir'])) : $rirVal;
                     $stInsPlS->execute([$plEjId, $sNum, $sTipo, $sKg, $sRep, $sRir]);
                     if ($sKg !== null) {
@@ -936,8 +946,9 @@ function adminApiActualizarRutinaCompleta(): void {
             } else {
                 $pesoVal = isset($ej['peso']) && $ej['peso'] !== '' && $ej['peso'] !== null ? (float)$ej['peso'] : null;
                 if ($imp === 'sin_peso') $pesoVal = null;
+                $repsInt = preg_match('/\d+/', $reps, $mRep) ? max(1, min(100, (int)$mRep[0])) : 10;
                 for ($s = 1; $s <= $series; $s++) {
-                    $stInsPlS->execute([$plEjId, $s, 'normal', $pesoVal, (int)$reps, $rirVal]);
+                    $stInsPlS->execute([$plEjId, $s, 'normal', $pesoVal, $repsInt, $rirVal]);
                     if ($pesoVal !== null) {
                         $pesosValores[] = $pesoVal;
                     }
@@ -955,7 +966,8 @@ function adminApiActualizarRutinaCompleta(): void {
             }
 
             if ($eid > 0) {
-                $stUp->execute([$nombre, $series, $reps, $rirVal, $orden, $imp, $unidad, $desc, $eid, $rutinaId]);
+                $grupoUpd = inferirGrupoMuscularProgreso($nombre);
+                $stUp->execute([$nombre, $series, $reps, $rirVal, $orden, $imp, $unidad, $desc, $grupoUpd, $eid, $rutinaId]);
             } else {
                 $cat = CatalogoService::obtenerMetaPorNombre($db, $nombre, null);
 
@@ -1009,6 +1021,7 @@ function adminApiEliminarRutina(): void {
     }
 
     CatalogoService::asegurarColumnasScope($db);
+    ensureAdminNotifSchema($db);
     try {
         $db->beginTransaction();
         $db->prepare("DELETE FROM rutinas WHERE id = ?")->execute([$rutinaId]);
@@ -1188,15 +1201,15 @@ function adminApiGuardarSerie(): void {
         $stAsisChk->execute([$adminClienteId, $rutinaId, $fechaEntrenamiento, $fechaEntrenamiento]);
         $asisRow = $stAsisChk->fetch(PDO::FETCH_ASSOC);
 
+        $fechaTs = ($fechaEntrenamiento === date('Y-m-d')) ? date('Y-m-d H:i:s') : ($fechaEntrenamiento . ' 12:00:00');
         if (!$asisRow) {
-            $fechaTs = ($fechaEntrenamiento === date('Y-m-d')) ? date('Y-m-d H:i:s') : ($fechaEntrenamiento . ' 12:00:00');
             $finTs   = $rutinaCompletada ? $fechaTs : null;
             $db->prepare("INSERT INTO sesiones_asistencia (rutina_id, cliente_id, entrenador_id, inicio_en, fin_en, estado, verificada) VALUES (?, ?, ?, ?, ?, ?, 1)")
                ->execute([$rutinaId, $adminClienteId, $adminUserId, $fechaTs, $finTs, $nuevoEstadoSesion]);
         } else {
             if ($rutinaCompletada) {
-                $db->prepare("UPDATE sesiones_asistencia SET estado = 'completada', fin_en = COALESCE(fin_en, NOW()), verificada = 1 WHERE id = ?")
-                   ->execute([(int)$asisRow['id']]);
+                $db->prepare("UPDATE sesiones_asistencia SET estado = 'completada', fin_en = COALESCE(fin_en, ?), verificada = 1 WHERE id = ?")
+                   ->execute([$fechaTs, (int)$asisRow['id']]);
             } else {
                 $db->prepare("UPDATE sesiones_asistencia SET verificada = 1 WHERE id = ?")
                    ->execute([(int)$asisRow['id']]);
@@ -1249,6 +1262,7 @@ function adminApiGuardarRutinaComoPlantilla(): void {
     }
 
     CatalogoService::asegurarColumnasScope($db);
+    ensureAdminNotifSchema($db);
     try {
         $db->beginTransaction();
 
@@ -2013,6 +2027,7 @@ function adminApiCrearEntrenador(): void {
     }
 
     CatalogoService::asegurarColumnasScope($db);
+    ensureAdminNotifSchema($db);
     try {
         $db->beginTransaction();
 
@@ -2045,6 +2060,8 @@ function adminApiCrearEntrenador(): void {
 
             $db->prepare("UPDATE usuarios SET rol = 'entrenador', estado_cuenta = 'activo', activo = 1 WHERE id = ?")
                ->execute([$targetUid]);
+            $db->prepare("UPDATE clientes SET entrenador_id = ? WHERE usuario_id = ?")
+               ->execute([$targetUid, $targetUid]);
 
             $db->prepare("
                 INSERT INTO entrenadores_membresias (entrenador_id, codigo_referido, monto_mensualidad, moneda, fecha_proximo_pago, dias_gracia, estado_suscripcion, pausado_manualmente)
@@ -2151,11 +2168,11 @@ function adminApiActualizarMembresia(): void {
         jsonOut(false, 'Formato de fecha de pago inválido.');
     }
 
-    $diasGracia = (int)($memActual['dias_gracia'] ?? 7);
+    $diasGracia = max(0, min(255, (int)($memActual['dias_gracia'] ?? 7)));
     if ($fechaCorte !== '' && preg_match('/^\d{4}-\d{2}-\d{2}$/', $fechaCorte)) {
         $pagoTs  = strtotime($fechaPago) ?: time();
         $corteTs = strtotime($fechaCorte) ?: $pagoTs;
-        $diasGracia = max(0, min(365, (int)round(($corteTs - $pagoTs) / 86400)));
+        $diasGracia = max(0, min(255, (int)round(($corteTs - $pagoTs) / 86400)));
     }
 
     $stDup = $db->prepare("SELECT entrenador_id FROM entrenadores_membresias WHERE codigo_referido = ? AND entrenador_id != ? LIMIT 1");
@@ -2164,39 +2181,44 @@ function adminApiActualizarMembresia(): void {
         jsonOut(false, "El código '{$codigo}' ya pertenece a otro entrenador.");
     }
 
-    if (array_key_exists('mensaje_bloqueo', $in)) {
-        $mensajeBloqueo = trim(sanitizeInput((string)$in['mensaje_bloqueo'], 255));
-        $db->prepare("
-            UPDATE entrenadores_membresias
-            SET codigo_referido = ?,
-                fecha_proximo_pago = ?,
-                dias_gracia = ?,
-                monto_mensualidad = ?,
-                mensaje_bloqueo = ?
-            WHERE entrenador_id = ?
-        ")->execute([
-            $codigo,
-            $fechaPago,
-            $diasGracia,
-            $monto,
-            $mensajeBloqueo !== '' ? $mensajeBloqueo : null,
-            $entrenadorId,
-        ]);
-    } else {
-        $db->prepare("
-            UPDATE entrenadores_membresias
-            SET codigo_referido = ?,
-                fecha_proximo_pago = ?,
-                dias_gracia = ?,
-                monto_mensualidad = ?
-            WHERE entrenador_id = ?
-        ")->execute([
-            $codigo,
-            $fechaPago,
-            $diasGracia,
-            $monto,
-            $entrenadorId,
-        ]);
+    try {
+        if (array_key_exists('mensaje_bloqueo', $in)) {
+            $mensajeBloqueo = trim(sanitizeInput((string)$in['mensaje_bloqueo'], 255));
+            $db->prepare("
+                UPDATE entrenadores_membresias
+                SET codigo_referido = ?,
+                    fecha_proximo_pago = ?,
+                    dias_gracia = ?,
+                    monto_mensualidad = ?,
+                    mensaje_bloqueo = ?
+                WHERE entrenador_id = ?
+            ")->execute([
+                $codigo,
+                $fechaPago,
+                $diasGracia,
+                $monto,
+                $mensajeBloqueo !== '' ? $mensajeBloqueo : null,
+                $entrenadorId,
+            ]);
+        } else {
+            $db->prepare("
+                UPDATE entrenadores_membresias
+                SET codigo_referido = ?,
+                    fecha_proximo_pago = ?,
+                    dias_gracia = ?,
+                    monto_mensualidad = ?
+                WHERE entrenador_id = ?
+            ")->execute([
+                $codigo,
+                $fechaPago,
+                $diasGracia,
+                $monto,
+                $entrenadorId,
+            ]);
+        }
+    } catch (\Throwable $e) {
+        error_log('[adminApiActualizarMembresia] ' . $e->getMessage());
+        jsonOut(false, 'No se pudo guardar la configuración de membresía.', [], 500);
     }
 
     $memNueva = obtenerEstadoMembresiaEntrenador($entrenadorId, true);
@@ -2295,7 +2317,7 @@ function adminApiTogglePausa(): void {
         ")->execute([$pausar, $pausar ? 'suspendida' : 'activa', $entrenadorId]);
     }
 
-    $memNueva = obtenerEstadoMembresiaEntrenador($entrenadorId);
+    $memNueva = obtenerEstadoMembresiaEntrenador($entrenadorId, true);
     $msg = $pausar
         ? 'El uso de la web para este entrenador ha sido pausado.'
         : 'El uso de la web para este entrenador ha sido reactivado.';
@@ -2323,11 +2345,14 @@ function adminApiReasignarAtleta(): void {
     }
 
     CatalogoService::asegurarColumnasScope($db);
+    ensureAdminNotifSchema($db);
     try {
         $db->beginTransaction();
         $db->prepare("UPDATE clientes SET entrenador_id = ? WHERE id = ?")
            ->execute([$entrenadorId, $clienteId]);
         $db->prepare("UPDATE rutinas SET entrenador_id = ? WHERE cliente_id = ?")
+           ->execute([$entrenadorId, $clienteId]);
+        $db->prepare("UPDATE sesiones_asistencia SET entrenador_id = ? WHERE cliente_id = ?")
            ->execute([$entrenadorId, $clienteId]);
         $db->commit();
     } catch (\Throwable $e) {
@@ -2378,12 +2403,15 @@ function adminApiRevocarEntrenador(): void {
     }
 
     CatalogoService::asegurarColumnasScope($db);
+    ensureAdminNotifSchema($db);
     try {
         $db->beginTransaction();
 
         $db->prepare("UPDATE clientes SET entrenador_id = ? WHERE entrenador_id = ?")
            ->execute([$reemplazoId, $entrenadorId]);
         $db->prepare("UPDATE rutinas SET entrenador_id = ? WHERE entrenador_id = ?")
+           ->execute([$reemplazoId, $entrenadorId]);
+        $db->prepare("UPDATE sesiones_asistencia SET entrenador_id = ? WHERE entrenador_id = ?")
            ->execute([$reemplazoId, $entrenadorId]);
 
         $db->prepare("UPDATE usuarios SET rol = 'cliente' WHERE id = ? AND rol = 'entrenador'")
@@ -2420,6 +2448,7 @@ function adminApiAprobarEntrenador(): void {
     }
 
     CatalogoService::asegurarColumnasScope($db);
+    ensureAdminNotifSchema($db);
     try {
         $db->beginTransaction();
 
@@ -2458,7 +2487,6 @@ function adminApiAprobarEntrenador(): void {
             ")->execute([$targetUid, $codigo, $fechaPago]);
 
             // Marcar como leídas todas las alertas admin asociadas a esta solicitud
-            ensureAdminNotifSchema($db);
             $db->prepare("
                 UPDATE notificaciones
                 SET leido = 1, leida = 1
@@ -2496,7 +2524,6 @@ function adminApiAprobarEntrenador(): void {
         $db->prepare("UPDATE usuarios SET estado_cuenta = 'rechazado', activo = 0 WHERE id = ? AND rol = 'entrenador'")
            ->execute([$targetUid]);
 
-        ensureAdminNotifSchema($db);
         $db->prepare("
             UPDATE notificaciones
             SET leido = 1, leida = 1

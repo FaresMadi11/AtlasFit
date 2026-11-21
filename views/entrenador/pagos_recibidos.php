@@ -552,6 +552,14 @@ $cntTotal = count($pagos ?? []) + (isset($cntRevisadosDb) ? $cntRevisados : 0);
       </div>
       <div class="pr-modal-body">
         <img id="imgComprobante" src="" alt="Comprobante" class="pr-modal-img">
+        <div id="pdfComprobanteWrap" style="display:none;text-align:center;padding:28px 16px;">
+          <i class="ti ti-file-type-pdf" style="font-size:3rem;color:#f87171;display:block;margin-bottom:10px;"></i>
+          <p style="color:#e2e8f0;font-weight:700;margin-bottom:14px;">Comprobante en formato PDF</p>
+          <a id="pdfComprobanteLink" href="#" target="_blank" rel="noopener noreferrer"
+             style="display:inline-flex;align-items:center;gap:8px;padding:10px 18px;border-radius:12px;background:var(--accent,#8b5cf6);color:#fff;font-weight:700;text-decoration:none;">
+            <i class="ti ti-external-link"></i> Abrir comprobante PDF
+          </a>
+        </div>
       </div>
       <div class="pr-modal-footer">
         <button type="button" class="btn-pr-cerrar" data-bs-dismiss="modal">Cerrar</button>
@@ -570,7 +578,20 @@ let currentPagoId = null;
 function abrirComprobante(pagoId, imgSrc, estado) {
     currentPagoId = pagoId;
     const img = document.getElementById('imgComprobante');
-    img.src = imgSrc;
+    const pdfWrap = document.getElementById('pdfComprobanteWrap');
+    const pdfLink = document.getElementById('pdfComprobanteLink');
+    const isPdf = /\.pdf(?:[?#].*)?$/i.test(String(imgSrc || ''));
+
+    if (isPdf) {
+        img.style.display = 'none';
+        img.src = '';
+        if (pdfWrap) pdfWrap.style.display = 'block';
+        if (pdfLink) pdfLink.href = imgSrc;
+    } else {
+        if (pdfWrap) pdfWrap.style.display = 'none';
+        img.style.display = 'block';
+        img.src = imgSrc;
+    }
     
     const btnAprobar = document.getElementById('btnAprobarPago');
     if (estado !== 'pagado') {

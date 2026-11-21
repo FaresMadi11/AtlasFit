@@ -11,7 +11,7 @@
   const XpSync = {
     // Reutilizar el registro único de Service Worker para evitar colisiones de versión entre vistas
     initSW() {
-      const swVer = window.XP_SW_VER || '4.4';
+      const swVer = window.XP_SW_VER || '5.3';
       const swUrl = window.XP_SW_URL || ((window.APP || '') + '/sw.js?v=' + swVer);
       if ('serviceWorker' in navigator && !window.XP_SW_URL) {
         const hadCtrl = !!navigator.serviceWorker.controller;
@@ -47,7 +47,7 @@
         fetch(href, { credentials: 'same-origin', headers: { 'Accept': 'text/html' }, priority: 'low' })
           .then(res => {
             if (res && res.ok && 'caches' in window) {
-              const cName = window.XP_USER_CACHE || ('atlas-fit-user-' + (window.XP_SW_VER || '5.0'));
+              const cName = window.XP_USER_CACHE || ('atlas-fit-user-' + (window.XP_SW_VER || '5.3'));
               caches.open(cName).then(c => c.put(href, res.clone()).catch(() => {})).catch(() => {});
             }
           })
@@ -130,7 +130,7 @@
 
       const effectiveRole = isAdmin ? 'admin' : (isEntrenador ? 'entrenador' : 'cliente');
       const homePath = isAdmin ? '/admin/rutina' : (isEntrenador ? '/entrenador/dashboard' : '/cliente/dashboard');
-      const curBuild = String(window.XP_SW_VER || '5.0');
+      const curBuild = String(window.XP_SW_VER || '5.3');
       const uid      = String(window.XP_AUTH_UID || localStorage.getItem('xp_auth_uid') || '0');
       const readySig = `${curBuild}|${effectiveRole}|${uid}`;
       const userCacheName = window.XP_USER_CACHE || ('atlas-fit-user-' + curBuild);

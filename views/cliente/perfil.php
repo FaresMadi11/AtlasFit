@@ -253,9 +253,10 @@
 $nombre  = $perfil['nombre'] ?? '';
 $email   = $perfil['email']  ?? '';
 $partes  = explode(' ', trim($nombre));
-$initials = strtoupper(
-    (substr($partes[0] ?? '', 0, 1)) .
-    (substr($partes[1] ?? $partes[0] ?? '', 0, 1))
+$initials = mb_strtoupper(
+    mb_substr($partes[0] ?? '', 0, 1, 'UTF-8') .
+    mb_substr($partes[1] ?? $partes[0] ?? '', 0, 1, 'UTF-8'),
+    'UTF-8'
 );
 $tieneAvatar = !empty($perfil['foto']);
 
@@ -322,11 +323,11 @@ $apellidoAtleta = $partesNombre[1] ?? '';
       </li>
       <li class="profile-info-item">
         <div class="profile-info-label"><i class="ti ti-scale"></i> Peso</div>
-        <div class="profile-info-value" id="valInfoPeso"><?= e($perfil['peso_kg'] ?? '&mdash;') ?> kg</div>
+        <div class="profile-info-value" id="valInfoPeso"><?= $perfil['peso_kg'] !== null && $perfil['peso_kg'] !== '' ? e($perfil['peso_kg']) . ' kg' : '&mdash;' ?></div>
       </li>
       <li class="profile-info-item">
         <div class="profile-info-label"><i class="ti ti-ruler-measure"></i> Altura</div>
-        <div class="profile-info-value" id="valInfoAltura"><?= e($perfil['altura_cm'] ?? '&mdash;') ?> cm</div>
+        <div class="profile-info-value" id="valInfoAltura"><?= $perfil['altura_cm'] !== null && $perfil['altura_cm'] !== '' ? e($perfil['altura_cm']) . ' cm' : '&mdash;' ?></div>
       </li>
       <li class="profile-info-item">
         <div class="profile-info-label"><i class="ti ti-flame" style="color:#b388ff"></i> Entrenamiento</div>
@@ -509,7 +510,8 @@ function handleFileSelect(files) {
     const ts = document.getElementById('receiptFileText');
     const be = document.getElementById('btnEnviarComprobante');
     if (files && files.length > 0) { 
-        ts.innerHTML = `<span style="color:#c084fc;font-weight:700;"><i class="ti ti-file-check"></i> ${files[0].name}</span>`; 
+        const safeName = String(files[0].name || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+        ts.innerHTML = `<span style="color:#c084fc;font-weight:700;"><i class="ti ti-file-check"></i> ${safeName}</span>`; 
         be.style.display = 'inline-flex'; 
     } else { 
         ts.innerHTML = 'Haz clic o arrastra tu comprobante aquí'; 
@@ -560,7 +562,13 @@ function mostrarToast(mensaje) {
     const toast = document.createElement('div');
     toast.id = 'xpFloatingToast';
     toast.className = 'xp-toast-pill';
-    toast.innerHTML = `<i class="ti ti-circle-check bx bx-check-circle" style="color:#b388ff;font-size:1.15rem;display:inline-flex;align-items:center;"></i><span>${mensaje || 'Datos de Pago Móvil copiados'}</span>`;
+    const ico = document.createElement('i');
+    ico.className = 'ti ti-circle-check bx bx-check-circle';
+    ico.style.cssText = 'color:#b388ff;font-size:1.15rem;display:inline-flex;align-items:center;';
+    const sp = document.createElement('span');
+    sp.textContent = mensaje || 'Datos de Pago Móvil copiados';
+    toast.appendChild(ico);
+    toast.appendChild(sp);
     document.body.appendChild(toast);
 
     requestAnimationFrame(() => {

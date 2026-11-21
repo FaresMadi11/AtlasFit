@@ -1002,7 +1002,7 @@ function obtenerNotificacionesUsuario(int $userId, string $rol, int $limit = 25,
             SELECT n.*, u.nombre AS remitente_nombre, u.avatar_url AS remitente_avatar
             FROM notificaciones n
             LEFT JOIN clientes c ON n.cliente_id = c.id
-            LEFT JOIN usuarios u ON (u.id = n.remitente_id OR u.id = c.usuario_id)
+            LEFT JOIN usuarios u ON u.id = COALESCE(n.remitente_id, c.usuario_id)
             WHERE n.rol_destinatario = 'entrenador'
               AND (n.destinatario_id = ? OR (n.destinatario_id IS NULL AND n.entrenador_id = ?))
               AND n.mensaje NOT LIKE '¡Tu cuenta ha sido activada%'
@@ -1024,7 +1024,7 @@ function obtenerNotificacionesUsuario(int $userId, string $rol, int $limit = 25,
         $st = $db->prepare("
             SELECT n.*, u.nombre AS remitente_nombre, u.avatar_url AS remitente_avatar
             FROM notificaciones n
-            LEFT JOIN usuarios u ON (u.id = n.remitente_id OR u.id = n.entrenador_id)
+            LEFT JOIN usuarios u ON u.id = COALESCE(n.remitente_id, n.entrenador_id)
             WHERE n.rol_destinatario = 'cliente'
               AND (n.destinatario_id = ? OR (n.destinatario_id IS NULL AND n.cliente_id = ?))
               AND n.mensaje NOT LIKE 'Nuevo atleta%'

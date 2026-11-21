@@ -37,7 +37,6 @@ $temaGlobalVer     = (int)($temaInfoUser['global_ver'] ?? 1);
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, interactive-widget=overlays-content">
   <title><?= e($pageTitle ?? 'Atlas Fit') ?> | Atlas Fit</title>
-  <meta name="description" content="Atlas Fit – Sistema de gestión para entrenadores y atletas.">
   <meta name="theme-color" content="#02040a">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -64,22 +63,23 @@ $temaGlobalVer     = (int)($temaInfoUser['global_ver'] ?? 1);
   <?php
     $xpBuildVer = xpAppBuildVersion();
     $xpCacheName = xpAppCacheName();
-    $vIcon192 = xpAssetVer('assets/img/icon-192.png');
-    $vIcon512 = xpAssetVer('assets/img/icon-512.png');
-    $vIconSvg = xpAssetVer('assets/img/favicon.svg');
-    $vIcon32  = xpAssetVer('assets/img/favicon-32.png');
-    $vApple   = xpAssetVer('assets/img/apple-touch-icon.png');
-    $vFavIco  = xpAssetVer('favicon.ico');
-    $vWoff2   = xpAssetVer('assets/vendor/tabler-icons/fonts/tabler-icons.woff2');
-    $vTabler  = xpAssetVer('assets/vendor/tabler-icons/tabler-icons.min.css');
-    $vSwal    = xpAssetVer('assets/vendor/sweetalert2/sweetalert2.all.min.js');
-    $vAnime   = xpAssetVer('assets/vendor/animejs/anime.min.js');
+    $vIcon192  = xpAssetVer('assets/img/icon-192.png');
+    $vIcon512  = xpAssetVer('assets/img/icon-512.png');
+    $vIcon1080 = xpAssetVer('assets/img/icon-1080.png');
+    $vIconSvg  = xpAssetVer('assets/img/favicon.svg');
+    $vIcon32   = xpAssetVer('assets/img/favicon-32.png');
+    $vApple    = xpAssetVer('assets/img/apple-touch-icon.png');
+    $vFavIco   = xpAssetVer('favicon.ico');
+    $vWoff2    = xpAssetVer('assets/vendor/tabler-icons/fonts/tabler-icons.woff2');
+    $vTabler   = xpAssetVer('assets/vendor/tabler-icons/tabler-icons.min.css');
+    $vSwal     = xpAssetVer('assets/vendor/sweetalert2/sweetalert2.all.min.js');
+    $vAnime    = xpAssetVer('assets/vendor/animejs/anime.min.js');
   ?>
   <meta name="description" content="Atlas Fit: plataforma de gestión y entrenamiento personalizado para entrenadores y atletas.">
   <meta property="og:type" content="website">
   <meta property="og:title" content="Atlas Fit — Plataforma de Entrenamiento">
   <meta property="og:description" content="Rutinas interactivas, control diario, métricas de fuerza y seguimiento biométrico en tiempo real.">
-  <meta property="og:image" content="<?= e(APP_URL . '/assets/img/icon-512.png?v=' . $vIcon512) ?>">
+  <meta property="og:image" content="<?= e(APP_URL . '/assets/img/icon-1080.png?v=' . $vIcon1080) ?>">
   <meta name="twitter:card" content="summary">
   <!-- ── PWA Manifest & App Icons (versionado automático por filemtime) ── -->
   <link rel="manifest" href="<?= APP_URL ?>/manifest.webmanifest?v=<?= e($xpBuildVer) ?>">
@@ -587,6 +587,7 @@ $temaGlobalVer     = (int)($temaInfoUser['global_ver'] ?? 1);
     try {
       fetch(APP + '/' + USER_ROLE + '/api-marcar-notificacion', {
         method: 'POST',
+        keepalive: true,
         headers: { 
           'Content-Type': 'application/json',
           'X-CSRF-TOKEN': CSRF

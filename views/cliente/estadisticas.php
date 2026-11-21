@@ -1469,7 +1469,16 @@ $grupoIconos = [
           const badgeTxt = badgeSerieTexto(s.tipo, s.numero);
           const badgeTit = badgeSerieTitulo(s.tipo, s.numero);
           const repsVal  = (s.reps !== null && s.reps !== undefined) ? `${s.reps} reps` : '—';
-          const pesoVal  = (s.peso !== null && s.peso !== undefined) ? `${parseFloat(s.peso).toFixed(1)} kg` : '—';
+          const uRaw     = String(s.unidad || ej.unidad_carga || 'kg').toLowerCase();
+          let pesoVal    = '—';
+          if (uRaw === 'ninguna' || ej.tipo_implemento === 'sin_peso') {
+            pesoVal = 'Corporal';
+          } else if (s.peso !== null && s.peso !== undefined) {
+            const pNum = parseFloat(s.peso);
+            const pStr = Number.isInteger(pNum) ? String(pNum) : pNum.toFixed(1);
+            const uSuf = (uRaw === 'lbs' || uRaw === 'lb') ? 'lbs' : (uRaw === 'placas' ? (pNum === 1 ? 'placa' : 'placas') : 'kg');
+            pesoVal = `${pStr} ${uSuf}`;
+          }
 
           html += `
             <tr>
@@ -2099,29 +2108,35 @@ async function guardarTodosLosPesos() {
   btnSave.innerHTML = '<i class="ti ti-loader-2" style="animation:spin .7s linear infinite"></i> Guardando...';
 
   let errores = 0;
-  for (const inp of inputs) {
-    const fecha    = inp.dataset.fecha;
-    const orig     = pesoData.find(r => r.fecha === fecha);
-    const newVal   = parseFloat(inp.value.replace(',', '.'));
-    if (!orig || isNaN(newVal)) continue;
-    if (newVal === parseFloat(orig.peso_kg)) continue; // sin cambio
+  try {
+    for (const inp of inputs) {
+      const fecha    = inp.dataset.fecha;
+      const orig     = pesoData.find(r => r.fecha === fecha);
+      const newVal   = parseFloat(inp.value.replace(',', '.'));
+      if (!orig || isNaN(newVal)) continue;
+      if (newVal === parseFloat(orig.peso_kg)) continue; // sin cambio
 
-    const fd = new FormData();
-    fd.append('fecha', fecha);
-    fd.append('peso', newVal);
-    fd.append('csrf_token', CSRF);
+      const fd = new FormData();
+      fd.append('fecha', fecha);
+      fd.append('peso', newVal);
+      fd.append('csrf_token', CSRF);
 
-    const res  = await fetch(APP + '/cliente/api-editar-peso', { method: 'POST', body: fd });
-    const data = await res.json();
-    if (data.ok) {
-      orig.peso_kg = newVal; // actualizar cache local
-    } else {
-      errores++;
+      try {
+        const res  = await fetch(APP + '/cliente/api-editar-peso', { method: 'POST', body: fd });
+        const data = await res.json();
+        if (data.ok) {
+          orig.peso_kg = newVal; // actualizar cache local
+        } else {
+          errores++;
+        }
+      } catch (_) {
+        errores++;
+      }
     }
+  } finally {
+    btnSave.disabled = false;
+    btnSave.innerHTML = '<i class="ti ti-device-floppy"></i> Guardar';
   }
-
-  btnSave.disabled = false;
-  btnSave.innerHTML = '<i class="ti ti-device-floppy"></i> Guardar';
 
   if (errores) {
     Xp.toast('error', errores + ' registros no se pudieron actualizar.');
@@ -2504,12 +2519,12 @@ function renderBotonesGrupo(grupo, data, list, autoSelect = true) {
   }
 
   let html = '';
+  const escBtn = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
   data.ejercicios.forEach(ej => {
-    const safeName = (ej.nombre || '').replace(/'/g, "\\'");
-    const safeAttr = (ej.nombre || '').replace(/"/g, '&quot;');
+    const safeAttr = escBtn(ej.nombre || '');
     const isAct = currentEjercicio === ej.nombre ? ' active' : '';
-    html += `<button class="pm-ex-btn${isAct}" onclick="seleccionarEjercicio('${safeName}', ${ej.id || 0})"
-      data-ej="${safeAttr}">${ej.nombre}</button>`;
+    html += `<button class="pm-ex-btn${isAct}" onclick="seleccionarEjercicio(this.dataset.ej, ${parseInt(ej.id, 10) || 0})"
+      data-ej="${safeAttr}">${safeAttr}</button>`;
   });
   list.innerHTML = html;
 

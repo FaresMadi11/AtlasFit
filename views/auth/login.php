@@ -24,6 +24,8 @@ $metaColorLogin = $mapaMetaColorLogin[$temaGlobalLogin] ?? '#02040a';
   $xpBuildVer = xpAppBuildVersion();
   $vIcon192   = xpAssetVer('assets/img/icon-192.png');
   $vIcon512   = xpAssetVer('assets/img/icon-512.png');
+  $vIcon1080  = xpAssetVer('assets/img/icon-1080.png');
+  $vLogo1080  = xpAssetVer('assets/img/logo-atlas-1080.png');
   $vIconSvg = xpAssetVer('assets/img/favicon.svg');
   $vIcon32  = xpAssetVer('assets/img/favicon-32.png');
   $vApple   = xpAssetVer('assets/img/apple-touch-icon.png');
@@ -39,11 +41,11 @@ $metaColorLogin = $mapaMetaColorLogin[$temaGlobalLogin] ?? '#02040a';
 <meta property="og:title" content="Atlas Fit — Plataforma de Entrenamiento Inteligente">
 <meta property="og:description" content="Gestión integral para entrenadores personales y atletas: rutinas personalizadas, progreso por ejercicio, control diario y seguimiento biométrico.">
 <meta property="og:url" content="<?= e(APP_URL . '/auth/login') ?>">
-<meta property="og:image" content="<?= e(APP_URL . '/assets/img/icon-512.png?v=' . $vIcon512) ?>">
+<meta property="og:image" content="<?= e(APP_URL . '/assets/img/icon-1080.png?v=' . $vIcon1080) ?>">
 <meta name="twitter:card" content="summary">
 <meta name="twitter:title" content="Atlas Fit — Plataforma de Entrenamiento">
 <meta name="twitter:description" content="Control profesional de rutinas, métricas de fuerza y seguimiento atleta-entrenador.">
-<meta name="twitter:image" content="<?= e(APP_URL . '/assets/img/icon-512.png?v=' . $vIcon512) ?>">
+<meta name="twitter:image" content="<?= e(APP_URL . '/assets/img/icon-1080.png?v=' . $vIcon1080) ?>">
 <meta name="theme-color" id="loginThemeColorMeta" content="<?= e($metaColorLogin) ?>">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -1739,9 +1741,10 @@ $esStandbyEntrenador = ($esStandby && (($_GET['rol'] ?? '') === 'entrenador'));
   <div id="view-login" class="auth-view"<?= $esLogin ? '' : ' style="display: none;" aria-hidden="true"' ?>>
   <!-- Imagotipo sin fondo: silueta blanca + nombre de la web -->
   <div class="login-brand-imagotipo" style="display:flex;align-items:center;justify-content:center;gap:12px;margin:0 auto 22px auto;padding:4px 0;background:transparent;user-select:none;">
-    <img src="<?= APP_URL ?>/assets/img/favicon.svg?v=<?= e($vIconSvg) ?>"
+    <img src="<?= APP_URL ?>/assets/img/logo-atlas-1080.png?v=<?= e($vLogo1080) ?>"
          alt="Atlas Fit"
-         style="width:46px;height:46px;object-fit:contain;display:block;background:transparent;filter:drop-shadow(0 0 12px rgba(255,255,255,0.22));"
+         width="48" height="48"
+         style="width:48px;height:48px;object-fit:contain;display:block;background:transparent;filter:drop-shadow(0 0 12px rgba(255,255,255,0.22));"
          draggable="false">
     <span style="font-size:1.45rem;font-weight:900;letter-spacing:2.5px;color:#ffffff;text-transform:uppercase;line-height:1;text-shadow:0 2px 14px rgba(0,0,0,0.65);">ATLAS FIT</span>
   </div>
@@ -2516,8 +2519,12 @@ function switchView(name, { focus = true } = {}) {
   if (main) main.scrollTop = 0;
 
   try {
-    const currentSearch = window.location.search || '';
-    history.replaceState(null, '', APP + (RUTAS[targetName] || '/auth/login') + currentSearch);
+    const qsObj = new URLSearchParams(window.location.search || '');
+    if (targetName !== 'standby') { qsObj.delete('standby'); qsObj.delete('rol'); }
+    if (targetName !== 'register') { qsObj.delete('google'); }
+    qsObj.delete('logged_out');
+    const cleanSearch = qsObj.toString() ? ('?' + qsObj.toString()) : '';
+    history.replaceState(null, '', APP + (RUTAS[targetName] || '/auth/login') + cleanSearch);
   } catch (_) {}
 
   if (focus && VISTAS[targetName]) {
@@ -3232,10 +3239,10 @@ window.handleWizardStep1Next = async function(event) {
   } else if (!valApellidos || valApellidos.length < 2 || !reNombre.test(valApellidos)) {
     errorField = 'reg_apellidos';
     errorMsg   = !valApellidos ? 'Por favor ingresa tus apellidos.' : 'Tus apellidos deben tener al menos 2 letras válidas (sin números).';
-  } else if (!valCedulaRaw) {
+  } else if (!isTrainerMode && !valCedulaRaw) {
     errorField = 'reg_cedula';
     errorMsg   = 'Por favor ingresa tu número de cédula (solo números).';
-  } else if (!valCedulaNorm) {
+  } else if (!isTrainerMode && !valCedulaNorm) {
     errorField = 'reg_cedula';
     errorMsg   = 'La cédula debe contener entre 5 y 8 números sin letras.';
   } else if (!isTrainerMode && (!valCodigoEnt || valCodigoEnt.length < 3)) {

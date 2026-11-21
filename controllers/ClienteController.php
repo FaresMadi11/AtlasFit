@@ -421,11 +421,11 @@ function cliRutinaDia(): void {
         }
     }
 
-    // Comprobar aplazamientos activos de rutinas para este atleta
+    // Comprobar aplazamientos activos y vigentes (fecha_destino >= hoy) para este atleta
     $stAplazados = $db->prepare("
         SELECT id, rutina_id, fecha_origen, fecha_destino, dia_destino 
         FROM rutinas_aplazamientos 
-        WHERE cliente_id = ? AND estado = 'activo'
+        WHERE cliente_id = ? AND estado = 'activo' AND fecha_destino >= CURDATE()
     ");
     $stAplazados->execute([$clienteId]);
     $aplazamientosActivos = $stAplazados->fetchAll();
@@ -502,9 +502,9 @@ function cliRutinaDia(): void {
         $diaActivo = $diasTabs[0] ?? 1;
     }
 
-    // Aplazamiento de origen activo para el día actualmente visualizado (el aviso solo aparece en este día)
+    // Aplazamiento de origen activo únicamente para el día actualmente visualizado (no contaminar otros días)
     $aplazamientoOrigenActivo = $aplazamientosPorDiaOrigen[$diaActivo] ?? null;
-    $aplazamientoHoyActivo    = $aplazamientoOrigenActivo ?? (!empty($aplazamientosActivos) ? $aplazamientosActivos[0] : null);
+    $aplazamientoHoyActivo    = $aplazamientoOrigenActivo;
 
     // Comprobar si hoy se entrenó o completó alguna rutina
     $stHoyRut = $db->prepare("
@@ -1306,23 +1306,26 @@ function cliSolicitarModificacionAtleta(): void {
             $stEntFallback->execute([$clienteId]);
             $entIdPadre = (int)($stEntFallback->fetchColumn() ?: 0);
         }
+        if ($entIdPadre <= 0) {
+            $db->rollBack();
+            jsonOut(false, 'No tienes un entrenador asignado para enviar esta solicitud.', [], 400);
+        }
 
         $desc = 'Modificación de rutina (' . ($tipoMod === 'permanente' ? 'Permanente' : 'Solo por hoy') . ')';
         $diasSemana = $padre['dias_semana'] ?? '';
-        $hoyFecha = date('Y-m-d');
 
-        // Archivar solicitudes pendientes previas de la misma rutina padre para evitar duplicados
+        // Archivar solicitudes pendientes previas de la misma rutina padre para evitar duplicados (ENUM válido: 'rechazada')
         $db->prepare("
             UPDATE rutinas 
-            SET estado_modificacion = 'reemplazada', estado = 'archivada'
+            SET estado_modificacion = 'rechazada', estado = 'archivada'
             WHERE cliente_id = ? AND rutina_padre_id = ? AND es_modificacion = 1 AND estado_modificacion = 'pendiente'
         ")->execute([$clienteId, $rutinaId]);
 
         $stIns = $db->prepare("
-            INSERT INTO rutinas (cliente_id, entrenador_id, nombre, descripcion, fecha_inicio, dias_semana, estado, es_modificacion, estado_modificacion, tipo_modificacion, rutina_padre_id, creado_en)
-            VALUES (?, ?, ?, ?, ?, ?, 'pendiente', 1, 'pendiente', ?, ?, NOW())
+            INSERT INTO rutinas (cliente_id, entrenador_id, titulo, descripcion, dias_semana, estado, es_modificacion, estado_modificacion, tipo_modificacion, rutina_padre_id, creado_en)
+            VALUES (?, ?, ?, ?, ?, 'pendiente', 1, 'pendiente', ?, ?, NOW())
         ");
-        $stIns->execute([$clienteId, $entIdPadre ?: null, $desc, $desc, $hoyFecha, $diasSemana, $tipoMod, $rutinaId]);
+        $stIns->execute([$clienteId, $entIdPadre, $desc, $desc, $diasSemana, $tipoMod, $rutinaId]);
         $nuevaRutinaId = (int)$db->lastInsertId();
 
         $stEj = $db->prepare("
@@ -1331,15 +1334,20 @@ function cliSolicitarModificacionAtleta(): void {
         ");
 
         $orden = 1;
+        $validImp = ['mancuerna', 'barra', 'polea_maquina', 'sin_peso'];
+        $validUni = ['kg', 'lbs', 'placas', 'ninguna'];
         foreach ($ejercicios as $ej) {
             $nom = trim((string)($ej['nombre'] ?? ''));
             if (!$nom) continue;
-            $series = max(1, (int)($ej['series'] ?? 3));
+            $series = max(1, min(12, (int)($ej['series'] ?? 3)));
             $reps   = trim((string)($ej['repeticiones'] ?? '10-12'));
-            $rir    = isset($ej['rir']) && $ej['rir'] !== '' ? trim((string)$ej['rir']) : null;
+            $rawRir = trim((string)($ej['rir'] ?? ''));
+            $rir    = ($rawRir !== '' && strtolower($rawRir) !== 'null' && is_numeric($rawRir)) ? max(0, min(5, (int)$rawRir)) : null;
             $nota   = trim((string)($ej['nota_biomecanica'] ?? ''));
-            $imp    = trim((string)($ej['tipo_implemento'] ?? 'barra'));
-            $uni    = trim((string)($ej['unidad_carga'] ?? 'kg'));
+            $impRaw = strtolower(trim((string)($ej['tipo_implemento'] ?? 'barra')));
+            $imp    = in_array($impRaw, $validImp, true) ? $impRaw : 'barra';
+            $uniRaw = strtolower(trim((string)($ej['unidad_carga'] ?? 'kg')));
+            $uni    = $imp === 'sin_peso' ? 'ninguna' : (in_array($uniRaw, $validUni, true) ? $uniRaw : 'kg');
 
             $stEj->execute([$nuevaRutinaId, $nom, $series, $reps, $rir, $nota, $imp, $uni, $orden++]);
         }
@@ -1564,12 +1572,12 @@ function cliApiCambiarPassword(): void {
     $userId = $_SESSION['user_id'] ?? null;
 
     if (!$userId) {
-        echo json_encode(['ok' => false, 'msg' => 'SesiÃ³n invÃ¡lida.']);
+        echo json_encode(['ok' => false, 'msg' => 'Sesión inválida.']);
         exit;
     }
 
     // Obtener hash actual
-    $st = $db->prepare("SELECT password_hash FROM usuarios WHERE id = ?");
+    $st = $db->prepare("SELECT id, rol, activo, estado_cuenta, password_hash FROM usuarios WHERE id = ?");
     $st->execute([$userId]);
     $usuario = $st->fetch();
 
@@ -1578,9 +1586,13 @@ function cliApiCambiarPassword(): void {
         exit;
     }
 
-    // Actualizar con nuevo hash
-    $nuevoHash = password_hash($nueva, PASSWORD_DEFAULT);
+    // Actualizar con nuevo hash y rotar cookie persistente xp_remember
+    $nuevoHash = password_hash($nueva, PASSWORD_BCRYPT, ['cost' => 12]);
     $db->prepare("UPDATE usuarios SET password_hash = ? WHERE id = ?")->execute([$nuevoHash, $userId]);
+    $usuario['password_hash'] = $nuevoHash;
+    if (function_exists('xpSetRememberCookie')) {
+        xpSetRememberCookie($usuario);
+    }
 
     echo json_encode(['ok' => true]);
     exit;
@@ -1992,11 +2004,15 @@ function cliGuardarPago(): void {
     $referencia= trim($_POST['referencia'] ?? '');
     $notas     = trim($_POST['notas']      ?? '');
 
-    // Verificar propiedad del pago ANTES de aceptar o guardar cualquier archivo
-    $stPagoOwn = $db->prepare("SELECT id FROM pagos WHERE id = ? AND cliente_id = ? LIMIT 1");
+    // Verificar propiedad y estado del pago ANTES de aceptar o guardar cualquier archivo
+    $stPagoOwn = $db->prepare("SELECT id, estado FROM pagos WHERE id = ? AND cliente_id = ? LIMIT 1");
     $stPagoOwn->execute([$pagoId, $clienteId]);
-    if (!$stPagoOwn->fetchColumn()) {
+    $pagoRowOwn = $stPagoOwn->fetch(PDO::FETCH_ASSOC);
+    if (!$pagoRowOwn) {
         jsonOut(false, 'Pago no encontrado o sin permisos.', [], 404);
+    }
+    if (($pagoRowOwn['estado'] ?? '') === 'pagado') {
+        jsonOut(false, 'Este pago ya fue aprobado y no puede modificarse.', [], 409);
     }
 
     // Subir comprobante si viene (validando error, tamaño máximo 8 MB y MIME real)
@@ -2219,10 +2235,10 @@ function cliGuardarModificacion(): void {
             // Limpiar ejercicios previos de esta solicitud pendiente
             $db->prepare("DELETE FROM ejercicios WHERE rutina_id = ?")->execute([$solicitudId]);
         } else {
-            // Insertar nueva propuesta de rutina
+            // Insertar nueva propuesta de rutina (estado ENUM válido: 'pendiente')
             $insRut = $db->prepare(
                 "INSERT INTO rutinas (cliente_id, entrenador_id, descripcion, dias_semana, estado, rutina_padre_id, es_modificacion, tipo_modificacion, estado_modificacion, creado_en)
-                 VALUES (?, ?, ?, ?, 'inactiva', ?, 1, ?, 'pendiente', NOW())"
+                 VALUES (?, ?, ?, ?, 'pendiente', ?, 1, ?, 'pendiente', NOW())"
             );
             $insRut->execute([
                 $clienteId, 
@@ -2235,7 +2251,7 @@ function cliGuardarModificacion(): void {
             $solicitudId = (int)$db->lastInsertId();
         }
 
-        // Insertar ejercicios actualizados (versiÃ³n mÃ¡s reciente)
+        // Insertar ejercicios actualizados
         $insEj = $db->prepare(
             "INSERT INTO ejercicios (rutina_id, nombre, series, repeticiones, rir, nota_biomecanica, orden)
              VALUES (?, ?, ?, ?, ?, ?, ?)"
@@ -2244,12 +2260,16 @@ function cliGuardarModificacion(): void {
         foreach ($ejerciciosNombres as $i => $nombreEj) {
             $nom = trim((string)$nombreEj);
             if ($nom === '') continue;
+            $rawRir = trim((string)($ejerciciosRir[$i] ?? ''));
+            $rirVal = ($rawRir !== '' && strtolower($rawRir) !== 'null' && is_numeric($rawRir))
+                ? max(0, min(5, (int)$rawRir))
+                : null;
             $insEj->execute([
                 $solicitudId,
                 $nom,
                 max(1, (int)($ejerciciosSeries[$i] ?? 3)),
                 trim((string)($ejerciciosReps[$i] ?? '10')),
-                trim((string)($ejerciciosRir[$i] ?? '')),
+                $rirVal,
                 trim((string)($ejerciciosNota[$i] ?? '')),
                 $ordenIdx,
             ]);
@@ -2343,9 +2363,9 @@ function cliRutinasProgramadasPorDia(PDO $db, int $clienteId): array {
     $st = $db->prepare(
         "SELECT r.id, r.dias_semana, " . cliSqlNombreRutina('r') . " AS nombre
            FROM rutinas r
-          WHERE r.cliente_id = ? AND r.estado != 'completada'
+          WHERE r.cliente_id = ? AND r.estado = 'en_progreso'
             AND (r.es_modificacion IS NULL OR r.es_modificacion = 0 OR r.estado_modificacion = 'aprobada')
-          ORDER BY r.id ASC"
+          ORDER BY r.creado_en DESC, r.id DESC"
     );
     $st->execute([$clienteId]);
 
@@ -2361,33 +2381,34 @@ function cliRutinasProgramadasPorDia(PDO $db, int $clienteId): array {
     return $mapa;
 }
 
-/** Respaldo cuando el ejercicio no estÃ¡ en el catÃ¡logo: deduce el equipo por palabra clave del nombre. */
+/** Respaldo cuando el ejercicio no está en el catálogo: deduce el equipo por palabra clave del nombre. */
 function cliInferirEquipamiento(string $nombre): ?string {
-    $n = strtr(mb_strtolower($nombre, 'UTF-8'), ['Ã¡' => 'a', 'Ã©' => 'e', 'Ã­' => 'i', 'Ã³' => 'o', 'Ãº' => 'u']);
-    // Coincidencias especÃ­ficas de equipo
+    $n = strtr(mb_strtolower($nombre, 'UTF-8'), ['á' => 'a', 'é' => 'e', 'í' => 'i', 'ó' => 'o', 'ú' => 'u', 'ü' => 'u']);
+    // Coincidencias específicas de equipo
     if (str_contains($n, 'mancuerna')) return 'Mancuernas';
     if (str_contains($n, 'polea'))      return 'Polea';
     if (str_contains($n, 'barra'))      return 'Barra';
-    if (str_contains($n, 'maquina'))    return 'MÃ¡quina';
-    // DeducciÃ³n por ejercicio tradicional
+    if (str_contains($n, 'maquina'))    return 'Máquina';
+    // Deducción por ejercicio tradicional
     if (str_contains($n, 'press militar') || str_contains($n, 'press banca') || str_contains($n, 'press inclinado') || str_contains($n, 'sentadilla') || str_contains($n, 'peso muerto')) return 'Barra';
     if (str_contains($n, 'vuelos') || str_contains($n, 'aperturas') || str_contains($n, 'pajaros')) return 'Mancuernas';
     if (str_contains($n, 'fondos') || str_contains($n, 'dominadas') || str_contains($n, 'flexiones')) return 'Peso Corporal';
-    if (str_contains($n, 'prensa') || str_contains($n, 'hack') || str_contains($n, 'extension') || str_contains($n, 'femoral acostado') || str_contains($n, 'abductor')) return 'MÃ¡quina';
+    if (str_contains($n, 'prensa') || str_contains($n, 'hack') || str_contains($n, 'extension') || str_contains($n, 'femoral acostado') || str_contains($n, 'abductor')) return 'Máquina';
     return null;
 }
 
 /**
- * Series completadas REALES de un dÃ­a, agrupadas por ejercicio. Un Ãºnico query (sin N+1):
- * usa el snapshot de sesion_series y recurre a ejercicios/rutinas/catÃ¡logo sÃ³lo si falta.
+ * Series completadas REALES de un día, agrupadas por ejercicio. Un único query (sin N+1):
+ * usa el snapshot de sesion_series y recurre a ejercicios/rutinas/catálogo sólo si falta.
  *
  * @return array{ejercicios:array, rutinas:array<int,array{id:?int,nombre:string}>, series:int, volumen:float}
  */
 function cliHistorialDia(PDO $db, int $clienteId, string $fecha): array {
     $st = $db->prepare(
         "SELECT ss.ejercicio_id, ss.numero_serie, ss.tipo_serie, ss.reps_realizadas, ss.peso_usado,
+                ss.unidad_carga, ss.tipo_implemento, ss.kg_real,
                 COALESCE(ss.ejercicio_nombre, e.nombre)            AS ejercicio_nombre,
-                e.grupo_muscular,
+                e.grupo_muscular, e.unidad_carga AS ej_unidad_carga, e.tipo_implemento AS ej_tipo_implemento,
                 COALESCE(ss.rutina_id, e.rutina_id)                AS rutina_id,
                 COALESCE(ss.rutina_nombre, " . cliSqlNombreRutina('r') . ") AS rutina_nombre,
                 COALESCE(ss.equipamiento,
@@ -2413,30 +2434,37 @@ function cliHistorialDia(PDO $db, int $clienteId, string $fecha): array {
     foreach ($st->fetchAll() as $row) {
         $nombre = (string)($row['ejercicio_nombre'] ?? 'Ejercicio');
         $key    = $row['ejercicio_id'] !== null ? 'id' . $row['ejercicio_id'] : 'n' . $nombre;
+        $unidad = strtolower(trim((string)($row['unidad_carga'] ?: ($row['ej_unidad_carga'] ?: 'kg'))));
+        $imp    = strtolower(trim((string)($row['tipo_implemento'] ?: ($row['ej_tipo_implemento'] ?: 'barra'))));
 
         if (!isset($ejercicios[$key])) {
             $ejercicios[$key] = [
-                'nombre'         => $nombre,
-                'grupo_muscular' => $row['grupo_muscular'],
-                'equipamiento'   => $row['equipamiento'] ?: cliInferirEquipamiento($nombre),
-                'series'         => [],
+                'nombre'          => $nombre,
+                'grupo_muscular'  => $row['grupo_muscular'],
+                'equipamiento'    => $row['equipamiento'] ?: cliInferirEquipamiento($nombre),
+                'unidad_carga'    => $unidad,
+                'tipo_implemento' => $imp,
+                'series'          => [],
             ];
         }
 
-        $reps = $row['reps_realizadas'] !== null ? (int)$row['reps_realizadas'] : null;
-        $peso = $row['peso_usado']      !== null ? (float)$row['peso_usado']    : null;
+        $reps   = $row['reps_realizadas'] !== null ? (int)$row['reps_realizadas'] : null;
+        $peso   = $row['peso_usado']      !== null ? (float)$row['peso_usado']    : null;
+        $kgReal = $row['kg_real']         !== null ? (float)$row['kg_real']       : $peso;
 
         $ejercicios[$key]['series'][] = [
             'numero' => (int)$row['numero_serie'],
             'tipo'   => (string)$row['tipo_serie'],
             'reps'   => $reps,
             'peso'   => $peso,
+            'unidad' => $unidad,
+            'kg_real'=> $kgReal,
         ];
         $totalSeries++;
 
-        // El calentamiento no cuenta para el volumen total (mismo criterio que el selector de series)
-        if ($row['tipo_serie'] !== 'calentamiento' && $reps !== null && $peso !== null) {
-            $volumen += $reps * $peso;
+        // El calentamiento y peso corporal no inflan el volumen en kg
+        if ($row['tipo_serie'] !== 'calentamiento' && $reps !== null && $kgReal !== null && $unidad !== 'placas' && $imp !== 'sin_peso') {
+            $volumen += $reps * $kgReal;
         }
 
         $rid = $row['rutina_id'] !== null ? (int)$row['rutina_id'] : 0;

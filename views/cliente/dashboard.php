@@ -790,8 +790,8 @@ $fraseDelDia = $frasesMotivadoras[$indiceFrase];
 <!-- ── HEADER DE BIENVENIDA (PREMIUM BENTO UI) ── -->
 <div class="sys-top-header premium-header bento-in">
   <div class="user-info-group">
-    <div class="user-avatar">
-       <?= strtoupper(substr($nomUser, 0, 1)) ?>
+    <div class="user-avatar" style="padding:5px;">
+       <img src="<?= APP_URL ?>/assets/img/logo-atlas-1080.png?v=<?= e(xpAssetVer('assets/img/logo-atlas-1080.png')) ?>" alt="Atlas Fit" style="width:100%;height:100%;object-fit:contain;display:block;pointer-events:none;" draggable="false">
     </div>
     <div class="user-text-wrap">
       <p class="sys-top-greet-new">Bienvenido de vuelta</p>
@@ -1184,7 +1184,7 @@ $fraseDelDia = $frasesMotivadoras[$indiceFrase];
       <!-- Imagen normal (fondo claro) -->
       <div class="t-card-img">
         <?php if($img): ?>
-          <img src="<?= $img ?>" loading="lazy" alt="<?= e($prod['nombre']) ?>">
+          <img src="<?= e($img) ?>" loading="lazy" alt="<?= e($prod['nombre']) ?>">
         <?php else: ?>
           <i class="ti ti-package" style="color:#9ca3af;font-size:2.5rem;"></i>
         <?php endif; ?>

@@ -358,8 +358,17 @@ function authDoLogin(): void {
         $_SESSION['rol']     = $user['rol'];
         $_SESSION['_login_at'] = time();
 
-        if (password_needs_rehash($user['password_hash'], PASSWORD_BCRYPT, ['cost' => 10])) {
-            $newHash = password_hash($pass, PASSWORD_BCRYPT, ['cost' => 10]);
+        if ($user['rol'] === 'cliente') {
+            $stCliId = getDB()->prepare("SELECT id FROM clientes WHERE usuario_id = ? LIMIT 1");
+            $stCliId->execute([(int)$user['id']]);
+            $cidLogin = (int)$stCliId->fetchColumn();
+            if ($cidLogin > 0) {
+                $_SESSION['cliente_id'] = $cidLogin;
+            }
+        }
+
+        if (password_needs_rehash($user['password_hash'], PASSWORD_BCRYPT, ['cost' => 12])) {
+            $newHash = password_hash($pass, PASSWORD_BCRYPT, ['cost' => 12]);
             $um->updatePasswordHash((int)$user['id'], $newHash);
             $user['password_hash'] = $newHash;
         }
@@ -430,7 +439,13 @@ function authDoRegistro(): void {
 
         // Campos del Onboarding Wizard (Composición y Metas — solo obligatorios para atletas)
         $fechaNacRaw = trim($in('fecha_nacimiento') ?: $in('fecha_nac'));
-        $fechaNac    = preg_match('/^\d{4}-\d{2}-\d{2}$/', $fechaNacRaw) ? $fechaNacRaw : '2005-06-15';
+        $fechaNac    = '2005-06-15';
+        if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $fechaNacRaw)) {
+            $dtCheck = DateTime::createFromFormat('!Y-m-d', $fechaNacRaw);
+            if ($dtCheck && $dtCheck->format('Y-m-d') === $fechaNacRaw) {
+                $fechaNac = $fechaNacRaw;
+            }
+        }
 
         $pesoKg   = null;
         $alturaCm = null;

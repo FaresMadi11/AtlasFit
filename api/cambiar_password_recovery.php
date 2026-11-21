@@ -8,6 +8,17 @@ if (!defined('BASE_DIR')) {
 require_once dirname(__DIR__) . '/core/env.php';
 loadEnv(dirname(__DIR__) . '/.env');
 require_once dirname(__DIR__) . '/config/database.php';
+require_once dirname(__DIR__) . '/core/helpers.php';
+require_once dirname(__DIR__) . '/core/rate_limiter.php';
+
+if (($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'POST') {
+    http_response_code(405);
+    echo json_encode(["success" => false, "message" => "Método no permitido."]);
+    exit;
+}
+
+rateLimitCheck('api_recovery_pwd');
+
 try {
     $pdo = getDB();
 } catch (Exception $e) {
@@ -15,26 +26,27 @@ try {
     exit;
 }
 
-$tokenRecibido = $_POST['token'] ?? '';
-$nuevaPassword = $_POST['nueva_password'] ?? '';
-$confirmarPassword = $_POST['confirmar_password'] ?? '';
+$tokenRecibido = (string)($_POST['token'] ?? '');
+$nuevaPassword = (string)($_POST['nueva_password'] ?? '');
+$confirmarPassword = (string)($_POST['confirmar_password'] ?? '');
 
-// Validamos el token POST, la existencia de variables de sesión, y la expiración de la sesión (15 minutos max).
+// Validamos el token POST en tiempo constante, la existencia de variables de sesión, y la expiración (15 min max).
 if (
-    empty($tokenRecibido) || 
+    $tokenRecibido === '' || 
     !isset($_SESSION['recovery_token']) || 
-    $_SESSION['recovery_token'] !== $tokenRecibido || 
+    !hash_equals((string)$_SESSION['recovery_token'], $tokenRecibido) || 
     !isset($_SESSION['recovery_user_id']) || 
     !isset($_SESSION['recovery_expires']) || 
-    time() > $_SESSION['recovery_expires']
+    time() > (int)$_SESSION['recovery_expires']
 ) {
+    rateLimitFail('api_recovery_pwd');
     unset($_SESSION['recovery_token'], $_SESSION['recovery_user_id'], $_SESSION['recovery_expires']);
     echo json_encode(["success" => false, "message" => "Sesión de recuperación inválida o expirada. Por favor, intenta de nuevo."]);
     exit;
 }
 
-if (strlen($nuevaPassword) < 6) {
-    echo json_encode(["success" => false, "message" => "La contraseña debe tener al menos 6 caracteres."]);
+if (strlen($nuevaPassword) < 8) {
+    echo json_encode(["success" => false, "message" => "La contraseña debe tener al menos 8 caracteres."]);
     exit;
 }
 
@@ -44,7 +56,7 @@ if ($nuevaPassword !== $confirmarPassword) {
 }
 
 try {
-    $hashPassword = password_hash($nuevaPassword, PASSWORD_DEFAULT);
+    $hashPassword = password_hash($nuevaPassword, PASSWORD_BCRYPT, ['cost' => 12]);
     $userId = $_SESSION['recovery_user_id'];
     
     // Actualizamos la tabla usuarios, guardando en password_hash y limpiando los tokens de recuperación

@@ -74,7 +74,7 @@ function agregarEjercicio(defaultData = null) {
           <label style="font-size:.75rem;color:var(--muted);display:block;margin-bottom:4px">Ejercicio</label>
           <select class="ej-select" style="width:100%;padding:8px 10px;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:.85rem">
             <option value="">— Catálogo —</option>
-            ${catalogo.map(e => `<option value="${e.nombre}">${e.nombre}</option>`).join('')}
+            ${catalogo.map(e => { const safeN = String(e.nombre || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); return `<option value="${safeN}">${safeN}</option>`; }).join('')}
             <option value="__custom__">Personalizado...</option>
           </select>
         </div>
@@ -95,12 +95,12 @@ function agregarEjercicio(defaultData = null) {
         </div>
         <div>
           <label style="font-size:.72rem;color:var(--muted);display:block;margin-bottom:4px">Reps</label>
-          <input name="ejercicio_reps[]" type="text" value="${defaultData?defaultData.repeticiones:'6-10'}"
+          <input name="ejercicio_reps[]" type="text" value="${defaultData && defaultData.repeticiones != null ? String(defaultData.repeticiones).replace(/"/g,'&quot;') : '6-10'}"
             style="width:100%;padding:6px 8px;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);text-align:center">
         </div>
         <div>
           <label style="font-size:.72rem;color:var(--muted);display:block;margin-bottom:4px">RIR (0-5)</label>
-          <input name="ejercicio_rir[]" type="number" min="0" max="5" value="${defaultData?defaultData.rir:'1'}"
+          <input name="ejercicio_rir[]" type="number" min="0" max="5" value="${defaultData && defaultData.rir != null && defaultData.rir !== '' ? defaultData.rir : ''}"
             oninput="if(parseFloat(this.value)>5) this.value=5; if(parseFloat(this.value)<0) this.value=0;"
             style="width:100%;padding:6px 8px;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);text-align:center">
         </div>

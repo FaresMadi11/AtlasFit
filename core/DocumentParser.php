@@ -59,6 +59,42 @@ class DocumentParser {
     }
 
     /**
+     * Lee archivos de texto plano, CSV o TSV/XLS-texto normalizando a UTF-8 con límite seguro de tamaño.
+     */
+    public static function parseTextOrCsv(string $filePath): string {
+        $maxBytes = 2 * 1024 * 1024; // 2 MB máx.
+        $raw = @file_get_contents($filePath, false, null, 0, $maxBytes);
+        if ($raw === false || $raw === '') {
+            return '';
+        }
+        // Detectar archivos binarios OLE2 (.xls binario real no soportado como texto plano)
+        if (str_starts_with($raw, "\xD0\xCF\x11\xE0")) {
+            throw new RuntimeException("El archivo .xls está en formato binario antiguo (Excel 97-2003). Guárdalo como .xlsx o .csv e intenta de nuevo.");
+        }
+        // Eliminar BOM UTF-8 si existe
+        $raw = preg_replace('/^\xEF\xBB\xBF/', '', $raw) ?? $raw;
+        if (!mb_check_encoding($raw, 'UTF-8')) {
+            $converted = @mb_convert_encoding($raw, 'UTF-8', 'Windows-1252,ISO-8859-1');
+            if (is_string($converted)) {
+                $raw = $converted;
+            }
+        }
+        $lines = preg_split('/\r\n|\r|\n/', $raw) ?: [];
+        $out = [];
+        foreach ($lines as $idx => $line) {
+            if ($idx >= 3500) {
+                $out[] = '...[Archivo continuaba con más de 3500 líneas; omitidas líneas excedentes]...';
+                break;
+            }
+            $trimmed = trim($line);
+            if ($trimmed !== '') {
+                $out[] = $trimmed;
+            }
+        }
+        return implode("\n", $out);
+    }
+
+    /**
      * Parsea un archivo Word (.docx) leyendo directamente word/document.xml con ZipArchive
      */
     public static function parseDocx(string $filePath): string {
@@ -82,7 +118,7 @@ class DocumentParser {
 
         $dom = new DOMDocument();
         libxml_use_internal_errors(true);
-        $dom->loadXML($xmlContent, LIBXML_NOENT | LIBXML_XINCLUDE | LIBXML_NOERROR | LIBXML_NOWARNING);
+        $dom->loadXML($xmlContent, LIBXML_NONET | LIBXML_NOERROR | LIBXML_NOWARNING);
         libxml_clear_errors();
 
         $xpath = new DOMXPath($dom);
@@ -148,7 +184,7 @@ class DocumentParser {
             $ssXml = $zip->getFromIndex($ssIndex);
             $sDom = new DOMDocument();
             libxml_use_internal_errors(true);
-            $sDom->loadXML($ssXml, LIBXML_NOENT | LIBXML_XINCLUDE | LIBXML_NOERROR | LIBXML_NOWARNING);
+            $sDom->loadXML($ssXml, LIBXML_NONET | LIBXML_NOERROR | LIBXML_NOWARNING);
             libxml_clear_errors();
             $sXpath = new DOMXPath($sDom);
             $sXpath->registerNamespace('x', 'http://schemas.openxmlformats.org/spreadsheetml/2006/main');
@@ -171,7 +207,7 @@ class DocumentParser {
             $stylesXml = $zip->getFromIndex($stylesIndex);
             $stDom = new DOMDocument();
             libxml_use_internal_errors(true);
-            $stDom->loadXML($stylesXml, LIBXML_NOENT | LIBXML_XINCLUDE | LIBXML_NOERROR | LIBXML_NOWARNING);
+            $stDom->loadXML($stylesXml, LIBXML_NONET | LIBXML_NOERROR | LIBXML_NOWARNING);
             libxml_clear_errors();
             $stXpath = new DOMXPath($stDom);
             $stXpath->registerNamespace('x', 'http://schemas.openxmlformats.org/spreadsheetml/2006/main');
@@ -208,7 +244,7 @@ class DocumentParser {
             $relsXml = $zip->getFromIndex($wbRelsIndex);
             $rDom = new DOMDocument();
             libxml_use_internal_errors(true);
-            $rDom->loadXML($relsXml, LIBXML_NOENT | LIBXML_XINCLUDE | LIBXML_NOERROR | LIBXML_NOWARNING);
+            $rDom->loadXML($relsXml, LIBXML_NONET | LIBXML_NOERROR | LIBXML_NOWARNING);
             libxml_clear_errors();
             foreach ($rDom->getElementsByTagName('Relationship') as $rel) {
                 $id = $rel->getAttribute('Id');
@@ -221,7 +257,7 @@ class DocumentParser {
             $wbXml = $zip->getFromIndex($wbIndex);
             $wbDom = new DOMDocument();
             libxml_use_internal_errors(true);
-            $wbDom->loadXML($wbXml, LIBXML_NOENT | LIBXML_XINCLUDE | LIBXML_NOERROR | LIBXML_NOWARNING);
+            $wbDom->loadXML($wbXml, LIBXML_NONET | LIBXML_NOERROR | LIBXML_NOWARNING);
             libxml_clear_errors();
             $wXpath = new DOMXPath($wbDom);
             $wXpath->registerNamespace('x', 'http://schemas.openxmlformats.org/spreadsheetml/2006/main');
@@ -262,7 +298,7 @@ class DocumentParser {
             $sheetXml = $zip->getFromIndex($sIdx);
             $sheetDom = new DOMDocument();
             libxml_use_internal_errors(true);
-            $sheetDom->loadXML($sheetXml, LIBXML_NOENT | LIBXML_XINCLUDE | LIBXML_NOERROR | LIBXML_NOWARNING);
+            $sheetDom->loadXML($sheetXml, LIBXML_NONET | LIBXML_NOERROR | LIBXML_NOWARNING);
             libxml_clear_errors();
             $xpath = new DOMXPath($sheetDom);
             $xpath->registerNamespace('x', 'http://schemas.openxmlformats.org/spreadsheetml/2006/main');
@@ -523,7 +559,7 @@ class DocumentParser {
             $ssXml = $zip->getFromIndex($ssIndex);
             $sDom = new DOMDocument();
             libxml_use_internal_errors(true);
-            $sDom->loadXML($ssXml);
+            $sDom->loadXML($ssXml, LIBXML_NONET | LIBXML_NOERROR | LIBXML_NOWARNING);
             $sXpath = new DOMXPath($sDom);
             $sXpath->registerNamespace('x', 'http://schemas.openxmlformats.org/spreadsheetml/2006/main');
             foreach ($sXpath->query('//x:si') as $si) {
@@ -542,7 +578,7 @@ class DocumentParser {
         if ($wbRelsIndex !== false) {
             $rDom = new DOMDocument();
             libxml_use_internal_errors(true);
-            $rDom->loadXML($zip->getFromIndex($wbRelsIndex));
+            $rDom->loadXML($zip->getFromIndex($wbRelsIndex), LIBXML_NONET | LIBXML_NOERROR | LIBXML_NOWARNING);
             foreach ($rDom->getElementsByTagName('Relationship') as $rel) {
                 $relsMap[$rel->getAttribute('Id')] = 'xl/' . ltrim($rel->getAttribute('Target'), '/');
             }
@@ -550,7 +586,7 @@ class DocumentParser {
         if ($wbIndex !== false) {
             $wDom = new DOMDocument();
             libxml_use_internal_errors(true);
-            $wDom->loadXML($zip->getFromIndex($wbIndex));
+            $wDom->loadXML($zip->getFromIndex($wbIndex), LIBXML_NONET | LIBXML_NOERROR | LIBXML_NOWARNING);
             $wXpath = new DOMXPath($wDom);
             $wXpath->registerNamespace('x', 'http://schemas.openxmlformats.org/spreadsheetml/2006/main');
             $wXpath->registerNamespace('r', 'http://schemas.openxmlformats.org/officeDocument/2006/relationships');
@@ -586,7 +622,7 @@ class DocumentParser {
             $sheetXml = $zip->getFromIndex($sIdx);
             $sDom = new DOMDocument();
             libxml_use_internal_errors(true);
-            $sDom->loadXML($sheetXml);
+            $sDom->loadXML($sheetXml, LIBXML_NONET | LIBXML_NOERROR | LIBXML_NOWARNING);
             $xpath = new DOMXPath($sDom);
             $xpath->registerNamespace('x', 'http://schemas.openxmlformats.org/spreadsheetml/2006/main');
 

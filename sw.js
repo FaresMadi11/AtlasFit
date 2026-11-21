@@ -2,7 +2,7 @@
 //  Atlas Fit — Service Worker (Offline-First 3 Vistas + Fast Race)
 // ══════════════════════════════════════════════════════════════
 
-const SW_VER = new URL(self.location.href).searchParams.get('v') || '5.2';
+const SW_VER = new URL(self.location.href).searchParams.get('v') || '5.3';
 const STATIC_CACHE = 'atlas-fit-static-' + SW_VER;
 const USER_CACHE   = 'atlas-fit-user-' + SW_VER;
 const META_PATH    = '/__atlas_offline_meta__';

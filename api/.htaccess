@@ -1,10 +1,8 @@
 # api/.htaccess — Bloquear acceso directo al navegador a los endpoints PHP
-# Solo se permiten peticiones PHP (servidor interno)
 <IfModule mod_rewrite.c>
     RewriteEngine On
-    # Permitir peticiones que vienen del propio servidor
-    RewriteCond %{HTTP_REFERER} !^$
-    # Bloquear navegación directa (sin Referer o sin X-Requested-With)
+    RewriteCond %{REQUEST_METHOD} !^POST$ [NC]
+    RewriteRule \.php$ - [F,L]
 </IfModule>
 
 # Deshabilitar listado de directorio
@@ -12,6 +10,5 @@ Options -Indexes
 
 # Bloquear acceso al guardián de admin directamente
 <Files "_auth_admin.php">
-    Order deny,allow
-    Deny from all
+    Require all denied
 </Files>

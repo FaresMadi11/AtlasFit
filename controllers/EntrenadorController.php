@@ -146,7 +146,7 @@ function entDashboard(): void {
     $miClienteIdEnt      = entObtenerClienteIdPropio($db, $entId);
     $miDiasProgramadosEnt = entObtenerDiasProgramados($db, $miClienteIdEnt);
 
-    $stClientes  = $db->prepare("SELECT COUNT(*) FROM clientes WHERE entrenador_id = ? AND usuario_id != ?");
+    $stClientes  = $db->prepare("SELECT COUNT(*) FROM clientes c JOIN usuarios u ON c.usuario_id = u.id WHERE c.entrenador_id = ? AND c.usuario_id != ? AND u.rol = 'cliente' AND u.estado_cuenta = 'activo'");
     $stClientes->execute([$entId, $entId]);
     $totalClientes = (int)$stClientes->fetchColumn();
 
@@ -155,7 +155,8 @@ function entDashboard(): void {
     $stVerificar = $db->prepare(
         "SELECT COUNT(DISTINCT sa.cliente_id) FROM sesiones_asistencia sa
          JOIN clientes c ON sa.cliente_id = c.id
-         WHERE c.entrenador_id = ? AND c.usuario_id != ? AND sa.estado = 'completada' 
+         JOIN usuarios u ON c.usuario_id = u.id
+         WHERE c.entrenador_id = ? AND c.usuario_id != ? AND u.rol = 'cliente' AND u.estado_cuenta = 'activo' AND sa.estado = 'completada' 
            AND DATE(sa.fin_en) = CURDATE()
            AND (sa.verificada = 0 OR sa.verificada IS NULL)"
     );
@@ -164,6 +165,7 @@ function entDashboard(): void {
 
     $stSinTerminar = $db->prepare(
         "SELECT COUNT(DISTINCT c.id) FROM clientes c
+         JOIN usuarios u ON c.usuario_id = u.id
          JOIN (
              SELECT cliente_id, MAX(id) AS max_id
              FROM rutinas r2
@@ -173,7 +175,7 @@ function entDashboard(): void {
              GROUP BY cliente_id
          ) r_lat ON r_lat.cliente_id = c.id
          JOIN rutinas r ON r.id = r_lat.max_id
-         WHERE c.entrenador_id = ? AND c.usuario_id != ?
+         WHERE c.entrenador_id = ? AND c.usuario_id != ? AND u.rol = 'cliente' AND u.estado_cuenta = 'activo'
            AND NOT EXISTS (
                SELECT 1 FROM sesiones_asistencia sa 
                WHERE sa.cliente_id = c.id 
@@ -185,7 +187,8 @@ function entDashboard(): void {
 
     $stSinAsignar = $db->prepare(
         "SELECT COUNT(DISTINCT c.id) FROM clientes c
-         WHERE c.entrenador_id = ? AND c.usuario_id != ?
+         JOIN usuarios u ON c.usuario_id = u.id
+         WHERE c.entrenador_id = ? AND c.usuario_id != ? AND u.rol = 'cliente' AND u.estado_cuenta = 'activo'
            AND NOT EXISTS (
                SELECT 1 FROM rutinas r 
                WHERE r.cliente_id = c.id 
@@ -542,7 +545,7 @@ function entPerfilCliente(): void {
         $rut['grupos_musculares'] = !empty($grupos) ? implode(', ', $grupos) : 'General';
         
         // Detectar si esta es la rutina asignada para la fecha seleccionada
-        if (!$rutinaHoy && $rut['estado'] !== 'inactiva') {
+        if (!$rutinaHoy && in_array($rut['estado'] ?? '', ['en_progreso', 'pendiente'], true)) {
             $dias = array_map('intval', explode(',', $rut['dias_semana'] ?? ''));
             // Si el día seleccionado está en los días de la semana O es una rutina genérica sin días específicos
             if (in_array($diaHoyNum, $dias) || empty($rut['dias_semana'])) {
@@ -787,13 +790,16 @@ function entGuardarRutina(): void {
                 $uniCarga = 'ninguna';
             }
 
+            $rawRir = trim((string)($ejerciciosRir[$i] ?? ''));
+            $rirClean = ($rawRir !== '' && is_numeric($rawRir)) ? max(0, min(5, (int)$rawRir)) : null;
+
             $insEj->execute([
                 $rutinaId,
                 $nom,
-                (int)($ejerciciosSeries[$i] ?? 3),
-                trim($ejerciciosReps[$i]   ?? '10'),
-                trim($ejerciciosRir[$i]    ?? ''),
-                trim($ejerciciosNota[$i]    ?? ''),
+                max(1, min(30, (int)($ejerciciosSeries[$i] ?? 3))),
+                trim((string)($ejerciciosReps[$i]   ?? '10')) ?: '10',
+                $rirClean,
+                trim((string)($ejerciciosNota[$i]    ?? '')),
                 $i + 1,
                 $tipoImp,
                 $uniCarga
@@ -814,8 +820,11 @@ function entGuardarRutina(): void {
         ]);
         jsonOut(true, 'Rutina guardada correctamente.');
     } catch (Throwable $e) {
-        $db->rollBack();
-        jsonOut(false, 'Error al guardar rutina: ' . $e->getMessage());
+        if ($db->inTransaction()) {
+            $db->rollBack();
+        }
+        error_log('[entGuardarRutina] ' . $e->getMessage());
+        jsonOut(false, 'Error interno al guardar la rutina.', [], 500);
     }
 }
 
@@ -978,12 +987,14 @@ function entGuardarPlantillaRutina(): void {
     }
 
     // Verificar que el cliente pertenece al entrenador
-    $chk = $db->prepare("SELECT id FROM clientes WHERE id=? AND entrenador_id = ?");
+    $chk = $db->prepare("SELECT id, usuario_id FROM clientes WHERE id=? AND entrenador_id = ?");
     $chk->execute([$clienteId, $entId]);
-    if (!$chk->fetch()) {
+    $cliOwnerRow = $chk->fetch(PDO::FETCH_ASSOC);
+    if (!$cliOwnerRow) {
         echo json_encode(['ok'=>false,'msg'=>'Cliente no encontrado.']);
         return;
     }
+    $esRutinaPropiaEnt = ((int)($cliOwnerRow['usuario_id'] ?? 0) === $entId);
 
     // Si estamos editando una rutina existente, verificar que pertenezca al cliente y entrenador
     if ($rutinaEditarId > 0) {
@@ -1058,20 +1069,22 @@ function entGuardarPlantillaRutina(): void {
             }
             if (isset($sRow['kg_objetivo']) && is_numeric($sRow['kg_objetivo'])) {
                 $pesoKg = (float)$sRow['kg_objetivo'];
-                if ($imp === 'barra' && $pesoKg > 500) {
-                    echo json_encode(['ok' => false, 'msg' => "El peso en barra de '{$nomEx}' (serie {$sNum}) no puede superar 500 kg."]);
+                $maxBarra = ($uni === 'lbs') ? 1100 : 500;
+                $maxManc  = ($uni === 'lbs') ? 450 : 200;
+                if ($imp === 'barra' && $pesoKg > $maxBarra) {
+                    echo json_encode(['ok' => false, 'msg' => "El peso en barra de '{$nomEx}' (serie {$sNum}) no puede superar {$maxBarra} {$uni}."]);
                     return;
                 }
-                if ($imp === 'mancuerna' && $pesoKg > 200) {
-                    echo json_encode(['ok' => false, 'msg' => "El peso en mancuernas de '{$nomEx}' (serie {$sNum}) no puede superar 200 kg por lado."]);
+                if ($imp === 'mancuerna' && $pesoKg > $maxManc) {
+                    echo json_encode(['ok' => false, 'msg' => "El peso en mancuernas de '{$nomEx}' (serie {$sNum}) no puede superar {$maxManc} {$uni} por lado."]);
                     return;
                 }
-                if ($imp === 'polea_maquina' && $uni === 'placas' && $pesoKg > 30) {
-                    echo json_encode(['ok' => false, 'msg' => "Las placas en polea de '{$nomEx}' (serie {$sNum}) no pueden superar 30 placas."]);
+                if ($imp === 'polea_maquina' && $uni === 'placas' && $pesoKg > 40) {
+                    echo json_encode(['ok' => false, 'msg' => "Las placas en polea de '{$nomEx}' (serie {$sNum}) no pueden superar 40 placas."]);
                     return;
                 }
-                if ($pesoKg > 500) {
-                    echo json_encode(['ok' => false, 'msg' => "El peso de '{$nomEx}' (serie {$sNum}) no puede superar los 500 kg."]);
+                if ($pesoKg > 1100) {
+                    echo json_encode(['ok' => false, 'msg' => "El peso de '{$nomEx}' (serie {$sNum}) supera el límite máximo permitido."]);
                     return;
                 }
             }
@@ -1207,17 +1220,17 @@ function entGuardarPlantillaRutina(): void {
         }
 
         // 4. Asignar Días
-        if (!empty($dias) && is_array($dias)) {
+        if (!empty($diasNums)) {
             $stDias = $db->prepare("INSERT INTO rutina_dias (rutina_id, dia_semana) VALUES (?,?)");
-            foreach($dias as $d) {
-                if (is_numeric($d) && $d >= 1 && $d <= 7) {
+            foreach ($diasNums as $d) {
+                if ($d >= 1 && $d <= 7) {
                     $stDias->execute([$rutinaAsignadaId, (int)$d]);
                 }
             }
         }
 
-        // Notificar en tiempo real al atleta sobre la nueva rutina
-        if (!empty($clienteId)) {
+        // Notificar en tiempo real al atleta sobre la nueva rutina (omitir si es rutina personal del propio entrenador)
+        if (!empty($clienteId) && !$esRutinaPropiaEnt) {
             registrarNotificacionSistema([
                 'remitente_id'     => $entId,
                 'cliente_id'       => (int)$clienteId,
@@ -1292,22 +1305,32 @@ function entActualizarMedidas(): void {
     $peso      = (float)($_POST['peso']   ?? 0);
     $altura    = (float)($_POST['altura'] ?? 0);
 
-    if (!$clienteId || !$peso) jsonOut(false, 'Datos inválidos.');
+    if (!$clienteId || $peso <= 0 || $peso > 500 || $altura < 0 || $altura > 300) {
+        jsonOut(false, 'Datos de peso o altura fuera de rango válido.', [], 422);
+    }
 
     // Verificar pertenencia
     $chk = $db->prepare("SELECT id FROM clientes WHERE id = ? AND entrenador_id = ?");
     $chk->execute([$clienteId, $entId]);
-    if (!$chk->fetch()) jsonOut(false, 'No autorizado.');
+    if (!$chk->fetch()) jsonOut(false, 'No autorizado.', [], 403);
 
-    $db->prepare("UPDATE clientes SET peso_kg = ?, altura_cm = ? WHERE id = ?")
-       ->execute([$peso, $altura, $clienteId]);
+    try {
+        $db->beginTransaction();
+        $db->prepare("UPDATE clientes SET peso_kg = ?, altura_cm = ? WHERE id = ?")
+           ->execute([$peso, $altura, $clienteId]);
 
-    // Registrar en historial
-    $db->prepare(
-        "INSERT INTO peso_historial (cliente_id, peso_kg, fecha, tipo)
-         VALUES (?, ?, CURDATE(), 'manual')
-         ON DUPLICATE KEY UPDATE peso_kg = ?"
-    )->execute([$clienteId, $peso, $peso]);
+        // Registrar en historial
+        $db->prepare(
+            "INSERT INTO peso_historial (cliente_id, peso_kg, fecha, tipo)
+             VALUES (?, ?, CURDATE(), 'manual')
+             ON DUPLICATE KEY UPDATE peso_kg = ?"
+        )->execute([$clienteId, $peso, $peso]);
+        $db->commit();
+    } catch (\Throwable $e) {
+        if ($db->inTransaction()) $db->rollBack();
+        error_log('[entActualizarMedidas] ' . $e->getMessage());
+        jsonOut(false, 'Error interno al actualizar medidas.', [], 500);
+    }
 
     registrarNotificacion($clienteId, $entId, 'El entrenador ha actualizado tus medidas.');
     jsonOut(true, 'Medidas actualizadas.');
@@ -1828,6 +1851,7 @@ function entGuardarMetodo(): void {
     $banco = ''; $titular = ''; $cedula = ''; $telefono = ''; $cuenta = ''; $monto_bs = null; $correo_binance = '';
 
     if (!$tipo) jsonOut(false, 'El tipo de método de pago es requerido.');
+    if ($monto < 0 || $monto > 999999) jsonOut(false, 'El monto en dólares es inválido.');
 
     $bancosVenezuelaValidos = [
         '0102 - Banco de Venezuela',
@@ -1882,8 +1906,8 @@ function entGuardarMetodo(): void {
         }
     } elseif ($tipo === 'Pago Móvil') {
         $banco = trim($_POST['banco'] ?? '');
-        $telefono = trim((string)($_POST['telefono'] ?? ''));
-        $cedula = trim((string)($_POST['cedula'] ?? ''));
+        $telefono = preg_replace('/[\s\-]+/', '', trim((string)($_POST['telefono'] ?? '')));
+        $cedula = preg_replace('/[\s\.\-]+/', '', trim((string)($_POST['cedula'] ?? '')));
         if (!$banco || !$telefono || !$cedula) jsonOut(false, 'Banco, Teléfono y Cédula son requeridos.');
         if (!in_array($banco, $bancosVenezuelaValidos, true)) {
             jsonOut(false, 'Selecciona un banco válido de Venezuela.');
@@ -1895,7 +1919,7 @@ function entGuardarMetodo(): void {
             jsonOut(false, 'La cédula solo debe contener números (mínimo 7 y máximo 8 dígitos).');
         }
     } elseif ($tipo === 'Efectivo') {
-        $monto_bs = trim($_POST['monto_bs'] ?? ''); // Opcional, pero se acepta
+        $monto_bs = trim((string)($_POST['monto_bs'] ?? '')); // Opcional, pero se acepta
     } else {
         jsonOut(false, 'Tipo de pago no soportado.');
     }
@@ -1912,7 +1936,7 @@ function entGuardarMetodo(): void {
         'telefono'       => $telefono,
         'numero_cuenta'  => $cuenta,
         'instrucciones'  => $instrucciones,
-        'monto_bs'       => $monto_bs !== '' ? (float)$monto_bs : null,
+        'monto_bs'       => ($monto_bs !== null && $monto_bs !== '' && is_numeric($monto_bs)) ? max(0.0, (float)$monto_bs) : null,
         'correo_binance' => $correo_binance
     ];
 
@@ -2447,7 +2471,7 @@ function entAprobarModificacion(): void {
     try {
         $ph = implode(',', array_fill(0, count($ids), '?'));
         $stRut = $db->prepare(
-            "SELECT r.id, r.rutina_padre_id, r.cliente_id, r.dias_semana
+            "SELECT r.id, r.rutina_padre_id, r.cliente_id, r.dias_semana, r.tipo_modificacion
              FROM rutinas r JOIN clientes c ON r.cliente_id = c.id
              WHERE r.id IN ($ph) AND r.es_modificacion = 1 AND r.estado_modificacion = 'pendiente' AND c.entrenador_id = ?"
         );
@@ -2456,22 +2480,36 @@ function entAprobarModificacion(): void {
         if (empty($rutinas) || ($entId === null)) jsonOut(false, 'No hay solicitudes pendientes para verificar.');
 
         $db->beginTransaction();
-        $upMod   = $db->prepare("UPDATE rutinas SET estado_modificacion = 'aprobada', estado = 'en_progreso', revisada = 1 WHERE id = ?");
-        $upPadre = $db->prepare("UPDATE rutinas SET estado = 'completada', dias_semana = '' WHERE id = ?");
+        $upMod       = $db->prepare("UPDATE rutinas SET estado_modificacion = 'aprobada', estado = 'en_progreso', revisada = 1 WHERE id = ?");
+        $stPadreDias = $db->prepare("SELECT dias_semana FROM rutinas WHERE id = ? LIMIT 1");
+        $upPadreArch = $db->prepare("UPDATE rutinas SET estado = 'archivada', dias_semana = '' WHERE id = ?");
+        $upPadreDias = $db->prepare("UPDATE rutinas SET dias_semana = ? WHERE id = ?");
 
         foreach ($rutinas as $rut) {
             $upMod->execute([$rut['id']]);
-            if ($rut['rutina_padre_id']) {
-                $upPadre->execute([$rut['rutina_padre_id']]);
+            $tipoMod = strtolower(trim((string)($rut['tipo_modificacion'] ?? 'permanente')));
+            if (!empty($rut['rutina_padre_id']) && $tipoMod !== 'temporal') {
+                $padreId = (int)$rut['rutina_padre_id'];
+                $stPadreDias->execute([$padreId]);
+                $pDiasRaw = (string)($stPadreDias->fetchColumn() ?: '');
+                $pDias    = array_values(array_filter(array_map('intval', explode(',', $pDiasRaw)), static fn($x) => $x >= 1 && $x <= 7));
+                $mDias    = array_values(array_filter(array_map('intval', explode(',', (string)($rut['dias_semana'] ?? ''))), static fn($x) => $x >= 1 && $x <= 7));
+                $restantes = (!empty($pDias) && !empty($mDias)) ? array_values(array_diff($pDias, $mDias)) : [];
+                if (!empty($restantes)) {
+                    sort($restantes);
+                    $upPadreDias->execute([implode(',', $restantes), $padreId]);
+                } else {
+                    $upPadreArch->execute([$padreId]);
+                }
             }
 
-            // Marcar como atendida la notificación correspondiente para el entrenador
+            // Marcar como atendida la notificación correspondiente para el entrenador (exacto por referencia_id o enlace)
             $solId = (int)$rut['id'];
             $stNotifClose = $db->prepare(
                 "UPDATE notificaciones SET leida = 1, leido = 1 
-                 WHERE (destinatario_id = ? OR entrenador_id = ?) AND (enlace LIKE ? OR metadatos LIKE ? OR referencia_id = ?)"
+                 WHERE (destinatario_id = ? OR entrenador_id = ?) AND (referencia_id = ? OR enlace LIKE ?)"
             );
-            $stNotifClose->execute([$entId, $entId, "%id=$solId%", "%$solId%", $solId]);
+            $stNotifClose->execute([$entId, $entId, $solId, "%id=$solId%"]);
         }
 
         // Notificar de vuelta al atleta: 'Tu entrenador ha verificado y aprobado los cambios de tu rutina'
@@ -2500,7 +2538,7 @@ function entAprobarModificacion(): void {
     } catch (\Throwable $e) {
         if ($db->inTransaction()) $db->rollBack();
         error_log('entAprobarModificacion: ' . $e->getMessage());
-        jsonOut(false, 'No se pudo verificar la solicitud: ' . $e->getMessage());
+        jsonOut(false, 'No se pudo verificar la solicitud.', [], 500);
     }
 }
 
@@ -2534,9 +2572,9 @@ function entRechazarModificacion(): void {
             $solId = (int)$rut['id'];
             $stNotifClose = $db->prepare(
                 "UPDATE notificaciones SET leida = 1, leido = 1 
-                 WHERE (destinatario_id = ? OR entrenador_id = ?) AND (enlace LIKE ? OR metadatos LIKE ? OR referencia_id = ?)"
+                 WHERE (destinatario_id = ? OR entrenador_id = ?) AND (referencia_id = ? OR enlace LIKE ?)"
             );
-            $stNotifClose->execute([$entId, $entId, "%id=$solId%", "%$solId%", $solId]);
+            $stNotifClose->execute([$entId, $entId, $solId, "%id=$solId%"]);
         }
 
         $clientesAfectados = array_unique(array_column($rutinas, 'cliente_id'));
@@ -2559,7 +2597,7 @@ function entRechazarModificacion(): void {
     } catch (\Throwable $e) {
         if ($db->inTransaction()) $db->rollBack();
         error_log('entRechazarModificacion: ' . $e->getMessage());
-        jsonOut(false, 'No se pudo rechazar la solicitud: ' . $e->getMessage());
+        jsonOut(false, 'No se pudo rechazar la solicitud.', [], 500);
     }
 }
 
@@ -2631,16 +2669,50 @@ function entApiTiendaNuevaSeccion(): void {
     $entId = (int)$_SESSION['user_id'];
     obtenerEstadoMembresiaEntrenador($entId);
 
-    $stmt = $db->prepare("SELECT id FROM tienda_secciones WHERE entrenador_id = ? AND LOWER(nombre) = LOWER(?) LIMIT 1");
-    $stmt->execute([$entId, $nombre]);
-    $exists = $stmt->fetchColumn();
-    if ($exists) {
-        jsonOut(true, 'Sección existente', ['id' => $exists]);
-    }
+    try {
+        $stmt = $db->prepare("SELECT id FROM tienda_secciones WHERE entrenador_id = ? AND LOWER(nombre) = LOWER(?) LIMIT 1");
+        $stmt->execute([$entId, $nombre]);
+        $exists = $stmt->fetchColumn();
+        if ($exists) {
+            jsonOut(true, 'Sección existente', ['id' => $exists]);
+        }
 
-    $stmt = $db->prepare("INSERT INTO tienda_secciones (entrenador_id, nombre) VALUES (?, ?)");
-    $stmt->execute([$entId, $nombre]);
-    jsonOut(true, 'Sección creada', ['id' => $db->lastInsertId()]);
+        try {
+            $stmt = $db->prepare("INSERT INTO tienda_secciones (entrenador_id, nombre) VALUES (?, ?)");
+            $stmt->execute([$entId, $nombre]);
+        } catch (\PDOException $pe) {
+            if ((string)$pe->getCode() === '23000') {
+                // Migrar índice global legacy UNIQUE(nombre) a multi-tenant UNIQUE(entrenador_id, nombre)
+                try {
+                    $idxRows = $db->query("SHOW INDEX FROM tienda_secciones WHERE Non_unique = 0 AND Key_name != 'PRIMARY'")->fetchAll(PDO::FETCH_ASSOC);
+                    $idxCols = [];
+                    foreach ($idxRows as $ir) {
+                        $idxCols[$ir['Key_name']][] = $ir['Column_name'];
+                    }
+                    foreach ($idxCols as $keyName => $cols) {
+                        if ($cols === ['nombre']) {
+                            $safeKey = preg_replace('/[^a-zA-Z0-9_]/', '', (string)$keyName);
+                            if ($safeKey !== '') {
+                                $db->exec("ALTER TABLE tienda_secciones DROP INDEX `{$safeKey}`");
+                            }
+                        }
+                    }
+                    try {
+                        $db->exec("ALTER TABLE tienda_secciones ADD UNIQUE KEY uq_tienda_sec_ent_nombre (entrenador_id, nombre)");
+                    } catch (\Throwable $_) {}
+                } catch (\Throwable $_) {}
+
+                $stmt = $db->prepare("INSERT INTO tienda_secciones (entrenador_id, nombre) VALUES (?, ?)");
+                $stmt->execute([$entId, $nombre]);
+            } else {
+                throw $pe;
+            }
+        }
+        jsonOut(true, 'Sección creada', ['id' => $db->lastInsertId()]);
+    } catch (\Throwable $e) {
+        error_log('[entApiTiendaNuevaSeccion] ' . $e->getMessage());
+        jsonOut(false, 'No se pudo crear la sección. Verifica que no esté duplicada.', [], 409);
+    }
 }
 
 /*─────────────────────────────────────────────────────────────
@@ -3014,7 +3086,7 @@ function entApiRutinaLive(): void {
     $diaHoyNum = (int)date('N', strtotime($fechaSeleccionada));
     foreach ($rutinas as $r) {
         $dias = array_map('intval', explode(',', $r['dias_semana'] ?? ''));
-        if (in_array($diaHoyNum, $dias) && $r['estado'] !== 'inactiva') {
+        if (in_array($diaHoyNum, $dias) && in_array($r['estado'] ?? '', ['en_progreso', 'pendiente'], true)) {
             $rutinaHoyId = $r['id'];
             break;
         }
@@ -3118,10 +3190,10 @@ function entApiAprobarAtleta(): void {
     $targetUsuarioId = 0;
     $targetClienteId = 0;
 
-    // 1. Si viene cliente_id, buscar usuario_id correspondiente (solo atletas del entrenador actual)
+    // 1. Si viene cliente_id, buscar usuario_id correspondiente (solo atletas reales del entrenador, nunca el propio entrenador)
     if ($clienteId > 0) {
-        $stC = $db->prepare("SELECT c.id AS cliente_id, c.usuario_id FROM clientes c WHERE c.id = ? AND c.entrenador_id = ?");
-        $stC->execute([$clienteId, $entId]);
+        $stC = $db->prepare("SELECT c.id AS cliente_id, c.usuario_id FROM clientes c JOIN usuarios u ON u.id = c.usuario_id WHERE c.id = ? AND c.entrenador_id = ? AND c.usuario_id != ? AND u.rol = 'cliente'");
+        $stC->execute([$clienteId, $entId, $entId]);
         $rowC = $stC->fetch(PDO::FETCH_ASSOC);
         if ($rowC) {
             $targetClienteId = (int)$rowC['cliente_id'];
@@ -3131,17 +3203,15 @@ function entApiAprobarAtleta(): void {
 
     // 2. Si no se resolvió por cliente_id pero viene usuario_id:
     if (!$targetUsuarioId && $usuarioId > 0) {
-        // Primero verificar si coincide directamente con la tabla usuarios
-        $stU = $db->prepare("SELECT u.id AS usuario_id, c.id AS cliente_id FROM usuarios u JOIN clientes c ON c.usuario_id = u.id WHERE u.id = ? AND c.entrenador_id = ?");
-        $stU->execute([$usuarioId, $entId]);
+        $stU = $db->prepare("SELECT u.id AS usuario_id, c.id AS cliente_id FROM usuarios u JOIN clientes c ON c.usuario_id = u.id WHERE u.id = ? AND c.entrenador_id = ? AND u.id != ? AND u.rol = 'cliente'");
+        $stU->execute([$usuarioId, $entId, $entId]);
         $rowU = $stU->fetch(PDO::FETCH_ASSOC);
         if ($rowU) {
             $targetUsuarioId = (int)$rowU['usuario_id'];
             $targetClienteId = (int)($rowU['cliente_id'] ?? 0);
         } else {
-            // Verificar si el ID enviado era en realidad el id de la tabla clientes
-            $stAlt = $db->prepare("SELECT c.id AS cliente_id, c.usuario_id FROM clientes c WHERE c.id = ? AND c.entrenador_id = ?");
-            $stAlt->execute([$usuarioId, $entId]);
+            $stAlt = $db->prepare("SELECT c.id AS cliente_id, c.usuario_id FROM clientes c JOIN usuarios u ON u.id = c.usuario_id WHERE c.id = ? AND c.entrenador_id = ? AND c.usuario_id != ? AND u.rol = 'cliente'");
+            $stAlt->execute([$usuarioId, $entId, $entId]);
             $rowAlt = $stAlt->fetch(PDO::FETCH_ASSOC);
             if ($rowAlt) {
                 $targetClienteId = (int)$rowAlt['cliente_id'];
@@ -3150,20 +3220,20 @@ function entApiAprobarAtleta(): void {
         }
     }
 
-    if (!$targetUsuarioId) {
-        jsonOut(false, 'No se encontró el atleta especificado.');
+    if (!$targetUsuarioId || $targetUsuarioId === $entId) {
+        jsonOut(false, 'No se encontró el atleta especificado.', [], 404);
         return;
     }
     
     $nuevoEstado = ($accion === 'aprobar') ? 'activo' : 'rechazado';
     $activoVal   = ($accion === 'aprobar') ? 1 : 0;
     
-    $db->prepare("UPDATE usuarios SET estado_cuenta = ?, activo = ? WHERE id = ?")
+    $db->prepare("UPDATE usuarios SET estado_cuenta = ?, activo = ? WHERE id = ? AND rol = 'cliente'")
        ->execute([$nuevoEstado, $activoVal, $targetUsuarioId]);
 
-    // Marcar la notificación como leída en la campana
+    // Marcar la notificación como leída en la campana (ambas columnas leida y leido)
     if ($targetClienteId > 0) {
-        $db->prepare("UPDATE notificaciones SET leida = 1 WHERE cliente_id = ? AND tipo = 'registro'")
+        $db->prepare("UPDATE notificaciones SET leida = 1, leido = 1 WHERE cliente_id = ? AND (tipo = 'registro' OR tipo_evento = 'solicitud_atleta')")
            ->execute([$targetClienteId]);
     }
 
@@ -3281,8 +3351,8 @@ function entApiDiaDetalle(): void {
         $resultado['dias_programados'] = entObtenerDiasProgramados($db, $clienteId);
         $resultado['cliente_id']       = $clienteId;
 
-        // Verificar si el atleta tiene una solicitud de modificación pendiente para enriquecer la rutina con el diff exacto
-        $sqlSol = "SELECT id, rutina_padre_id, tipo_modificacion, descripcion, creado_en 
+        // Verificar si el atleta tiene una solicitud de modificación pendiente que corresponda a esta rutina/día
+        $sqlSol = "SELECT id, rutina_padre_id, tipo_modificacion, dias_semana, descripcion, creado_en 
                    FROM rutinas 
                    WHERE cliente_id = ? AND es_modificacion = 1 AND estado_modificacion = 'pendiente'";
         $paramsSol = [$clienteId];
@@ -3290,11 +3360,27 @@ function entApiDiaDetalle(): void {
             $sqlSol .= " AND id = ?";
             $paramsSol[] = $solicitudIdReq;
         }
-        $sqlSol .= " ORDER BY id DESC LIMIT 1";
+        $sqlSol .= " ORDER BY id DESC";
 
         $stSol = $db->prepare($sqlSol);
         $stSol->execute($paramsSol);
-        $solRow = $stSol->fetch(PDO::FETCH_ASSOC);
+        $solCandidates = $stSol->fetchAll(PDO::FETCH_ASSOC);
+
+        $rutinaDiaId = (int)($resultado['rutina']['id'] ?? 0);
+        $diaFechaNum = (int)date('N', strtotime($fecha ?: date('Y-m-d')));
+        $solRow = null;
+        foreach ($solCandidates as $cand) {
+            if ($solicitudIdReq > 0) {
+                $solRow = $cand;
+                break;
+            }
+            $candPadre = (int)($cand['rutina_padre_id'] ?? 0);
+            $candDias  = array_filter(array_map('intval', explode(',', (string)($cand['dias_semana'] ?? ''))));
+            if (($rutinaDiaId > 0 && $candPadre === $rutinaDiaId) || in_array($diaFechaNum, $candDias, true)) {
+                $solRow = $cand;
+                break;
+            }
+        }
 
         if ($solRow) {
             $solId   = (int)$solRow['id'];
@@ -3437,7 +3523,7 @@ function entApiRutinaEjercicio(): void {
 
     // Verificación defensiva de pertenencia y permisos del entrenador
     $stCheck = $db->prepare("
-        SELECT e.id, e.rutina_id, e.orden, e.nombre, e.grupo_muscular, e.tipo_implemento, r.cliente_id
+        SELECT e.id, e.rutina_id, e.orden, e.nombre, e.grupo_muscular, e.tipo_implemento, e.unidad_carga, r.cliente_id
         FROM ejercicios e
         JOIN rutinas r ON r.id = e.rutina_id
         JOIN clientes c ON c.id = r.cliente_id
@@ -3465,6 +3551,7 @@ function entApiRutinaEjercicio(): void {
                     ? (string)$payload['unidad_carga']
                     : (($ejRow['unidad_carga'] ?? '') !== '' && $ejRow['unidad_carga'] !== 'ninguna' ? $ejRow['unidad_carga'] : 'kg'));
 
+            $db->beginTransaction();
             $stUp = $db->prepare("
                 UPDATE ejercicios 
                 SET series = ?, repeticiones = ?, rir = ?, tipo_implemento = ?, unidad_carga = ?
@@ -3483,11 +3570,14 @@ function entApiRutinaEjercicio(): void {
                 $stPlEj->execute([$plId, $ordenEj]);
                 $plEjId = (int)$stPlEj->fetchColumn();
                 if ($plEjId > 0) {
-                    $repsNum = (int)preg_replace('/\D/', '', $reps) ?: 10;
+                    $repsNum = preg_match('/\d+/', $reps, $mReps) ? max(1, min(100, (int)$mReps[0])) : 10;
+                    $db->prepare("UPDATE plantilla_ejercicios SET tipo_implemento = ?, unidad_carga = ? WHERE id = ?")
+                       ->execute([$imp, $uniEdit, $plEjId]);
                     $db->prepare("UPDATE plantilla_series SET reps_objetivo = ?, rir = ? WHERE plantilla_ej_id = ?")
                        ->execute([$repsNum, $rir, $plEjId]);
                 }
             }
+            $db->commit();
 
             $equipamiento = inferirEquipamientoProgreso($ejRow['nombre'], $imp);
 
@@ -4326,15 +4416,15 @@ function entApiGuardarSerieAtleta(): void {
         $stAsisChk->execute([$clienteId, $rutinaId, $fechaEntrenamiento, $fechaEntrenamiento]);
         $asisRow = $stAsisChk->fetch(PDO::FETCH_ASSOC);
 
+        $fechaTs = ($fechaEntrenamiento === date('Y-m-d')) ? date('Y-m-d H:i:s') : ($fechaEntrenamiento . ' 12:00:00');
         if (!$asisRow) {
-            $fechaTs = ($fechaEntrenamiento === date('Y-m-d')) ? date('Y-m-d H:i:s') : ($fechaEntrenamiento . ' 12:00:00');
             $finTs   = $rutinaCompletadaPorEntrenador ? $fechaTs : null;
             $db->prepare("INSERT INTO sesiones_asistencia (rutina_id, cliente_id, entrenador_id, inicio_en, fin_en, estado, verificada) VALUES (?, ?, ?, ?, ?, ?, 1)")
                ->execute([$rutinaId, $clienteId, $entId, $fechaTs, $finTs, $nuevoEstadoSesion]);
         } else {
             if ($rutinaCompletadaPorEntrenador) {
-                $db->prepare("UPDATE sesiones_asistencia SET estado = 'completada', fin_en = COALESCE(fin_en, NOW()), verificada = 1, entrenador_id = ? WHERE id = ?")
-                   ->execute([$entId, (int)$asisRow['id']]);
+                $db->prepare("UPDATE sesiones_asistencia SET estado = 'completada', fin_en = COALESCE(fin_en, ?), verificada = 1, entrenador_id = ? WHERE id = ?")
+                   ->execute([$fechaTs, $entId, (int)$asisRow['id']]);
             } else {
                 $db->prepare("UPDATE sesiones_asistencia SET verificada = 1, entrenador_id = ? WHERE id = ?")
                    ->execute([$entId, (int)$asisRow['id']]);
@@ -4475,6 +4565,11 @@ function entApiActualizarRutinaCompleta(): void {
     if (!is_array($ejercicios)) {
         $ejercicios = [];
     }
+    $ejerciciosValidos = array_values(array_filter($ejercicios, static fn($e) => trim((string)($e['nombre'] ?? '')) !== ''));
+    if (empty($ejerciciosValidos)) {
+        jsonOut(false, 'La rutina debe contener al menos un ejercicio válido.', [], 422);
+    }
+    $ejercicios = $ejerciciosValidos;
 
     CatalogoService::asegurarColumnasScope($db);
     try {
@@ -4540,7 +4635,7 @@ function entApiActualizarRutinaCompleta(): void {
         $stUp = $db->prepare("
             UPDATE ejercicios 
             SET nombre = ?, series = ?, repeticiones = ?, rir = ?, orden = ?,
-                tipo_implemento = ?, unidad_carga = ?, descripcion = ?
+                tipo_implemento = ?, unidad_carga = ?, descripcion = ?, grupo_muscular = ?
             WHERE id = ? AND rutina_id = ?
         ");
 
@@ -4589,8 +4684,11 @@ function entApiActualizarRutinaCompleta(): void {
                     }
                     $sKg   = isset($sData['peso']) && $sData['peso'] !== '' && $sData['peso'] !== null && is_numeric($sData['peso']) ? max(0.0, min(9999.0, (float)$sData['peso'])) : null;
                     if ($imp === 'sin_peso') $sKg = null;
-                    $sRepRaw = isset($sData['reps']) && is_numeric($sData['reps']) ? (int)$sData['reps'] : ((int)preg_replace('/\D/', '', (string)($sData['reps'] ?? $reps)) ?: 10);
-                    $sRep  = max(1, min(250, $sRepRaw));
+                    $sRepSrc = (string)($sData['reps'] ?? $reps);
+                    $sRepRaw = is_numeric($sRepSrc)
+                        ? (int)$sRepSrc
+                        : (preg_match('/\d+/', $sRepSrc, $mRep) ? (int)$mRep[0] : 10);
+                    $sRep  = max(1, min(100, $sRepRaw));
                     $sRir  = isset($sData['rir']) && $sData['rir'] !== '' && $sData['rir'] !== null && is_numeric($sData['rir']) ? max(0, min(5, (int)$sData['rir'])) : $rirVal;
                     $stInsPlS->execute([$plEjId, $sNum, $sTipo, $sKg, $sRep, $sRir]);
                     if ($sKg !== null) {
@@ -4600,8 +4698,9 @@ function entApiActualizarRutinaCompleta(): void {
             } else {
                 $pesoVal = isset($ej['peso']) && $ej['peso'] !== '' && $ej['peso'] !== null ? (float)$ej['peso'] : null;
                 if ($imp === 'sin_peso') $pesoVal = null;
+                $repsInt = preg_match('/\d+/', $reps, $mRep) ? max(1, min(100, (int)$mRep[0])) : 10;
                 for ($s = 1; $s <= $series; $s++) {
-                    $stInsPlS->execute([$plEjId, $s, 'normal', $pesoVal, (int)$reps, $rirVal]);
+                    $stInsPlS->execute([$plEjId, $s, 'normal', $pesoVal, $repsInt, $rirVal]);
                     if ($pesoVal !== null) {
                         $pesosValores[] = $pesoVal;
                     }
@@ -4624,7 +4723,8 @@ function entApiActualizarRutinaCompleta(): void {
             }
 
             if ($eid > 0) {
-                $stUp->execute([$nombre, $series, $reps, $rirVal, $orden, $imp, $unidad, $desc, $eid, $rutinaId]);
+                $grupoUpd = inferirGrupoMuscularProgreso($nombre);
+                $stUp->execute([$nombre, $series, $reps, $rirVal, $orden, $imp, $unidad, $desc, $grupoUpd, $eid, $rutinaId]);
             } else {
                 $cat = CatalogoService::obtenerMetaPorNombre($db, $nombre, (int)$entId);
 
@@ -4862,7 +4962,7 @@ function entExportarAtletaExcel(): void {
         SELECT r.id, r.descripcion, r.dias_semana
         FROM rutinas r
         WHERE r.cliente_id = ?
-          AND (r.estado = 'en_progreso' OR r.estado = 'activa')
+          AND r.estado = 'en_progreso'
           AND (r.es_modificacion IS NULL OR r.es_modificacion = 0 OR r.estado_modificacion = 'aprobada')
         ORDER BY r.id ASC
     ");
@@ -5204,10 +5304,12 @@ function entApiGuardarClienteMedidas(): void {
         jsonOut(false, 'No autorizado.', [], 403);
     }
 
-    $toNum = function($val) {
+    $toNum = function($val, float $maxVal = 400.0) {
         if ($val === null || $val === '') return null;
         $clean = str_replace(',', '.', trim((string)$val));
-        return is_numeric($clean) ? round((float)$clean, 1) : null;
+        if (!is_numeric($clean)) return null;
+        $num = round((float)$clean, 1);
+        return ($num > 0 && $num <= $maxVal) ? $num : null;
     };
 
     $bicepsDer   = $toNum($data['biceps_der'] ?? $data['biceps_der_cm'] ?? null);
@@ -5233,6 +5335,7 @@ function entApiGuardarClienteMedidas(): void {
     $notas       = trim((string)($data['notas'] ?? ''));
 
     try {
+        $db->beginTransaction();
         $stUpsert = $db->prepare("
             INSERT INTO cliente_medidas
             (cliente_id, fecha, etiqueta, biceps_der, biceps_izq, pecho, hombros, abdomen, gluteo,
@@ -5278,6 +5381,8 @@ function entApiGuardarClienteMedidas(): void {
             $db->prepare("UPDATE clientes SET altura_cm = ? WHERE id = ?")->execute([$alturaCm, $clienteId]);
         }
 
+        $db->commit();
+
         $stSaved = $db->prepare("SELECT * FROM cliente_medidas WHERE cliente_id = ? AND fecha = ? LIMIT 1");
         $stSaved->execute([$clienteId, $fecha]);
         $medidasGuardadas = $stSaved->fetch(PDO::FETCH_ASSOC) ?: null;
@@ -5288,6 +5393,9 @@ function entApiGuardarClienteMedidas(): void {
             'medidas'    => $medidasGuardadas
         ]);
     } catch (\Throwable $e) {
+        if ($db->inTransaction()) {
+            $db->rollBack();
+        }
         error_log('[entApiGuardarClienteMedidas] Error: ' . $e->getMessage());
         jsonOut(false, 'Error interno al guardar las medidas corporales.', [], 500);
     }

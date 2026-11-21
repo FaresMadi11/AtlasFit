@@ -159,14 +159,17 @@ class ExcelExportService {
                 $colWidths = $sData['col_widths'] ?? [];
 
                 $sheetXml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' . "\n" .
-                    '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">' .
-                    '<cols>';
+                    '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">';
 
-                foreach ($colWidths as $cIdx => $w) {
-                    $colNum = $cIdx + 1;
-                    $sheetXml .= '<col min="' . $colNum . '" max="' . $colNum . '" width="' . $w . '" customWidth="1"/>';
+                if (!empty($colWidths)) {
+                    $sheetXml .= '<cols>';
+                    foreach ($colWidths as $cIdx => $w) {
+                        $colNum = $cIdx + 1;
+                        $sheetXml .= '<col min="' . $colNum . '" max="' . $colNum . '" width="' . $w . '" customWidth="1"/>';
+                    }
+                    $sheetXml .= '</cols>';
                 }
-                $sheetXml .= '</cols><sheetData>';
+                $sheetXml .= '<sheetData>';
 
                 ksort($gridRows);
                 foreach ($gridRows as $rNum => $rData) {
@@ -211,14 +214,17 @@ class ExcelExportService {
                 }
 
                 $sheetXml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' . "\n" .
-                    '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">' .
-                    '<cols>';
+                    '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">';
 
-                foreach ($colWidths as $cIdx => $w) {
-                    $colNum = $cIdx + 1;
-                    $sheetXml .= '<col min="' . $colNum . '" max="' . $colNum . '" width="' . $w . '" customWidth="1"/>';
+                if (!empty($colWidths)) {
+                    $sheetXml .= '<cols>';
+                    foreach ($colWidths as $cIdx => $w) {
+                        $colNum = $cIdx + 1;
+                        $sheetXml .= '<col min="' . $colNum . '" max="' . $colNum . '" width="' . $w . '" customWidth="1"/>';
+                    }
+                    $sheetXml .= '</cols>';
                 }
-                $sheetXml .= '</cols><sheetData>';
+                $sheetXml .= '<sheetData>';
 
                 // Fila de encabezados
                 $r = 1;
@@ -262,7 +268,9 @@ class ExcelExportService {
         $sstXml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' . "\n" .
             '<sst xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" count="' . count($stringList) . '" uniqueCount="' . count($stringList) . '">';
         foreach ($stringList as $str) {
-            $escaped = htmlspecialchars($str, ENT_XML1, 'UTF-8');
+            // Eliminar caracteres de control ilegales en XML 1.0 (0x00-0x08, 0x0B, 0x0C, 0x0E-0x1F)
+            $cleanStr = preg_replace('/[\x00-\x08\x0B\x0C\x0E-\x1F]/', '', (string)$str) ?? '';
+            $escaped = htmlspecialchars($cleanStr, ENT_XML1, 'UTF-8');
             $sstXml .= '<si><t>' . $escaped . '</t></si>';
         }
         $sstXml .= '</sst>';

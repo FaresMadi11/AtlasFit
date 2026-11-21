@@ -908,9 +908,12 @@ $xpMrCrearUrlBase = $xpMrRole === 'admin'
             </div>`;
         }).join('');
 
-        const ejJsonAttr = JSON.stringify(ej).replace(/"/g, '&quot;');
-        const thumbHtml = ej.imagen_path
-          ? `<img src="${window.APP}/${mrEsc(ej.imagen_path)}" alt="${mrEsc(ej.nombre)}" class="xp-mr-ej-thumb-img" loading="lazy">`
+        const ejJsonAttr = JSON.stringify(ej).replace(/&/g, '&amp;').replace(/"/g, '&quot;');
+        const mrImgSrc = ej.imagen_path
+          ? (/^https?:\/\//i.test(String(ej.imagen_path)) ? String(ej.imagen_path) : `${window.APP}/${String(ej.imagen_path)}`)
+          : '';
+        const thumbHtml = mrImgSrc
+          ? `<img src="${mrEsc(mrImgSrc)}" alt="${mrEsc(ej.nombre)}" class="xp-mr-ej-thumb-img" loading="lazy">`
           : `<div class="xp-mr-ej-thumb-placeholder"><i class="ti ti-barbell"></i></div>`;
 
         html += `

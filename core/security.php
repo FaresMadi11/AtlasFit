@@ -25,10 +25,10 @@ function assertOwnership(
 ): void {
     // ── Whitelist de tablas permitidas (previene SQL injection en el nombre de tabla) ──
     static $allowedTables = [
-        'rutinas', 'ejercicios_rutina', 'sesiones_asistencia',
-        'pagos', 'peso_historial', 'medidas_corporales',
-        'cliente_objetivos', 'notificaciones', 'modificaciones_rutina',
-        'clientes', 'metodos_pago', 'tienda_secciones', 'tienda_items',
+        'rutinas', 'ejercicios', 'sesiones', 'sesion_series', 'sesiones_asistencia',
+        'pagos', 'peso_historial', 'cliente_medidas',
+        'cliente_objetivos', 'notificaciones', 'plantillas_rutinas',
+        'clientes', 'metodos_pago', 'tienda_secciones', 'tienda_productos',
     ];
 
     // ── Whitelist de columnas permitidas ──

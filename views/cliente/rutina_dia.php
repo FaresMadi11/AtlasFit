@@ -1787,7 +1787,7 @@ $diaHoyNum = ($diaHoyNumRaw >= 1 && $diaHoyNumRaw <= 7) ? $diaHoyNumRaw : 1;
                      id="peso_<?= $ej['id'] ?>_<?= $s ?>"
                      value="<?= $valPeso !== '' && $valPeso !== null ? e($valPeso) : '' ?>"
                      placeholder="<?= $uni === 'lbs' ? 'Lbs c/u' : 'Kg c/u' ?>"
-                     oninput="if(parseFloat(this.value)><?= $maxM ?>) this.value=<?= $maxM ?>; if(parseFloat(this.value)<0) this.value=0; actualizarMancuernaAtleta(<?= $ej['id'] ?>, <?= $s ?>, this)"
+                     oninput="if(parseFloat(this.value)>parseFloat(this.max)) this.value=this.max; if(parseFloat(this.value)<0) this.value=0; actualizarMancuernaAtleta(<?= $ej['id'] ?>, <?= $s ?>, this)"
                      <?= $inputDisabledAttr ?>>
               <span class="wd-mancuerna-x2-hint" id="hintManc_<?= $ej['id'] ?>_<?= $s ?>">
                 <?= ($valPeso > 0) ? "({$valPeso} " . ($uni === 'lbs' ? 'lbs' : 'kg') . " c/u = " . ($valPeso * 2) . " " . ($uni === 'lbs' ? 'lbs' : 'kg') . " tot)" : '' ?>
@@ -1803,7 +1803,7 @@ $diaHoyNum = ($diaHoyNumRaw >= 1 && $diaHoyNumRaw <= 7) ? $diaHoyNumRaw : 1;
                      id="peso_<?= $ej['id'] ?>_<?= $s ?>"
                      value="<?= $valPeso !== '' && $valPeso !== null ? e($valPeso) : '' ?>"
                      placeholder="<?= $uni === 'placas' ? 'N° Placas' : ($uni === 'lbs' ? 'Lbs' : 'Kg') ?>"
-                     oninput="if(parseFloat(this.value)><?= $maxPol ?>) this.value=<?= $maxPol ?>; if(parseFloat(this.value)<0) this.value=0;"
+                     oninput="if(parseFloat(this.value)>parseFloat(this.max)) this.value=this.max; if(parseFloat(this.value)<0) this.value=0;"
                      <?= $inputDisabledAttr ?>>
               <?php if ($prevPeso !== null): ?>
                 <?php $pUnitLbl = ($prevUnit === 'lbs') ? 'lbs' : (($prevUnit === 'placas') ? 'p' : 'kg'); ?>
@@ -1816,7 +1816,7 @@ $diaHoyNum = ($diaHoyNumRaw >= 1 && $diaHoyNumRaw <= 7) ? $diaHoyNumRaw : 1;
                      id="peso_<?= $ej['id'] ?>_<?= $s ?>"
                      value="<?= $valPeso !== '' && $valPeso !== null ? e($valPeso) : '' ?>"
                      placeholder="<?= $uni === 'lbs' ? 'Lbs' : 'Kg' ?>"
-                     oninput="if(parseFloat(this.value)><?= $maxBar ?>) this.value=<?= $maxBar ?>; if(parseFloat(this.value)<0) this.value=0;"
+                     oninput="if(parseFloat(this.value)>parseFloat(this.max)) this.value=this.max; if(parseFloat(this.value)<0) this.value=0;"
                      <?= $inputDisabledAttr ?>>
               <?php if ($prevPeso !== null): ?>
                 <?php $pUnitLbl = ($prevUnit === 'lbs') ? 'lbs' : 'kg'; ?>
@@ -1874,6 +1874,7 @@ $diaHoyNum = ($diaHoyNumRaw >= 1 && $diaHoyNumRaw <= 7) ? $diaHoyNumRaw : 1;
       <i class="ti ti-plus"></i> Agregar Ejercicio
     </button>
   </div>
+</div><!-- /ejerciciosList -->
 <!-- ════ MODAL POSPONER RUTINA (CARRUSEL HORIZONTAL DE DÍAS) ════ -->
 <div class="modal-posponer" id="modalPosponerRutina" role="dialog" aria-modal="true" aria-label="Mover rutina para otro día">
   <div class="bs-handle"></div>
@@ -2913,13 +2914,15 @@ function confirmarAgregarEjercicio(catEj) {
   card.dataset.categoriaNombre = catNom;
 
   const isLocked = !window.sesionIniciada;
+  const escRd = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  const nomEsc = escRd(nom);
 
   card.innerHTML = `
     <div class="wd-ex-header" onclick="toggleAcordeon('${newId}')" id="exHeader${newId}">
       <div class="wd-ex-head-left">
         <div class="wd-ex-num" id="exNum${newId}">${nextNum}</div>
         <div class="wd-ex-info">
-          <div class="wd-ex-name">${nom}</div>
+          <div class="wd-ex-name">${nomEsc}</div>
           <div class="wd-ex-meta">
             <span class="wd-impl-tag ${implInfo[2]}">
               <i class="ti ${implInfo[1]}"></i> ${implInfo[0]}
@@ -2936,7 +2939,7 @@ function confirmarAgregarEjercicio(catEj) {
           </div>
           <i class="ti ti-chevron-down wd-chevron" id="chevron${newId}"></i>
         </div>
-        <button type="button" class="ex-btn-dots" onclick="event.stopPropagation(); abrirOpcionesEjercicioAtleta('${newId}', '${nom.replace(/'/g, "\\'")}')">
+        <button type="button" class="ex-btn-dots" data-ej-nom="${nomEsc}" onclick="event.stopPropagation(); abrirOpcionesEjercicioAtleta('${newId}', this.dataset.ejNom || '')">
           <i class="ti ti-dots-vertical"></i>
         </button>
       </div>
@@ -3708,27 +3711,29 @@ function reordenarEjerciciosCliente() {
   const cards = normalList.querySelectorAll('.wd-ex-card');
   compactList.innerHTML = '';
 
+  const escCmp = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
   cards.forEach(card => {
     const id = card.id.replace('exCard', '');
     const nameEl = card.querySelector('.wd-ex-name');
     const nombre = nameEl ? nameEl.textContent.trim() : 'Ejercicio';
+    const nombreEsc = escCmp(nombre);
     const imgEl = card.querySelector('.wd-media-btn img');
     const imgSrc = imgEl ? imgEl.src : '';
 
     const avatarHtml = imgSrc
-      ? `<img src="${imgSrc}" alt="${nombre}" loading="lazy">`
-      : `<span style="color:#aaa;font-weight:700;font-size:0.85rem;">${nombre.substring(0, 2).toUpperCase()}</span>`;
+      ? `<img src="${escCmp(imgSrc)}" alt="${nombreEsc}" loading="lazy">`
+      : `<span style="color:#aaa;font-weight:700;font-size:0.85rem;">${escCmp(nombre.substring(0, 2).toUpperCase())}</span>`;
 
     const item = document.createElement('div');
     item.className = 'reorder-item';
     item.dataset.id = id;
     item.innerHTML = `
-      <button type="button" class="delete-btn" onclick="eliminarItemCompacto('${id}')" aria-label="Eliminar ${nombre}" title="Eliminar">
+      <button type="button" class="delete-btn" onclick="eliminarItemCompacto('${escCmp(id)}')" aria-label="Eliminar ${nombreEsc}" title="Eliminar">
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="3.5" stroke-linecap="round"><line x1="4" y1="12" x2="20" y2="12"></line></svg>
       </button>
       <div class="item-info">
         <div class="avatar-ejercicio">${avatarHtml}</div>
-        <span class="item-nombre">${nombre}</span>
+        <span class="item-nombre">${nombreEsc}</span>
       </div>
       <div class="drag-handle" title="Arrastrar para reordenar" aria-label="Arrastrar">
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2.2" stroke-linecap="round"><line x1="4" y1="6" x2="20" y2="6"></line><line x1="4" y1="12" x2="20" y2="12"></line><line x1="4" y1="18" x2="20" y2="18"></line></svg>

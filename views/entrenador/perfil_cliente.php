@@ -4253,7 +4253,7 @@ svg.silueta-interactive {
         const frag = document.createDocumentFragment();
         state.pagos.forEach((p) => {
           const st = ESTADO[p.estado] || { ok:false, label:p.estado };
-          const canOpen = p.estado === 'pagado';
+          const canOpen = Boolean(p.comprobante_url) || p.estado === 'pagado';
           const row = el('button', 'xpay-row' + (canOpen ? '' : ' is-locked'));
           row.type = 'button'; row.setAttribute('role', 'listitem'); row.dataset.id = p.id;
           if (!canOpen) row.setAttribute('aria-disabled', 'true');
@@ -4984,17 +4984,16 @@ function renderPickerList(ejercicios, activeName) {
   }
 
   let html = '';
+  const escPick = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
   ejercicios.forEach(ej => {
     const isAct = (activeName === ej.nombre);
-    const safeName = (ej.nombre || '').replace(/'/g, "\\'");
-    const safeAttr = (ej.nombre || '').replace(/"/g, '&quot;');
-    const seriesCount = ej.total_series_registradas || 0;
-    const fechaFmt = ej.ultima_fecha ? ('Última sesión: ' + ej.ultima_fecha.split('-').reverse().join('/')) : 'Sin fecha reciente';
+    const safeAttr = escPick(ej.nombre || '');
+    const fechaFmt = ej.ultima_fecha ? ('Última sesión: ' + escPick(ej.ultima_fecha.split('-').reverse().join('/'))) : 'Sin fecha reciente';
 
     html += `
-      <div class="pm-picker-item${isAct ? ' active' : ''}" data-ej="${safeAttr}" onclick="seleccionarEjercicioDesdePicker('${safeName}', ${ej.id || 0})">
+      <div class="pm-picker-item${isAct ? ' active' : ''}" data-ej="${safeAttr}" onclick="seleccionarEjercicioDesdePicker(this.dataset.ej, ${parseInt(ej.id, 10) || 0})">
         <div class="pm-picker-item-left">
-          <div class="pm-picker-item-name">${ej.nombre}</div>
+          <div class="pm-picker-item-name">${safeAttr}</div>
           <div class="pm-picker-item-sub">${fechaFmt}</div>
         </div>
         <div class="pm-picker-item-right">
@@ -8447,8 +8446,11 @@ function activarModoNuevaMedicion() {
   if (editControls) editControls.style.display = 'flex';
   slide.classList.add('mode-silueta-edit');
 
-  // 2. Establecer fecha de hoy con opción a seleccionar otra
-  const hoy = new Date().toISOString().slice(0, 10);
+  // 2. Establecer fecha local del servidor (evita desfase UTC)
+  const _nLoc = new Date();
+  const hoy = (typeof FECHA_HOY !== 'undefined' && FECHA_HOY)
+    ? FECHA_HOY
+    : `${_nLoc.getFullYear()}-${String(_nLoc.getMonth()+1).padStart(2,'0')}-${String(_nLoc.getDate()).padStart(2,'0')}`;
   if (fechaInp) fechaInp.value = hoy;
 
   // 3. LIMPIAR TODOS LOS INPUTS (desaparecen las medidas ya registradas para colocar las nuevas de ese día)
@@ -8483,7 +8485,10 @@ function activarModoEditarMedicionActual(campoKeyFocus = null) {
   if (!slide) return;
 
   const curr = (window.XP_HISTORIAL_MEDIDAS || []).find(r => r.fecha === window.xpSelectedFecha) || {};
-  const hoy = new Date().toISOString().slice(0, 10);
+  const _nLoc2 = new Date();
+  const hoy = (typeof FECHA_HOY !== 'undefined' && FECHA_HOY)
+    ? FECHA_HOY
+    : `${_nLoc2.getFullYear()}-${String(_nLoc2.getMonth()+1).padStart(2,'0')}-${String(_nLoc2.getDate()).padStart(2,'0')}`;
 
   // 1. Mostrar controles de edición en la cabecera y ocultar botón 'Nueva Medición'
   if (btnNueva) btnNueva.style.display = 'none';
@@ -8577,8 +8582,10 @@ async function guardarMedicionInline() {
     return;
   }
 
-  await enviarGuardarMedidas(payload);
-  cancelarEdicionInline();
+  const ok = await enviarGuardarMedidas(payload);
+  if (ok) {
+    cancelarEdicionInline();
+  }
 }
 
 /**
@@ -8628,6 +8635,7 @@ async function enviarGuardarMedidas(payload) {
       color: '#fff',
       customClass: { popup: 'card-bento' }
     });
+    return true;
   } catch (err) {
     console.error('Error al guardar medidas:', err);
     Swal.fire({
@@ -8639,6 +8647,7 @@ async function enviarGuardarMedidas(payload) {
       color: '#fff',
       customClass: { popup: 'card-bento' }
     });
+    return false;
   }
 }
 

@@ -620,7 +620,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     if ('caches' in window && targetUrl) {
-      const userCacheName = window.XP_USER_CACHE || ('atlas-fit-user-' + (window.XP_SW_VER || '5.0'));
+      const userCacheName = window.XP_USER_CACHE || ('atlas-fit-user-' + (window.XP_SW_VER || '5.3'));
       scheduleWithDelay(780);
       caches.open(userCacheName)
         .then(cache => cache.match(targetUrl, { ignoreSearch: true }))
@@ -790,7 +790,13 @@ window.mostrarToast = function(mensaje) {
   const toast = document.createElement('div');
   toast.id = 'xpFloatingToast';
   toast.className = 'xp-toast-pill';
-  toast.innerHTML = `<i class="ti ti-circle-check bx bx-check-circle" style="color:#b388ff;font-size:1.15rem;display:inline-flex;align-items:center;"></i><span>${mensaje || 'Datos de Pago Móvil copiados'}</span>`;
+  const ico = document.createElement('i');
+  ico.className = 'ti ti-circle-check bx bx-check-circle';
+  ico.style.cssText = 'color:#b388ff;font-size:1.15rem;display:inline-flex;align-items:center;';
+  const span = document.createElement('span');
+  span.textContent = mensaje || 'Datos de Pago Móvil copiados';
+  toast.appendChild(ico);
+  toast.appendChild(span);
   document.body.appendChild(toast);
 
   requestAnimationFrame(() => {

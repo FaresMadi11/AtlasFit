@@ -217,9 +217,11 @@ function googleCallback(): void {
             $cliente = $stCl->fetch(\PDO::FETCH_ASSOC);
         }
 
-        // Evaluar perfil incompleto: si no existe o falta peso_kg, altura_cm u objetivo (los admins y entrenadores no requieren perfil de atleta)
+        // Evaluar perfil incompleto: solo si es usuario nuevo o faltan datos biométricos base (peso/altura).
+        // Si el atleta ya está activo y omitió metas opcionales en el paso 3, NO forzar onboarding ni degradarlo a pendiente.
         $esStaff = ($existingUser && in_array($existingUser['rol'] ?? '', ['admin', 'entrenador'], true));
-        $perfilIncompleto = !$esStaff && (!$existingUser || !$cliente || empty($cliente['peso_kg']) || empty($cliente['altura_cm']) || empty($cliente['objetivo']));
+        $yaActivo = ($existingUser && ($existingUser['estado_cuenta'] ?? '') === 'activo');
+        $perfilIncompleto = !$esStaff && (!$existingUser || !$cliente || empty($cliente['peso_kg']) || empty($cliente['altura_cm']) || (!$yaActivo && empty($cliente['objetivo']) && empty($cliente['fecha_nac'])));
 
         if ($perfilIncompleto) {
             // Usuario Nuevo o Perfil Incompleto: asegurar registro en usuarios y clientes con estado_cuenta = 'pendiente'

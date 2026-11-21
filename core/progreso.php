@@ -222,8 +222,8 @@ function obtenerProgresoHistorial(PDO $db, int $clienteId, string $nombreEj, int
         if (($s['tipo_serie'] ?? '') === 'calentamiento') continue;
         $p = (float)($s['peso_usado'] ?? 0);
         $r = (int)($s['reps_realizadas'] ?? 0);
-        $u = trim((string)($s['unidad_carga'] ?? 'kg')) ?: 'kg';
-        $k = (string)$p;
+        $u = strtolower(trim((string)($s['unidad_carga'] ?? 'kg'))) ?: 'kg';
+        $k = $p . '_' . $u;
 
         $uLabel = match(strtolower($u)) {
             'lbs', 'lb' => 'lbs',
@@ -285,7 +285,7 @@ function obtenerProgresoHistorial(PDO $db, int $clienteId, string $nombreEj, int
             if (($s['tipo_serie'] ?? '') === 'calentamiento') continue;
             if ($pMax > 0 && $p < $umbral) continue;
 
-            $k = (string)$p;
+            $k = $p . '_' . strtolower($uS);
             $unitSuffix = ($uS === 'lbs') ? ' lbs' : (($uS === 'placas') ? ($p == 1 ? ' placa' : ' placas') : (($uS === 'ninguna') ? '' : ' kg'));
             $pLbl = $p > 0 ? (rtrim(rtrim(number_format($p, 1, '.', ''), '0'), '.') . $unitSuffix) : ($uS === 'ninguna' ? 'Sin peso' : 'Corporal');
 
@@ -407,9 +407,9 @@ function obtenerRutinasProgramadasPorDia(PDO $db, int $clienteId): array {
                 COALESCE(NULLIF(TRIM(r.titulo), ''), NULLIF(TRIM(r.zona_muscular), ''), 
                          NULLIF(LEFT(TRIM(r.descripcion), 60), ''), CONCAT('Rutina #', r.id)) AS nombre
            FROM rutinas r
-          WHERE r.cliente_id = ? AND r.estado IN ('en_progreso', 'pendiente')
+          WHERE r.cliente_id = ? AND r.estado = 'en_progreso'
             AND (r.es_modificacion IS NULL OR r.es_modificacion = 0 OR r.estado_modificacion = 'aprobada')
-          ORDER BY r.id ASC"
+          ORDER BY r.creado_en DESC, r.id DESC"
     );
     $st->execute([$clienteId]);
 
@@ -813,6 +813,7 @@ function obtenerHistorialDia(PDO $db, int $clienteId, string $fecha): array {
             'unidad'        => $unidad,
             'kg_real'       => $row['kg_real'] !== null ? (float)$row['kg_real'] : null,
             'peso_por_lado' => $row['peso_por_lado'] !== null ? (float)$row['peso_por_lado'] : null,
+            'completado'    => true,
         ];
 
         $ejercicios[$key]['series'][] = $sItem;
@@ -876,22 +877,31 @@ function obtenerEjerciciosProgramados(PDO $db, int $rutinaId, ?int $clienteId = 
                        FROM catalogo_ejercicios c 
                        LEFT JOIN categorias_musculares cm ON cm.id = c.categoria_id 
                       WHERE LOWER(TRIM(c.nombre)) = LOWER(TRIM(e.nombre)) 
-                        AND (c.grupo_muscular IS NOT NULL OR cm.nombre IS NOT NULL) 
+                        AND COALESCE(c.oculto, 0) = 0
+                        AND (c.entrenador_id = r.entrenador_id OR c.entrenador_id IS NULL)
+                        AND (c.grupo_muscular IS NOT NULL OR cm.nombre IS NOT NULL)
+                      ORDER BY (c.entrenador_id = r.entrenador_id) DESC, c.id DESC
                       LIMIT 1)
                 ) AS grupo_muscular,
                 e.series, e.repeticiones, e.rir, e.orden,
                 e.tipo_implemento, e.unidad_carga,
                 COALESCE(
                     (SELECT c.equipamiento FROM catalogo_ejercicios c
-                      WHERE LOWER(TRIM(c.nombre)) = LOWER(TRIM(e.nombre)) AND c.equipamiento IS NOT NULL LIMIT 1),
+                      WHERE LOWER(TRIM(c.nombre)) = LOWER(TRIM(e.nombre))
+                        AND COALESCE(c.oculto, 0) = 0
+                        AND (c.entrenador_id = r.entrenador_id OR c.entrenador_id IS NULL)
+                        AND c.equipamiento IS NOT NULL
+                      ORDER BY (c.entrenador_id = r.entrenador_id) DESC, c.id DESC
+                      LIMIT 1),
                     e.tipo_implemento
                 ) AS equipamiento,
-                COALESCE(e.imagen_path, (SELECT c.imagen_path FROM catalogo_ejercicios c WHERE LOWER(TRIM(c.nombre)) = LOWER(TRIM(e.nombre)) LIMIT 1)) AS imagen_path,
-                COALESCE(e.imagen_demo_path, (SELECT c.imagen_demo_path FROM catalogo_ejercicios c WHERE LOWER(TRIM(c.nombre)) = LOWER(TRIM(e.nombre)) LIMIT 1)) AS imagen_demo_path,
-                COALESCE(e.video_url, (SELECT c.video_url FROM catalogo_ejercicios c WHERE LOWER(TRIM(c.nombre)) = LOWER(TRIM(e.nombre)) LIMIT 1)) AS video_url,
-                COALESCE(e.nota_biomecanica, (SELECT c.indicaciones FROM catalogo_ejercicios c WHERE LOWER(TRIM(c.nombre)) = LOWER(TRIM(e.nombre)) LIMIT 1)) AS indicaciones,
-                COALESCE(e.configuracion_maquina, (SELECT c.configuracion_maquina FROM catalogo_ejercicios c WHERE LOWER(TRIM(c.nombre)) = LOWER(TRIM(e.nombre)) LIMIT 1)) AS configuracion_maquina
+                COALESCE(e.imagen_path, (SELECT c.imagen_path FROM catalogo_ejercicios c WHERE LOWER(TRIM(c.nombre)) = LOWER(TRIM(e.nombre)) AND COALESCE(c.oculto, 0) = 0 AND (c.entrenador_id = r.entrenador_id OR c.entrenador_id IS NULL) AND c.imagen_path IS NOT NULL ORDER BY (c.entrenador_id = r.entrenador_id) DESC, c.id DESC LIMIT 1)) AS imagen_path,
+                COALESCE(e.imagen_demo_path, (SELECT c.imagen_demo_path FROM catalogo_ejercicios c WHERE LOWER(TRIM(c.nombre)) = LOWER(TRIM(e.nombre)) AND COALESCE(c.oculto, 0) = 0 AND (c.entrenador_id = r.entrenador_id OR c.entrenador_id IS NULL) AND c.imagen_demo_path IS NOT NULL ORDER BY (c.entrenador_id = r.entrenador_id) DESC, c.id DESC LIMIT 1)) AS imagen_demo_path,
+                COALESCE(e.video_url, (SELECT c.video_url FROM catalogo_ejercicios c WHERE LOWER(TRIM(c.nombre)) = LOWER(TRIM(e.nombre)) AND COALESCE(c.oculto, 0) = 0 AND (c.entrenador_id = r.entrenador_id OR c.entrenador_id IS NULL) AND c.video_url IS NOT NULL ORDER BY (c.entrenador_id = r.entrenador_id) DESC, c.id DESC LIMIT 1)) AS video_url,
+                COALESCE(e.nota_biomecanica, (SELECT c.indicaciones FROM catalogo_ejercicios c WHERE LOWER(TRIM(c.nombre)) = LOWER(TRIM(e.nombre)) AND COALESCE(c.oculto, 0) = 0 AND (c.entrenador_id = r.entrenador_id OR c.entrenador_id IS NULL) AND c.indicaciones IS NOT NULL ORDER BY (c.entrenador_id = r.entrenador_id) DESC, c.id DESC LIMIT 1)) AS indicaciones,
+                COALESCE(e.configuracion_maquina, (SELECT c.configuracion_maquina FROM catalogo_ejercicios c WHERE LOWER(TRIM(c.nombre)) = LOWER(TRIM(e.nombre)) AND COALESCE(c.oculto, 0) = 0 AND (c.entrenador_id = r.entrenador_id OR c.entrenador_id IS NULL) AND c.configuracion_maquina IS NOT NULL ORDER BY (c.entrenador_id = r.entrenador_id) DESC, c.id DESC LIMIT 1)) AS configuracion_maquina
            FROM ejercicios e
+           JOIN rutinas r ON r.id = e.rutina_id
           WHERE e.rutina_id = ?
           ORDER BY e.orden, e.id"
     );
@@ -1487,19 +1497,24 @@ function construirSnapshotEstadisticasOffline(PDO $db, int $clienteId, string $r
                 ];
             }
 
-            $reps = $row['reps_realizadas'] !== null ? (int)$row['reps_realizadas'] : null;
-            $peso = $row['peso_usado']      !== null ? (float)$row['peso_usado']    : null;
+            $uRow   = strtolower(trim((string)($row['unidad_carga'] ?? 'kg'))) ?: 'kg';
+            $reps   = $row['reps_realizadas'] !== null ? (int)$row['reps_realizadas'] : null;
+            $peso   = $row['peso_usado']      !== null ? (float)$row['peso_usado']    : null;
+            $kgReal = $row['kg_real']         !== null ? (float)$row['kg_real']       : $peso;
 
+            $ejerciciosDia[$key]['unidad_carga'] = $uRow;
             $ejerciciosDia[$key]['series'][] = [
-                'numero' => (int)$row['numero_serie'],
-                'tipo'   => (string)$row['tipo_serie'],
-                'reps'   => $reps,
-                'peso'   => $peso,
+                'numero'  => (int)$row['numero_serie'],
+                'tipo'    => (string)$row['tipo_serie'],
+                'reps'    => $reps,
+                'peso'    => $peso,
+                'unidad'  => $uRow,
+                'kg_real' => $kgReal,
             ];
             $totalSeries++;
 
-            if ($row['tipo_serie'] !== 'calentamiento' && $reps !== null && $peso !== null) {
-                $volumen += $reps * $peso;
+            if ($row['tipo_serie'] !== 'calentamiento' && $reps !== null && $kgReal !== null && $uRow !== 'placas' && $uRow !== 'ninguna') {
+                $volumen += $reps * $kgReal;
             }
 
             $rid = $row['rutina_id'] !== null ? (int)$row['rutina_id'] : 0;
@@ -1697,7 +1712,7 @@ function construirSnapshotEstadisticasOffline(PDO $db, int $clienteId, string $r
             }
 
             if (($s['tipo_serie'] ?? '') !== 'calentamiento') {
-                $k = (string)$pFloat;
+                $k = $pFloat . '_' . strtolower($uSerie);
                 $uLabel = match(strtolower($uSerie)) {
                     'lbs', 'lb' => 'lbs',
                     'placas', 'placa' => ($pFloat == 1 ? 'placa' : 'placas'),
@@ -1753,7 +1768,7 @@ function construirSnapshotEstadisticasOffline(PDO $db, int $clienteId, string $r
                 $uS = trim((string)($s['unidad_carga'] ?? $uSes)) ?: $uSes;
                 if (($s['tipo_serie'] ?? '') === 'calentamiento') continue;
                 if ($pMax > 0 && $p < $umbral) continue;
-                $k = (string)$p;
+                $k = $p . '_' . strtolower($uS);
                 $unitSuffix = ($uS === 'lbs') ? ' lbs' : (($uS === 'placas') ? ($p == 1 ? ' placa' : ' placas') : (($uS === 'ninguna') ? '' : ' kg'));
                 $pLbl = $p > 0 ? (rtrim(rtrim(number_format($p, 1, '.', ''), '0'), '.') . $unitSuffix) : ($uS === 'ninguna' ? 'Sin peso' : 'Corporal');
 

@@ -190,6 +190,7 @@ class ImportadorService {
             jsonOut(false, 'No se proporcionaron sesiones ni medidas para registrar en el historial.', [], 400);
         }
 
+        CatalogoService::asegurarColumnasScope($db);
         $db->beginTransaction();
         try {
             $totalSesiones = 0;

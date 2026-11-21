@@ -2,8 +2,8 @@
 
 <div class="sys-top-header premium-header">
   <a href="<?= APP_URL ?>/entrenador/perfil-cliente?id=<?= (int)($miClienteIdEnt ?? 0) ?>" class="user-info-group" style="text-decoration:none; color:inherit; cursor:pointer;" title="Ver mi perfil de entrenamiento">
-    <div class="user-avatar">
-       <?= strtoupper(substr($nomUser, 0, 1)) ?>
+    <div class="user-avatar" style="padding:5px;">
+       <img src="<?= APP_URL ?>/assets/img/logo-atlas-1080.png?v=<?= e(xpAssetVer('assets/img/logo-atlas-1080.png')) ?>" alt="Atlas Fit" style="width:100%;height:100%;object-fit:contain;display:block;pointer-events:none;" draggable="false">
     </div>
     <div class="user-text-wrap">
       <p class="sys-top-greet-new">Bienvenido de vuelta</p>
@@ -51,7 +51,7 @@
     <div class="dash-stat-label" style="color:var(--warn)">Modificar Rutina</div>
     <div class="dash-stat-value" style="color:var(--warn)"><?= $totalModPendientes ?? 0 ?></div>
   </a>
-  <a href="<?= APP_URL ?>/entrenador/asistencias?tab=alertas#verificar" class="dash-stat-card" style="text-decoration:none">
+  <a href="<?= APP_URL ?>/entrenador/asistencias?tab=completadas#verificar" class="dash-stat-card" style="text-decoration:none">
     <div class="dash-stat-icon"><i class="ti ti-eye"></i></div>
     <div class="dash-stat-label">Verificar rutina</div>
     <div class="dash-stat-value"><?= $totalVerificar ?></div>

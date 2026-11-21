@@ -28,6 +28,18 @@
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "maskable"
+    },
+    {
+      "src": "./assets/img/icon-1080.png",
+      "sizes": "1080x1080",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "./assets/img/icon-1080.png",
+      "sizes": "1080x1080",
+      "type": "image/png",
+      "purpose": "maskable"
     }
   ]
 }

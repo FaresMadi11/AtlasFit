@@ -15,10 +15,20 @@ class BackupService
         'decimal', 'numeric', 'float', 'double', 'real', 'bit'
     ];
 
+    private const BINARY_TYPES = [
+        'tinyblob', 'blob', 'mediumblob', 'longblob', 'binary', 'varbinary'
+    ];
+
     /**
      * Descarga el respaldo GLOBAL completo (solo Super Admin).
      */
     public static function descargarRespaldo(PDO $db, ?string $filename = null): void {
+        // Validar acceso a tablas ANTES de enviar headers GZIP
+        $tables = $db->query("SHOW FULL TABLES WHERE Table_type = 'BASE TABLE'")->fetchAll(PDO::FETCH_COLUMN);
+        if (!is_array($tables)) {
+            throw new \RuntimeException('No se pudo consultar el esquema de base de datos.');
+        }
+
         self::prepararEntornoStreaming();
         $filename = $filename ?: ('atlas_fit_global_' . date('Y-m-d_His') . '.sql.gz');
         self::enviarHeadersDescarga($filename);
@@ -40,6 +50,13 @@ class BackupService
         if ($entrenadorId <= 0) {
             throw new \InvalidArgumentException('Entrenador inválido para respaldo.');
         }
+        // Validar existencia del entrenador ANTES de emitir headers GZIP para poder devolver JSON limpio si falla
+        $stChk = $db->prepare("SELECT id FROM usuarios WHERE id = ? AND rol = 'entrenador' LIMIT 1");
+        $stChk->execute([$entrenadorId]);
+        if (!$stChk->fetchColumn()) {
+            throw new \RuntimeException('Entrenador no encontrado.');
+        }
+
         self::prepararEntornoStreaming();
         $filename = $filename ?: ('atlas_fit_entrenador_' . $entrenadorId . '_' . date('Y-m-d_His') . '.sql.gz');
         self::enviarHeadersDescarga($filename);
@@ -134,9 +151,9 @@ SQL;
 
         $existingTables = array_flip($db->query("SHOW FULL TABLES WHERE Table_type = 'BASE TABLE'")->fetchAll(PDO::FETCH_COLUMN));
 
-        // Obtener IDs de atletas y usuarios pertenecientes exclusivamente a este entrenador
-        $stCli = $db->prepare("SELECT id, usuario_id FROM clientes WHERE entrenador_id = ? ORDER BY id ASC");
-        $stCli->execute([$entrenadorId]);
+        // Obtener IDs de atletas y usuarios pertenecientes exclusivamente a este entrenador (excluyendo fila self-client del entrenador)
+        $stCli = $db->prepare("SELECT id, usuario_id FROM clientes WHERE entrenador_id = ? AND usuario_id != ? ORDER BY id ASC");
+        $stCli->execute([$entrenadorId, $entrenadorId]);
         $cliRows = $stCli->fetchAll(PDO::FETCH_ASSOC);
         $clienteIds = array_values(array_unique(array_filter(array_map(static fn($r) => (int)$r['id'], $cliRows))));
         $usuarioIds = array_values(array_unique(array_filter(array_map(static fn($r) => (int)$r['usuario_id'], $cliRows))));
@@ -185,7 +202,7 @@ SQL;
             $phU = implode(',', array_fill(0, count($usuarioIds), '?'));
             $plan[] = ['usuarios', "SELECT id, nombre, email, rol, activo, estado_cuenta, creado_en FROM usuarios WHERE id IN ({$phU}) AND rol = 'cliente'", $usuarioIds];
         }
-        $plan[] = ['clientes', 'SELECT * FROM clientes WHERE entrenador_id = ?', [$entrenadorId]];
+        $plan[] = ['clientes', 'SELECT * FROM clientes WHERE entrenador_id = ? AND usuario_id != ?', [$entrenadorId, $entrenadorId]];
         if (!empty($clienteIds)) {
             $phC = implode(',', array_fill(0, count($clienteIds), '?'));
             $plan[] = ['cliente_objetivos', "SELECT * FROM cliente_objetivos WHERE cliente_id IN ({$phC})", $clienteIds];
@@ -224,10 +241,10 @@ SQL;
 
         foreach ($plan as [$table, $sql, $params]) {
             if (!isset($existingTables[$table])) continue;
-            $numericCols = self::obtenerColumnasNumericas($db, $table);
+            [$numericCols, $binaryCols] = self::obtenerTiposColumnas($db, $table);
             $st = $db->prepare($sql);
             $st->execute($params);
-            $filasTabla = self::volcarStatementConColumnas($db, $st, $table, $numericCols, $gz, true);
+            $filasTabla = self::volcarStatementConColumnas($db, $st, $table, $numericCols, $binaryCols, $gz, true);
             $totalTablas++;
             $totalFilas += $filasTabla;
         }
@@ -291,9 +308,9 @@ DROP TABLE IF EXISTS `{$table}`;
 SQL;
             gzwrite($gz, $seccionTabla);
 
-            $numericCols = self::obtenerColumnasNumericas($db, (string)$table);
+            [$numericCols, $binaryCols] = self::obtenerTiposColumnas($db, (string)$table);
             $stData = $db->query("SELECT * FROM `{$table}`");
-            $totalFilasGlobales += self::volcarStatementConColumnas($db, $stData, (string)$table, $numericCols, $gz, false);
+            $totalFilasGlobales += self::volcarStatementConColumnas($db, $stData, (string)$table, $numericCols, $binaryCols, $gz, false);
         }
 
         $cierre = <<<SQL
@@ -311,18 +328,22 @@ SQL;
         return ['tablas' => $totalTablas, 'filas' => $totalFilasGlobales];
     }
 
-    private static function obtenerColumnasNumericas(PDO $db, string $table): array {
-        $map = [];
+    private static function obtenerTiposColumnas(PDO $db, string $table): array {
+        $numMap = [];
+        $binMap = [];
         try {
             $cols = $db->query("SHOW COLUMNS FROM `{$table}`")->fetchAll(PDO::FETCH_ASSOC);
             foreach ($cols as $c) {
                 $baseType = strtolower(preg_replace('/[^a-z].*$/i', '', (string)($c['Type'] ?? '')));
+                $field = (string)$c['Field'];
                 if (in_array($baseType, self::NUMERIC_TYPES, true)) {
-                    $map[(string)$c['Field']] = true;
+                    $numMap[$field] = true;
+                } elseif (in_array($baseType, self::BINARY_TYPES, true)) {
+                    $binMap[$field] = true;
                 }
             }
         } catch (\Throwable $e) {}
-        return $map;
+        return [$numMap, $binMap];
     }
 
     private static function volcarStatementConColumnas(
@@ -330,12 +351,14 @@ SQL;
         PDOStatement $st,
         string $table,
         array $numericCols,
+        array $binaryCols,
         $gz,
         bool $useInsertIgnore
     ): int {
         $count = 0;
         $chunk = [];
-        $chunkSize = 150;
+        // Tablas con BLOBs (ej. archivos_media) se vuelcan 1 fila por INSERT para evitar picos de RAM y max_allowed_packet
+        $chunkSize = !empty($binaryCols) ? 1 : 150;
         $colHeaderSql = '';
         $prefix = $useInsertIgnore ? 'INSERT IGNORE INTO' : 'INSERT INTO';
 
@@ -350,6 +373,9 @@ SQL;
             foreach ($row as $colName => $colVal) {
                 if ($colVal === null) {
                     $valores[] = 'NULL';
+                } elseif (isset($binaryCols[$colName])) {
+                    $binStr = (string)$colVal;
+                    $valores[] = ($binStr === '') ? "''" : ('0x' . bin2hex($binStr));
                 } elseif (isset($numericCols[$colName]) && is_numeric($colVal)) {
                     $valores[] = (string)$colVal;
                 } else {

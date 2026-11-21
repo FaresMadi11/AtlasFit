@@ -1,13 +1,13 @@
 # Graph Report - Xprod Fit  (2026-11-21)
 
 ## Corpus Check
-- 125 files · ~338,524 words
+- 126 files · ~337,892 words
 - Verdict: corpus is large enough that graph structure adds value.
 - Unclassified: 14 file(s) not represented in the graph (top: (none) 7, .css 4, .conf 1)
 
 ## Summary
-- 1504 nodes · 3392 edges · 107 communities (52 shown, 55 thin omitted)
-- Extraction: 76% EXTRACTED · 24% INFERRED · 0% AMBIGUOUS · INFERRED: 799 edges (avg confidence: 0.85)
+- 1490 nodes · 3366 edges · 114 communities (56 shown, 58 thin omitted)
+- Extraction: 76% EXTRACTED · 24% INFERRED · 0% AMBIGUOUS · INFERRED: 801 edges (avg confidence: 0.85)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
@@ -25,7 +25,7 @@
 - CatalogoService
 - crear_rutina.php
 - EntrenadorController.php
-- csrfCheck
+- getDB
 - views/cliente/estadisticas.php
 - sw.js
 - submitRegistration
@@ -34,9 +34,9 @@
 - progreso.php
 - views/cliente/perfil.php
 - perfil_cliente.php
-- UsuarioModel
+- AuthController.php
 - entrenador/configuracion.php
-- .analizar
+- csrfCheck
 - .setError
 - clearRecoveryErrors
 - login.php
@@ -69,11 +69,10 @@
 - RutinaModel
 - AdminController.php
 - Product
-- rutina.php
 - gestion.php
 - PagoModel
 - admin/configuracion.php
-- media_storage.php
+- UsuarioModel
 - enhanceSelect
 - custom-date.js
 - views/entrenador/metodos_pago.php
@@ -81,10 +80,16 @@
 - MetaModel
 - UsuarioSistemaModel
 - cfg_herramientas_ia_backup.php
+- googleCallback
 - cfg_paleta_colores.php
 - views/cliente/modificar_rutina.php
 - views/entrenador/clientes.php
-- .strlen
+- .addOrEnqueueAnAddress
+- security.php
+- mi_rutina_personal_bento.php
+- rateLimitCheck
+- closeSheet
+- .analizarHistorialAtleta
 - footer.php
 - views/layout/header.php
 - registrar_cliente.php
@@ -102,29 +107,33 @@
 10. `UsuarioModel` - 23 edges
 
 ## Surprising Connections (you probably didn't know these)
+- `cliApiPesoHistorial()` --calls--> `getDB()`  [INFERRED]
+  controllers/ClienteController.php → config/database.php
+- `cliPago()` --calls--> `getDB()`  [INFERRED]
+  controllers/ClienteController.php → config/database.php
 - `entMetodosPago()` --calls--> `getDB()`  [INFERRED]
   controllers/EntrenadorController.php → config/database.php
 - `entPagosRecibidos()` --calls--> `getDB()`  [INFERRED]
   controllers/EntrenadorController.php → config/database.php
 - `{closure#3}()` --calls--> `sanitizeInput()`  [INFERRED]
   controllers/AuthController.php → core/security.php
-- `{closure#4}()` --calls--> `sanitizeInput()`  [INFERRED]
-  controllers/AuthController.php → core/security.php
-- `getDB()` --calls--> `env()`  [INFERRED]
-  config/database.php → core/env.php
 
 ## Import Cycles
 - None detected.
 
-## Communities (107 total, 55 thin omitted)
+## Communities (114 total, 58 thin omitted)
 
 ### Community 0 - "controllers/ClienteController.php"
-Cohesion: 0.07
-Nodes (50): getDB(), adminApiAprobarEntrenador(), cliApiCambiarPassword(), cliApiDiaDetalle(), cliApiEditarPerfil(), cliApiEditarPeso(), cliApiGuardarPregunta(), cliApiNuevoPeso() (+42 more)
+Cohesion: 0.09
+Nodes (27): cliApiCambiarPassword(), cliApiDiaDetalle(), cliApiEditarPerfil(), cliApiEditarPeso(), cliApiGuardarPregunta(), cliApiNuevoPeso(), cliApiPesoHistorial(), cliApiRutinaSync() (+19 more)
 
 ### Community 1 - "pwa-sync.js"
 Cohesion: 0.35
 Nodes (14): checkInstalledAsync(), dequeue(), desinstalarXprodApp(), enqueue(), ensurePillInDOM(), flushQueue(), getQueue(), initSW() (+6 more)
+
+### Community 3 - "SMTP"
+Cohesion: 0.06
+Nodes (19): adminSanitizarCodigoReferido(), cliApiSubirFoto(), xpAppBuildVersion(), xpAppCacheName(), comprimirImagenGD(), eliminarMediaPermanente(), ensureMediaTable(), esImagenAnimada() (+11 more)
 
 ### Community 4 - "login.php"
 Cohesion: 0.04
@@ -136,15 +145,15 @@ Nodes (5): entApiCatalogoAgregar(), entApiCatalogoBorrar(), entApiCatalogoEditar
 
 ### Community 9 - "crear_rutina.php"
 Cohesion: 0.07
-Nodes (27): actualizarNumerosPasosCardio(), cardioState, cargarDiasAtleta(), catalogoEjercicios, categoriasDB, consolidarPasosCardio(), CR_API_PREFIX, CR_BACK_URL (+19 more)
+Nodes (29): actualizarNumerosPasosCardio(), aplicarEstadoDiasAtleta(), cardioState, cargarDiasAtleta(), catalogoEjercicios, categoriasDB, consolidarPasosCardio(), CR_API_PREFIX (+21 more)
 
 ### Community 10 - "EntrenadorController.php"
 Cohesion: 0.05
-Nodes (36): calcularFirmaPlantilla(), entActualizarMedidas(), entApiEliminarPlantillaCatalogo(), entApiEliminarRutina(), entApiGuardarMensualidad(), entApiGuardarPlantillaCatalogo(), entApiGuardarRutinaComoPlantilla(), entApiGuardarTemaSistema() (+28 more)
+Nodes (41): adminCambiarPasswordAtleta(), cliModificarRutina(), cliRutinaLista(), calcularFirmaPlantilla(), entApiCambiarGeneroCliente(), entApiClienteMedidas(), entApiDiaDetalle(), entApiEliminarPlantillaCatalogo() (+33 more)
 
-### Community 11 - "csrfCheck"
+### Community 11 - "getDB"
 Cohesion: 0.15
-Nodes (38): adminApiActualizarMembresia(), adminApiAprobarAtleta(), adminApiCrearEntrenador(), adminApiGenerarCodigo(), adminApiGuardarConfiguracion(), adminApiMarcarNotificacion(), adminApiRevocarEntrenador(), adminApiTogglePausa() (+30 more)
+Nodes (25): getDB(), adminApiActualizarMembresia(), adminApiGenerarCodigo(), adminApiGuardarConfiguracion(), adminApiTogglePausa(), adminConfiguracion(), adminGestion(), cliApiGuardarMeta() (+17 more)
 
 ### Community 12 - "views/cliente/estadisticas.php"
 Cohesion: 0.08
@@ -167,8 +176,8 @@ Cohesion: 0.40
 Nodes (5): ensureWheelPositioned(), initRegWheel(), positionRegWheel(), syncRegWheelDate(), updateRegWheelCol()
 
 ### Community 17 - "progreso.php"
-Cohesion: 0.12
-Nodes (21): adminApiDiasAtleta(), entApiDiaDetalle(), entApiDiasAtleta(), entApiProgresoEjercicios(), entApiProgresoHistorial(), entAsistencias(), entAsistenciasData(), coincideGrupoMuscularProgreso() (+13 more)
+Cohesion: 0.16
+Nodes (15): cliApiProgresoEjercicios(), cliApiProgresoHistorial(), cliEstadisticas(), coincideGrupoMuscularProgreso(), construirSnapshotEstadisticasOffline(), normalizarTextoProgreso(), obtenerDetalleDia(), obtenerEjerciciosProgramados() (+7 more)
 
 ### Community 18 - "views/cliente/perfil.php"
 Cohesion: 0.11
@@ -178,17 +187,17 @@ Nodes (13): copiarDatosPago(), draw(), fbCopy(), init(), mostrarToast(), open(),
 Cohesion: 0.07
 Nodes (26): abrirModalSelectorEjercicio(), actualizarCardioSummaryInline(), actualizarNumerosPasosCardioInline(), api(), cambiarMesCalendario(), currentBarrasPesos, currentGrupoEjercicios, currentTop3Sesiones (+18 more)
 
-### Community 20 - "UsuarioModel"
-Cohesion: 0.05
-Nodes (51): authApiEnviarCodigoEmail(), authApiValidarCodigo(), authApiVerificarCodigoEmail(), authDoLogin(), authDoRecuperarIdentificar(), authDoRecuperarVerificarRespuesta(), authDoRegistro(), authGoogleCallback() (+43 more)
+### Community 20 - "AuthController.php"
+Cohesion: 0.13
+Nodes (19): authApiEnviarCodigoEmail(), authApiValidarCodigo(), authDoRecuperarIdentificar(), authGoogleCallback(), authGoogleRedirect(), authLogin(), authLogout(), authRecuperar() (+11 more)
 
 ### Community 21 - "entrenador/configuracion.php"
 Cohesion: 0.20
 Nodes (14): actualizarUiCodigoEntrenador(), closePanel(), closePwdModal(), eliminarAtleta(), enviarCambioCodigoEnt(), escCfgHtml(), generarNuevoCodigoEntrenador(), guardarCodigoEntrenador() (+6 more)
 
-### Community 22 - ".analizar"
-Cohesion: 0.22
-Nodes (5): adminApiImportarHistorialAnalizar(), adminApiImportarHistorialGuardar(), entApiImportarHistorialAnalizar(), entApiImportarHistorialGuardar(), ImportadorService
+### Community 22 - "csrfCheck"
+Cohesion: 0.11
+Nodes (38): adminApiAprobarEntrenador(), adminApiLeerNotificaciones(), adminApiMarcarNotificacion(), authDoRecuperarCambiar(), cliApiLeerNotificaciones(), cliApiMarcarNotificacion(), cliGuardarDias(), cliGuardarMedidas() (+30 more)
 
 ### Community 26 - "login.php"
 Cohesion: 0.50
@@ -223,8 +232,8 @@ Cohesion: 0.31
 Nodes (10): actualizarHintMancuerna(), addExercise(), addSet(), cambiarImplemento(), cambiarUnidad(), cerrarWheelPicker(), copiarValoresATodasLasSeries(), initWheelEvents() (+2 more)
 
 ### Community 38 - "openSheet"
-Cohesion: 0.19
-Nodes (14): abrirWheelPicker(), actualizarWheelActivo(), catsDrillBack(), closeSheet(), confirmSelection(), deleteSerie(), initSortableCompacto(), openCategorySheet() (+6 more)
+Cohesion: 0.31
+Nodes (9): abrirWheelPicker(), actualizarWheelActivo(), catsDrillBack(), confirmSelection(), openCategorySheet(), openExOptions(), openSheet(), replaceExercise() (+1 more)
 
 ### Community 39 - "abrirSheetPlantillas"
 Cohesion: 0.25
@@ -233,10 +242,6 @@ Nodes (8): abrirSheetPlantillas(), agregarPasoCardio(), cargarPasosCardio(), eli
 ### Community 40 - "views/auth/recuperar.php"
 Cohesion: 0.40
 Nodes (8): animateTransition(), procesarPaso1(), procesarPaso2(), procesarPaso3(), procesarPaso4(), setButtonLoading(), showAlert(), volverPaso()
-
-### Community 41 - "views/entrenador/dashboard.php"
-Cohesion: 0.14
-Nodes (4): cerrarModalProducto(), entEsc(), entRenderMiRutina(), guardarProducto()
 
 ### Community 42 - "cargarDetalleDiaInline"
 Cohesion: 0.25
@@ -267,16 +272,12 @@ Cohesion: 0.31
 Nodes (9): abrirModalAgregarEjercicio(), abrirModalReemplazarEjercicio(), abrirSelectorTipoSerieInline(), abrirSheetPerfil(), obtenerCatalogoEjercicios(), pfBuildCategoryGrid(), pfCatsDrillBack(), pfCatsDrillInto() (+1 more)
 
 ### Community 58 - "AdminController.php"
-Cohesion: 0.13
-Nodes (27): adminApiActualizarRutinaCompleta(), adminApiCatalogoAgregar(), adminApiCatalogoBorrar(), adminApiCatalogoEditar(), adminApiCatalogoList(), adminApiCrearRutinaPropia(), adminApiDiaDetalle(), adminApiEliminarPlantillaCatalogo() (+19 more)
+Cohesion: 0.10
+Nodes (38): adminApiActualizarRutinaCompleta(), adminApiAprobarAtleta(), adminApiCatalogoAgregar(), adminApiCatalogoBorrar(), adminApiCatalogoEditar(), adminApiCatalogoList(), adminApiCrearEntrenador(), adminApiCrearRutinaPropia() (+30 more)
 
 ### Community 60 - "Product"
 Cohesion: 0.18
 Nodes (10): Brand Commitments, Capabilities and Constraints, Evidence on Hand, Operating Context, Platform, Positioning, Product, Product Principles (+2 more)
-
-### Community 61 - "rutina.php"
-Cohesion: 0.15
-Nodes (20): SA_CATALOGO, SA_DIAS_META, SA_PLANTILLAS, saAgregarEjercicioBorrador(), saAgregarSerieBorrador(), saCargarDia(), saCargarPlantillaEnBorrador(), saConfirmarEliminarRutina() (+12 more)
 
 ### Community 62 - "gestion.php"
 Cohesion: 0.08
@@ -286,9 +287,9 @@ Nodes (23): abrirModalAtletasEntrenador(), abrirModalEntrenador(), abrirModalFic
 Cohesion: 0.21
 Nodes (12): actualizarVistaPreviaMensaje(), cambiarAlcanceMensaje(), cambiarTipoMensaje(), closePanel(), closePwdModal(), DEFAULT_MSGS, eliminarAtleta(), escCfgHtml() (+4 more)
 
-### Community 65 - "media_storage.php"
-Cohesion: 0.29
-Nodes (15): cliApiSubirFoto(), comprimirImagenGD(), eliminarMediaPermanente(), ensureMediaTable(), esImagenAnimada(), guardarMediaPermanente(), intentarServirMediaRespaldado(), purgarComprobantesVencidos() (+7 more)
+### Community 65 - "UsuarioModel"
+Cohesion: 0.19
+Nodes (5): authDoLogin(), authDoRegistro(), entGuardarCliente(), sanitizeEmail(), UsuarioModel
 
 ### Community 66 - "enhanceSelect"
 Cohesion: 0.35
@@ -303,16 +304,36 @@ Cohesion: 0.53
 Nodes (4): editMethod(), resetForm(), seleccionarBancoSelect(), toggleFields()
 
 ### Community 69 - "core/helpers.php"
-Cohesion: 0.08
-Nodes (34): adminApiLeerNotificaciones(), adminApiNotificaciones(), {closure#1}(), cliApiLeerNotificaciones(), cliApiNotificaciones(), cliNotificaciones(), cliRutinaLista(), entApiGenerarCodigo() (+26 more)
+Cohesion: 0.12
+Nodes (22): adminApiNotificaciones(), cliApiNotificaciones(), cliIniciarRutina(), entApiGenerarCodigo(), entApiNotificaciones(), entNotificaciones(), asset(), construirUrlWhatsAppProducto() (+14 more)
 
 ### Community 72 - "cfg_herramientas_ia_backup.php"
 Cohesion: 0.16
 Nodes (10): cancelarYVolverACargar(), cerrarStagingModal(), confirmarGuardadoCronologia(), contarSeriesTotales(), currentCatalogoEjercicios, dropzoneIA, escapeHtml(), iniciarAnalisisCronologiaIA() (+2 more)
 
+### Community 73 - "googleCallback"
+Cohesion: 0.26
+Nodes (15): getGoogleRedirectUri(), googleBuildSignedState(), googleCallback(), googleDecodeIdToken(), googleExchangeCode(), googleHttpGet(), googleHttpPost(), googleOAuthIsHttps() (+7 more)
+
 ### Community 74 - "cfg_paleta_colores.php"
 Cohesion: 0.43
 Nodes (5): actualizarUiAlcancePaletaAdmin(), actualizarUISelectorTema(), purgarHtmlCachePorCambioTema(), solicitarCambioTema(), toggleAlcancePaletaAdmin()
+
+### Community 81 - "security.php"
+Cohesion: 0.31
+Nodes (7): assertOwnership(), _denyAccess(), sanitizeId(), xpClearRememberCookie(), xpRememberSecret(), xpRestoreRememberSession(), xpSetRememberCookie()
+
+### Community 82 - "mi_rutina_personal_bento.php"
+Cohesion: 0.33
+Nodes (5): mrCrearUrl(), mrEsc(), mrGrupoIcono(), mrRenderDaysBar(), mrRenderRutina()
+
+### Community 83 - "rateLimitCheck"
+Cohesion: 0.50
+Nodes (7): authApiVerificarCodigoEmail(), authDoRecuperarVerificarRespuesta(), getClientIp(), rateLimitCheck(), _rateLimitDeny(), rateLimitFail(), rateLimitReset()
+
+### Community 84 - "closeSheet"
+Cohesion: 0.40
+Nodes (5): closeSheet(), deleteSerie(), initSortableCompacto(), setSerieType(), startReorder()
 
 ### Community 93 - "footer.php"
 Cohesion: 0.40
@@ -327,22 +348,22 @@ Cohesion: 0.22
 Nodes (11): actualizarAltura(), actualizarPeso(), ajustarAltura(), ajustarPeso(), clearErrors(), setError(), submitAtletaForm(), switchStep() (+3 more)
 
 ## Knowledge Gaps
-- **55 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
+- **58 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `getDB()` connect `controllers/ClienteController.php` to `CatalogoService`, `EntrenadorController.php`, `csrfCheck`, `progreso.php`, `UsuarioModel`, `.analizar`, `BackupService`, `ClienteModel`, `MetodoPagoModel`, `SesionAsistenciaModel`, `ObjetivoModel`, `PesoHistorialModel`, `RutinaModel`, `AdminController.php`, `PagoModel`, `media_storage.php`, `core/helpers.php`, `MetaModel`, `UsuarioSistemaModel`?**
-  _High betweenness centrality (0.103) - this node is a cross-community bridge._
+- **Why does `getDB()` connect `getDB` to `controllers/ClienteController.php`, `SMTP`, `CatalogoService`, `EntrenadorController.php`, `progreso.php`, `AuthController.php`, `csrfCheck`, `ClienteModel`, `MetodoPagoModel`, `SesionAsistenciaModel`, `ObjetivoModel`, `PesoHistorialModel`, `RutinaModel`, `AdminController.php`, `PagoModel`, `UsuarioModel`, `core/helpers.php`, `MetaModel`, `UsuarioSistemaModel`, `googleCallback`, `security.php`, `rateLimitCheck`?**
+  _High betweenness centrality (0.097) - this node is a cross-community bridge._
 - **Are the 163 inferred relationships involving `getDB()` (e.g. with `env()` and `adminApiActualizarMembresia()`) actually correct?**
   _`getDB()` has 163 INFERRED edges - model-reasoned connections that need verification._
 - **Should `controllers/ClienteController.php` be split into smaller, more focused modules?**
-  _Cohesion score 0.06775956284153005 - nodes in this community are weakly interconnected._
-- **Why does `PHPMailer` connect `PHPMailer` to `.mailSend`, `SMTP`, `.preSend`, `.strlen`, `.setError`?**
+  _Cohesion score 0.0873015873015873 - nodes in this community are weakly interconnected._
+- **Why does `PHPMailer` connect `PHPMailer` to `SMTP`, `.mailSend`, `.preSend`, `.addOrEnqueueAnAddress`, `.encodeString`, `.setError`?**
   _High betweenness centrality (0.041) - this node is a cross-community bridge._
 - **Are the 100 inferred relationships involving `csrfCheck()` (e.g. with `adminApiActualizarMembresia()` and `adminApiActualizarRutinaCompleta()`) actually correct?**
   _`csrfCheck()` has 100 INFERRED edges - model-reasoned connections that need verification._
 - **Should `PHPMailer` be split into smaller, more focused modules?**
-  _Cohesion score 0.05723905723905724 - nodes in this community are weakly interconnected._
-- **Why does `SMTP` connect `SMTP` to `SMTP.php`, `.mailSend`?**
-  _High betweenness centrality (0.025) - this node is a cross-community bridge._
+  _Cohesion score 0.06312292358803986 - nodes in this community are weakly interconnected._
+- **Why does `sendEmail()` connect `.addOrEnqueueAnAddress` to `googleCallback`, `PHPMailer`, `AuthController.php`, `core/helpers.php`?**
+  _High betweenness centrality (0.027) - this node is a cross-community bridge._

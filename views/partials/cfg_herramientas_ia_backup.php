@@ -727,8 +727,8 @@ body.xp-modal-active, html.xp-modal-active { overflow: hidden !important; height
         <div class="xp-backup-metric">
           <div class="xp-backup-metric-icon"><i class="ti ti-table"></i></div>
           <div class="xp-backup-metric-data">
-            <span class="xp-backup-metric-label">Tablas Registradas</span>
-            <strong class="xp-backup-metric-val"><?= $totalTablas ?> tablas</strong>
+            <span class="xp-backup-metric-label"><?= $xpHerramientasEsAdmin ? 'Tablas Registradas' : 'Atletas Respaldados' ?></span>
+            <strong class="xp-backup-metric-val"><?= $totalTablas ?> <?= $xpHerramientasEsAdmin ? 'tablas' : 'atletas' ?></strong>
           </div>
         </div>
         <div class="xp-backup-metric">
@@ -1409,19 +1409,24 @@ async function descargarCopiaSeguridadDb() {
       method: 'POST',
       headers: {
         'X-CSRF-Token': csrfToken,
+        'X-Requested-With': 'XMLHttpRequest',
+        'Accept': 'application/gzip, application/octet-stream, application/json',
         'Content-Type': 'application/x-www-form-urlencoded'
       },
       body: params.toString()
     });
 
-    if (!res.ok) {
+    const respCt = (res.headers.get('Content-Type') || '').toLowerCase();
+    if (!res.ok || respCt.includes('text/html') || respCt.includes('application/json')) {
       let errMsg = 'Error (' + res.status + '): No se pudo procesar la solicitud en el servidor.';
       if (res.status === 404) {
         errMsg = 'Error 404 (No Encontrado): El servidor web no encontró la ruta.';
+      } else if (respCt.includes('text/html')) {
+        errMsg = 'Tu sesión o token de seguridad expiró. Recarga la página e intenta de nuevo.';
       } else {
         try {
           const errJson = await res.json();
-          if (errJson.msg) errMsg = errJson.msg;
+          if (errJson && errJson.msg) errMsg = errJson.msg;
         } catch (_) {}
       }
       throw new Error(errMsg);

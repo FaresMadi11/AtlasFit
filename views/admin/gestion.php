@@ -2005,8 +2005,17 @@ async function sincronizarCodigoSiCambio(eid) {
         inp.value = d.membresia.codigo_referido;
         inp.setAttribute('data-saved-code', d.membresia.codigo_referido);
         return d.membresia.codigo_referido;
+      } else {
+        inp.value = saved;
+        if (d && d.msg && typeof Swal !== 'undefined') {
+          Swal.fire({ icon: 'error', title: 'Código no guardado', text: d.msg, background: '#12131f', color: '#fff' });
+        }
+        return saved;
       }
-    } catch (_) {}
+    } catch (_) {
+      inp.value = saved;
+      return saved;
+    }
   }
   return code;
 }
@@ -2136,27 +2145,31 @@ async function togglePausaEntrenador(eid, pausar) {
   });
   if (!confirm.isConfirmed) return;
 
-  const res = await fetch(APP + '/admin/api-toggle-pausa', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': CSRF },
-    body: JSON.stringify({
-      csrf_token: CSRF,
-      entrenador_id: eid,
-      pausar: pausar
-    })
-  });
-  const data = await res.json();
-  if (data.ok) {
-    window.location.reload();
-  } else {
-    Swal.fire({ icon: 'error', title: 'Error', text: data.msg, background: '#12131f', color: '#fff' });
+  try {
+    const res = await fetch(APP + '/admin/api-toggle-pausa', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': CSRF },
+      body: JSON.stringify({
+        csrf_token: CSRF,
+        entrenador_id: eid,
+        pausar: pausar
+      })
+    });
+    const data = await res.json();
+    if (data && data.ok) {
+      window.location.reload();
+    } else {
+      Swal.fire({ icon: 'error', title: 'Error', text: (data && data.msg) || 'No se pudo cambiar el estado.', background: '#12131f', color: '#fff' });
+    }
+  } catch (_) {
+    Swal.fire({ icon: 'error', title: 'Error de red', text: 'No se pudo comunicar con el servidor.', background: '#12131f', color: '#fff' });
   }
 }
 
 async function revocarEntrenador(eid, nombre) {
   const confirm = await Swal.fire({
     icon: 'warning',
-    title: `¿Revocar rol de entrenador a ${nombre}?`,
+    titleText: `¿Revocar rol de entrenador a ${nombre}?`,
     text: 'Sus atletas actuales serán reasignados automáticamente a otro entrenador activo.',
     showCancelButton: true,
     confirmButtonColor: '#ef4444',
@@ -2167,16 +2180,20 @@ async function revocarEntrenador(eid, nombre) {
   });
   if (!confirm.isConfirmed) return;
 
-  const res = await fetch(APP + '/admin/api-revocar-entrenador', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': CSRF },
-    body: JSON.stringify({ csrf_token: CSRF, entrenador_id: eid })
-  });
-  const data = await res.json();
-  if (data.ok) {
-    window.location.reload();
-  } else {
-    Swal.fire({ icon: 'error', title: 'Error', text: data.msg, background: '#12131f', color: '#fff' });
+  try {
+    const res = await fetch(APP + '/admin/api-revocar-entrenador', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': CSRF },
+      body: JSON.stringify({ csrf_token: CSRF, entrenador_id: eid })
+    });
+    const data = await res.json();
+    if (data && data.ok) {
+      window.location.reload();
+    } else {
+      Swal.fire({ icon: 'error', title: 'Error', text: (data && data.msg) || 'No se pudo revocar el rol.', background: '#12131f', color: '#fff' });
+    }
+  } catch (_) {
+    Swal.fire({ icon: 'error', title: 'Error de red', text: 'No se pudo comunicar con el servidor.', background: '#12131f', color: '#fff' });
   }
 }
 

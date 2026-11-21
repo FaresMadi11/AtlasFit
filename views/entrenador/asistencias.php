@@ -2760,19 +2760,23 @@ function abrirModalEjercicioAsistencias(ej) {
     
     let mediaHtml = '';
     if (slide.tipo === 'imagen') {
-      mediaHtml = `<img src="${slide.src}" alt="${esc(ej.nombre)} - ${slide.etiqueta}" loading="lazy">`;
+      mediaHtml = `<img src="${esc(slide.src)}" alt="${esc(ej.nombre)} - ${esc(slide.etiqueta)}" loading="lazy">`;
     } else if (slide.tipo === 'video') {
-      const vUrl = slide.src;
+      const vUrl = String(slide.src || '');
       if (vUrl.includes('youtube.com') || vUrl.includes('youtu.be')) {
         let ytId = '';
-        const m1 = vUrl.match(/v=([^&]+)/);
-        const m2 = vUrl.match(/youtu\.be\/([^?]+)/);
+        const m1 = vUrl.match(/[?&]v=([^&#]+)/);
+        const m2 = vUrl.match(/youtu\.be\/([^?&#]+)/);
+        const m3 = vUrl.match(/youtube\.com\/(?:shorts|embed)\/([^?&#]+)/);
         if (m1) ytId = m1[1];
         else if (m2) ytId = m2[1];
-        mediaHtml = `<iframe src="https://www.youtube.com/embed/${ytId}?rel=0" allowfullscreen allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture"></iframe>`;
+        else if (m3) ytId = m3[1];
+        mediaHtml = ytId
+          ? `<iframe src="https://www.youtube.com/embed/${encodeURIComponent(ytId)}?rel=0" allowfullscreen allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture"></iframe>`
+          : `<div class="cdd-modal-empty"><i class="ti ti-video-off"></i><span>Enlace de YouTube no válido.</span></div>`;
       } else {
-        const fullV = vUrl.startsWith('http') ? vUrl : `${appBase}/${vUrl}`;
-        mediaHtml = `<video controls autoplay loop muted playsinline preload="metadata"><source src="${fullV}"></video>`;
+        const fullV = /^https?:\/\//i.test(vUrl) ? vUrl : `${appBase}/${vUrl}`;
+        mediaHtml = `<video controls autoplay loop muted playsinline preload="metadata"><source src="${esc(fullV)}"></video>`;
       }
     } else {
       mediaHtml = `
@@ -3104,7 +3108,7 @@ function renderRutinaDrawer(drawer, data, modoTab) {
         const safeNombre = esc(ej.nombre).replace(/'/g, "\\'");
         const safeReps = esc(reps).replace(/'/g, "\\'");
         const safeImp = esc(implementoVal).replace(/'/g, "\\'");
-        const ejJsonEsc = JSON.stringify(ej).replace(/"/g, '&quot;');
+        const ejJsonEsc = JSON.stringify(ej).replace(/&/g, '&amp;').replace(/"/g, '&quot;');
 
         const isSinPeso = (implementoVal === 'sin_peso') || 
                           String(ej.equipamiento || '').toLowerCase().includes('peso corporal') || 
@@ -3311,12 +3315,15 @@ function renderRutinaDrawer(drawer, data, modoTab) {
           </button>` : '';
 
         // Thumbnail button para abrir Modal Bento UI
+        const thumbSrcAsis = ej.imagen_path
+          ? (/^https?:\/\//i.test(String(ej.imagen_path)) ? String(ej.imagen_path) : `<?= APP_URL ?>/${String(ej.imagen_path)}`)
+          : '';
         const thumbBtn = `
           <button type="button" class="cdd-ej-thumb-btn"
                   onclick="event.stopPropagation(); abrirModalEjercicioAsistencias(${ejJsonEsc})"
                   title="Ver indicaciones y configuración de máquina" aria-label="Ver detalles de ${esc(ej.nombre)}">
-            ${ej.imagen_path
-              ? `<img src="<?= APP_URL ?>/${esc(ej.imagen_path)}" alt="${esc(ej.nombre)}" class="cdd-ej-thumb-img" loading="lazy">`
+            ${thumbSrcAsis
+              ? `<img src="${esc(thumbSrcAsis)}" alt="${esc(ej.nombre)}" class="cdd-ej-thumb-img" loading="lazy">`
               : `<div class="cdd-ej-thumb-placeholder"><i class="ti ti-barbell"></i></div>`}
             <span class="cdd-ej-thumb-zoom-icon"><i class="ti ti-zoom-in"></i></span>
           </button>`;
@@ -3697,7 +3704,13 @@ document.addEventListener('keydown', (e) => {
 
 async function ejecutarEditarParametros() {
   if (!currentExOpts) return;
-  const { ejId, rutinaId, nombre, series, reps, rir, imp, clienteId } = currentExOpts;
+  const { ejId, rutinaId, nombre, series, reps, rir, imp: rawImp, clienteId } = currentExOpts;
+  const impLow = String(rawImp || 'barra').toLowerCase();
+  const imp = (impLow === 'mancuerna' || impLow.includes('mancuerna'))
+    ? 'mancuerna'
+    : ((impLow === 'polea_maquina' || impLow.includes('polea') || impLow.includes('maquina') || impLow.includes('máquina'))
+      ? 'polea_maquina'
+      : ((impLow === 'sin_peso' || impLow.includes('corporal') || impLow.includes('sin peso')) ? 'sin_peso' : 'barra'));
   cerrarOpcionesDrawer();
 
   const { value: formValues } = await Swal.fire({

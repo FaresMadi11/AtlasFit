@@ -50,13 +50,14 @@
 <script src="<?= APP_URL ?>/assets/js/cookies.js" defer></script>
 
 <script>
-/* ─── Global Theme Toggle ─────────────────────────────── */
+/* ─── Global Theme Toggle (alineado con las 3 paletas oficiales) ─── */
 function toggleTheme() {
   const html = document.getElementById('htmlRoot');
-  const current = html.getAttribute('data-theme') || 'dark';
-  const next = current === 'dark' ? 'light' : 'dark';
+  const order = ['classic', 'obsidian', 'deep-ocean'];
+  const current = html.getAttribute('data-theme') || 'classic';
+  const next = order[(order.indexOf(current) + 1) % order.length];
   html.setAttribute('data-theme', next);
-  localStorage.setItem('xp_theme', next);
+  try { localStorage.setItem('xp_theme', next); } catch (_) {}
 }
 
 /* ─── Sistema de Modales Legales Dinámicos (UI-UX-PRO-MAX) ────────────────── */

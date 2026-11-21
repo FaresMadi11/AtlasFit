@@ -9,6 +9,15 @@ require_once dirname(__DIR__) . '/core/env.php';
 loadEnv(dirname(__DIR__) . '/.env');
 require_once dirname(__DIR__) . '/config/database.php';
 require_once dirname(__DIR__) . '/core/helpers.php';
+require_once dirname(__DIR__) . '/core/rate_limiter.php';
+
+if (($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'POST') {
+    http_response_code(405);
+    echo json_encode(["success" => false, "message" => "Método no permitido."]);
+    exit;
+}
+
+rateLimitCheck('api_recovery');
 
 try {
     $pdo = getDB();
@@ -20,7 +29,7 @@ try {
 $accion = $_POST['accion'] ?? '';
 
 if ($accion === 'obtener_pregunta') {
-    $email = $_POST['email'] ?? '';
+    $email = trim((string)($_POST['email'] ?? ''));
     if (empty($email)) {
         echo json_encode(["success" => false, "message" => "El correo electrónico es requerido."]);
         exit;
@@ -33,6 +42,7 @@ if ($accion === 'obtener_pregunta') {
         if ($usuario && !empty($usuario['pregunta_seguridad'])) {
             echo json_encode(["success" => true, "pregunta" => $usuario['pregunta_seguridad']]);
         } else {
+            rateLimitFail('api_recovery');
             echo json_encode(["success" => false, "message" => "Usuario no encontrado, inactivo o sin pregunta de seguridad configurada."]);
         }
     } catch (PDOException $e) {
@@ -42,8 +52,8 @@ if ($accion === 'obtener_pregunta') {
 }
 
 if ($accion === 'verificar_respuesta') {
-    $email = $_POST['email'] ?? '';
-    $respuesta = $_POST['respuesta'] ?? '';
+    $email = trim((string)($_POST['email'] ?? ''));
+    $respuesta = (string)($_POST['respuesta'] ?? '');
 
     if (empty($email) || empty($respuesta)) {
         echo json_encode(["success" => false, "message" => "Correo electrónico y respuesta son requeridos."]);
@@ -58,8 +68,8 @@ if ($accion === 'verificar_respuesta') {
         if ($usuario) {
             $hashSeguridad = $usuario['respuesta_seguridad'] ?? '';
             if (!empty($hashSeguridad) && password_verify(strtolower(trim($respuesta)), $hashSeguridad)) {
-                // Generar código de 6 dígitos
-                $codigo = sprintf('%06d', mt_rand(0, 999999));
+                // Generar código criptográficamente seguro de 6 dígitos
+                $codigo = sprintf('%06d', random_int(0, 999999));
                 
                 // Actualizar DB con token y expiración de 15 minutos
                 $upd = $pdo->prepare("UPDATE usuarios SET token_recuperacion = ?, expiracion_token = DATE_ADD(NOW(), INTERVAL 15 MINUTE) WHERE id = ?");
@@ -75,9 +85,11 @@ if ($accion === 'verificar_respuesta') {
                     echo json_encode(["success" => false, "message" => "Error al enviar el correo. Revisa tu configuración SMTP en el archivo .env"]);
                 }
             } else {
+                rateLimitFail('api_recovery');
                 echo json_encode(["success" => false, "message" => "La respuesta de seguridad es incorrecta."]);
             }
         } else {
+            rateLimitFail('api_recovery');
             echo json_encode(["success" => false, "message" => "Usuario no encontrado en la base de datos."]);
         }
     } catch (Exception $e) {
@@ -87,8 +99,8 @@ if ($accion === 'verificar_respuesta') {
 }
 
 if ($accion === 'verificar_codigo') {
-    $email = $_POST['email'] ?? '';
-    $codigo = $_POST['codigo'] ?? '';
+    $email = trim((string)($_POST['email'] ?? ''));
+    $codigo = trim((string)($_POST['codigo'] ?? ''));
 
     if (empty($email) || empty($codigo)) {
         echo json_encode(["success" => false, "message" => "Correo electrónico y código son requeridos."]);
@@ -96,19 +108,21 @@ if ($accion === 'verificar_codigo') {
     }
 
     try {
-        $stmt = $pdo->prepare("SELECT id FROM usuarios WHERE email = :email AND token_recuperacion = :codigo AND expiracion_token > NOW() AND activo = 1 LIMIT 1");
-        $stmt->execute([':email' => $email, ':codigo' => $codigo]);
+        $stmt = $pdo->prepare("SELECT id, token_recuperacion FROM usuarios WHERE email = :email AND expiracion_token > NOW() AND activo = 1 LIMIT 1");
+        $stmt->execute([':email' => $email]);
         $usuario = $stmt->fetch(PDO::FETCH_ASSOC);
 
-        if ($usuario) {
-            // Generar token criptográfico para el paso final
+        if ($usuario && !empty($usuario['token_recuperacion']) && hash_equals((string)$usuario['token_recuperacion'], $codigo)) {
+            // Invalidar código de un solo uso inmediatamente y generar token criptográfico para el paso final
+            $pdo->prepare("UPDATE usuarios SET token_recuperacion = NULL, expiracion_token = NULL WHERE id = ?")->execute([$usuario['id']]);
             $token = bin2hex(random_bytes(24));
             $_SESSION['recovery_token'] = $token;
-            $_SESSION['recovery_user_id'] = $usuario['id'];
+            $_SESSION['recovery_user_id'] = (int)$usuario['id'];
             $_SESSION['recovery_expires'] = time() + 900;
             
             echo json_encode(["success" => true, "token" => $token]);
         } else {
+            rateLimitFail('api_recovery');
             echo json_encode(["success" => false, "message" => "El código es incorrecto o ha expirado."]);
         }
     } catch (PDOException $e) {
