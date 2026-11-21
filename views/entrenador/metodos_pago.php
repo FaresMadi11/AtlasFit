@@ -510,7 +510,7 @@
         <div class="mp-method-actions">
             <!-- Data payload for JS to populate edit form easily -->
             <button class="mp-btn-action mp-btn-edit" 
-                    data-payload='<?= json_encode($m) ?>'
+                    data-payload="<?= htmlspecialchars(json_encode($m, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_UNESCAPED_UNICODE), ENT_QUOTES, 'UTF-8') ?>"
                     onclick="editMethod(this)">
                 <i class="ti ti-pencil"></i> Editar
             </button>

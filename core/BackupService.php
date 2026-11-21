@@ -1,134 +1,264 @@
 <?php
-// core/BackupService.php — Motor de Respaldos de Base de Datos para Xprod Fit
+// core/BackupService.php
 declare(strict_types=1);
 
-class BackupService {
+/**
+ * Servicio de Copias de Seguridad Multi-Tenant (.sql.gz)
+ * - Super Admin: Respaldo Global completo o filtrado por un Entrenador específico.
+ * - Entrenador: Respaldo aislado únicamente de sus propios atletas y recursos.
+ * - Streaming GZIP con comillado seguro por tipo de columna (preserva VARCHAR numéricos).
+ */
+class BackupService
+{
+    private const NUMERIC_TYPES = [
+        'tinyint', 'smallint', 'mediumint', 'int', 'integer', 'bigint',
+        'decimal', 'numeric', 'float', 'double', 'real', 'bit'
+    ];
 
     /**
-     * Genera un volcado completo de la base de datos comprimido en GZIP (.sql.gz)
-     * y lo transmite en streaming directamente al navegador del usuario.
+     * Descarga el respaldo GLOBAL completo (solo Super Admin).
      */
-    public static function descargarRespaldo(PDO $db, string $filename = ''): void {
-        @set_time_limit(300);
-        @ini_set('max_execution_time', '300');
-        @ini_set('memory_limit', '256M');
+    public static function descargarRespaldo(PDO $db, ?string $filename = null): void {
+        self::prepararEntornoStreaming();
+        $filename = $filename ?: ('atlas_fit_global_' . date('Y-m-d_His') . '.sql.gz');
+        self::enviarHeadersDescarga($filename);
 
-        if (empty($filename)) {
-            $filename = 'xprod_fit_backup_' . date('Y-m-d_His') . '.sql.gz';
+        $gz = gzopen('php://output', 'wb6');
+        if ($gz === false) {
+            throw new \RuntimeException('No se pudo inicializar el flujo de compresión GZIP.');
         }
 
-        // Liberar sesión de PHP para evitar congelar otras pestañas del navegador
-        if (session_status() === PHP_SESSION_ACTIVE) {
-            session_write_close();
-        }
-
-        // Usar archivo temporal en disco para evitar incompatibilidad de gzopen('php://output') en Windows
-        $tmpPath = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'xp_bak_' . bin2hex(random_bytes(8)) . '.sql.gz';
-        $gz = gzopen($tmpPath, 'wb9');
-        if (!$gz) {
-            http_response_code(500);
-            header('Content-Type: application/json; charset=utf-8');
-            echo json_encode(['ok' => false, 'msg' => 'No se pudo inicializar la compresión GZIP.']);
-            exit;
-        }
-
-        self::ejecutarVolcado($db, $gz);
+        self::ejecutarVolcadoGlobal($db, $gz);
         gzclose($gz);
-
-        // Limpiar buffers de salida previos
-        while (ob_get_level() > 0) {
-            ob_end_clean();
-        }
-
-        // Headers HTTP para forzar la descarga del archivo comprimido
-        header('Content-Type: application/x-gzip');
-        header('Content-Disposition: attachment; filename="' . $filename . '"');
-        header('Content-Length: ' . filesize($tmpPath));
-        header('Cache-Control: no-cache, no-store, must-revalidate');
-        header('Pragma: no-cache');
-        header('Expires: 0');
-
-        readfile($tmpPath);
-        @unlink($tmpPath);
         exit;
     }
 
     /**
-     * Genera el volcado completo y lo guarda en el disco local del servidor.
-     * Útil para tareas programadas (Cron / CLI).
+     * Descarga el respaldo AISLADO de un entrenador y todos sus atletas (sin datos de terceros ni admin).
      */
-    public static function guardarEnServidor(PDO $db, string $directorioDestino): array {
-        @set_time_limit(300);
-        @ini_set('max_execution_time', '300');
-        @ini_set('memory_limit', '256M');
+    public static function descargarRespaldoEntrenador(PDO $db, int $entrenadorId, ?string $filename = null): void {
+        if ($entrenadorId <= 0) {
+            throw new \InvalidArgumentException('Entrenador inválido para respaldo.');
+        }
+        self::prepararEntornoStreaming();
+        $filename = $filename ?: ('atlas_fit_entrenador_' . $entrenadorId . '_' . date('Y-m-d_His') . '.sql.gz');
+        self::enviarHeadersDescarga($filename);
 
-        if (!is_dir($directorioDestino)) {
-            if (!mkdir($directorioDestino, 0755, true) && !is_dir($directorioDestino)) {
-                throw new RuntimeException("No se pudo crear el directorio de respaldos: {$directorioDestino}");
-            }
+        $gz = gzopen('php://output', 'wb6');
+        if ($gz === false) {
+            throw new \RuntimeException('No se pudo inicializar el flujo de compresión GZIP.');
         }
 
-        // Proteger el directorio con .htaccess
-        $htaccessPath = rtrim($directorioDestino, '/\\') . '/.htaccess';
-        if (!file_exists($htaccessPath)) {
-            file_put_contents($htaccessPath, "Deny from all\n");
-        }
-
-        $filename = 'xprod_fit_backup_' . date('Y-m-d_His') . '.sql.gz';
-        $fullPath = rtrim($directorioDestino, '/\\') . DIRECTORY_SEPARATOR . $filename;
-
-        $gz = gzopen($fullPath, 'wb9');
-        if (!$gz) {
-            throw new RuntimeException("No se pudo abrir el archivo para escritura: {$fullPath}");
-        }
-
-        $stats = self::ejecutarVolcado($db, $gz);
+        self::ejecutarVolcadoEntrenador($db, $entrenadorId, $gz);
         gzclose($gz);
-
-        return [
-            'ok'        => true,
-            'archivo'   => $filename,
-            'ruta'      => $fullPath,
-            'tamano'    => file_exists($fullPath) ? filesize($fullPath) : 0,
-            'tablas'    => $stats['tablas'] ?? 0,
-            'filas'     => $stats['filas'] ?? 0,
-            'fecha'     => date('Y-m-d H:i:s')
-        ];
+        exit;
     }
 
     /**
-     * Elimina respaldos antiguos que superen los días de retención especificados.
+     * Genera un respaldo global en un archivo físico del servidor (uso exclusivo para Cron Jobs).
      */
-    public static function purgarRespaldosAntiguos(string $directorioDestino, int $diasRetencion = 15): int {
-        if (!is_dir($directorioDestino)) return 0;
+    public static function guardarRespaldoEnArchivo(PDO $db, string $rutaDestino): array {
+        @set_time_limit(0);
+        @ini_set('memory_limit', '256M');
 
-        $purgados = 0;
-        $segundosLimite = time() - ($diasRetencion * 86400);
-
-        $archivos = glob(rtrim($directorioDestino, '/\\') . DIRECTORY_SEPARATOR . 'xprod_fit_backup_*.sql.gz');
-        if (!empty($archivos)) {
-            foreach ($archivos as $archivo) {
-                if (filemtime($archivo) < $segundosLimite) {
-                    if (@unlink($archivo)) {
-                        $purgados++;
-                    }
-                }
+        $dir = dirname($rutaDestino);
+        if (!is_dir($dir)) {
+            if (!@mkdir($dir, 0750, true) && !is_dir($dir)) {
+                throw new \RuntimeException("No se pudo crear el directorio de respaldos: {$dir}");
             }
         }
 
+        $gz = gzopen($rutaDestino, 'wb6');
+        if ($gz === false) {
+            throw new \RuntimeException("No se pudo abrir el archivo destino para escritura GZIP: {$rutaDestino}");
+        }
+
+        $stats = self::ejecutarVolcadoGlobal($db, $gz);
+        gzclose($gz);
+
+        $stats['ruta'] = $rutaDestino;
+        $stats['bytes'] = @filesize($rutaDestino) ?: 0;
+        return $stats;
+    }
+
+    /**
+     * Mantiene solo los últimos N respaldos automáticos en la carpeta especificada.
+     */
+    public static function rotarRespaldosAntiguos(string $directorio, int $maxArchivos = 7): int {
+        if (!is_dir($directorio)) return 0;
+
+        $archivos = glob(rtrim($directorio, '/\\') . '/*.sql.gz');
+        if (!$archivos || count($archivos) <= $maxArchivos) return 0;
+
+        usort($archivos, static fn(string $a, string $b): int => (@filemtime($b) ?: 0) <=> (@filemtime($a) ?: 0));
+
+        $purgados = 0;
+        foreach (array_slice($archivos, $maxArchivos) as $archivoViejo) {
+            if (is_file($archivoViejo) && @unlink($archivoViejo)) {
+                $purgados++;
+            }
+        }
         return $purgados;
     }
 
     /**
-     * Lógica central de volcado por lotes streaming (esquema + datos DDL/DML).
+     * Genera respaldo SQL filtrado de un entrenador en un stream GZIP (expuesto para pruebas y descarga).
      */
-    private static function ejecutarVolcado(PDO $db, $gz): array {
+    public static function ejecutarVolcadoEntrenador(PDO $db, int $entrenadorId, $gz): array {
+        $fechaGeneracion = date('Y-m-d H:i:s');
+
+        $stEnt = $db->prepare("SELECT id, nombre, email FROM usuarios WHERE id = ? AND rol = 'entrenador' LIMIT 1");
+        $stEnt->execute([$entrenadorId]);
+        $entRow = $stEnt->fetch(PDO::FETCH_ASSOC);
+        if (!$entRow) {
+            throw new \RuntimeException('Entrenador no encontrado.');
+        }
+
+        $entNombreClean = str_replace(["\r", "\n"], ' ', (string)$entRow['nombre']);
+        $encabezado = <<<SQL
+-- ======================================================================
+-- ATLAS FIT — COPIA DE SEGURIDAD POR ENTRENADOR (.SQL)
+-- Entrenador          : #{$entrenadorId} ({$entNombreClean})
+-- Fecha de Generación : {$fechaGeneracion}
+-- Alcance             : Exclusivo de los atletas y recursos del entrenador
+-- Compatible          : MySQL / MariaDB / TiDB (sin DROP TABLE destructivo)
+-- ======================================================================
+
+SET FOREIGN_KEY_CHECKS=0;
+SET SQL_MODE="NO_AUTO_VALUE_ON_ZERO";
+SET NAMES utf8mb4;
+
+
+SQL;
+        gzwrite($gz, $encabezado);
+
+        $existingTables = array_flip($db->query("SHOW FULL TABLES WHERE Table_type = 'BASE TABLE'")->fetchAll(PDO::FETCH_COLUMN));
+
+        // Obtener IDs de atletas y usuarios pertenecientes exclusivamente a este entrenador
+        $stCli = $db->prepare("SELECT id, usuario_id FROM clientes WHERE entrenador_id = ? ORDER BY id ASC");
+        $stCli->execute([$entrenadorId]);
+        $cliRows = $stCli->fetchAll(PDO::FETCH_ASSOC);
+        $clienteIds = array_values(array_unique(array_filter(array_map(static fn($r) => (int)$r['id'], $cliRows))));
+        $usuarioIds = array_values(array_unique(array_filter(array_map(static fn($r) => (int)$r['usuario_id'], $cliRows))));
+
+        // Obtener IDs de rutinas y plantillas del entrenador o sus atletas
+        $rutinaIds = [];
+        if (!empty($clienteIds)) {
+            $ph = implode(',', array_fill(0, count($clienteIds), '?'));
+            $stR = $db->prepare("SELECT id FROM rutinas WHERE cliente_id IN ({$ph}) OR entrenador_id = ?");
+            $stR->execute(array_merge($clienteIds, [$entrenadorId]));
+            $rutinaIds = array_values(array_unique(array_map('intval', $stR->fetchAll(PDO::FETCH_COLUMN))));
+        } else {
+            $stR = $db->prepare("SELECT id FROM rutinas WHERE entrenador_id = ?");
+            $stR->execute([$entrenadorId]);
+            $rutinaIds = array_values(array_unique(array_map('intval', $stR->fetchAll(PDO::FETCH_COLUMN))));
+        }
+
+        $plantillaIds = [];
+        if (isset($existingTables['plantillas_rutinas'])) {
+            $stP = $db->prepare("SELECT id FROM plantillas_rutinas WHERE entrenador_id = ?");
+            $stP->execute([$entrenadorId]);
+            $plantillaIds = array_values(array_unique(array_map('intval', $stP->fetchAll(PDO::FETCH_COLUMN))));
+        }
+
+        $plantillaEjIds = [];
+        if (!empty($plantillaIds) && isset($existingTables['plantilla_ejercicios'])) {
+            $ph = implode(',', array_fill(0, count($plantillaIds), '?'));
+            $stPE = $db->prepare("SELECT id FROM plantilla_ejercicios WHERE plantilla_id IN ({$ph})");
+            $stPE->execute($plantillaIds);
+            $plantillaEjIds = array_values(array_unique(array_map('intval', $stPE->fetchAll(PDO::FETCH_COLUMN))));
+        }
+
+        $seccionIds = [];
+        if (isset($existingTables['tienda_secciones'])) {
+            $stS = $db->prepare("SELECT id FROM tienda_secciones WHERE entrenador_id = ?");
+            $stS->execute([$entrenadorId]);
+            $seccionIds = array_values(array_unique(array_map('intval', $stS->fetchAll(PDO::FETCH_COLUMN))));
+        }
+
+        $totalTablas = 0;
+        $totalFilas  = 0;
+
+        // Definición estricta de consultas por tabla (solo filas propias del entrenador y sus atletas)
+        $plan = [];
+        if (!empty($usuarioIds)) {
+            $phU = implode(',', array_fill(0, count($usuarioIds), '?'));
+            $plan[] = ['usuarios', "SELECT id, nombre, email, rol, activo, estado_cuenta, creado_en FROM usuarios WHERE id IN ({$phU}) AND rol = 'cliente'", $usuarioIds];
+        }
+        $plan[] = ['clientes', 'SELECT * FROM clientes WHERE entrenador_id = ?', [$entrenadorId]];
+        if (!empty($clienteIds)) {
+            $phC = implode(',', array_fill(0, count($clienteIds), '?'));
+            $plan[] = ['cliente_objetivos', "SELECT * FROM cliente_objetivos WHERE cliente_id IN ({$phC})", $clienteIds];
+            $plan[] = ['cliente_medidas', "SELECT * FROM cliente_medidas WHERE cliente_id IN ({$phC})", $clienteIds];
+            $plan[] = ['peso_historial', "SELECT * FROM peso_historial WHERE cliente_id IN ({$phC})", $clienteIds];
+            $plan[] = ['metas', "SELECT * FROM metas WHERE cliente_id IN ({$phC})", $clienteIds];
+            $plan[] = ['metas_progreso', "SELECT mp.* FROM metas_progreso mp JOIN metas m ON m.id = mp.meta_id WHERE m.cliente_id IN ({$phC})", $clienteIds];
+            $plan[] = ['pagos', "SELECT * FROM pagos WHERE cliente_id IN ({$phC})", $clienteIds];
+            $plan[] = ['sesiones', "SELECT * FROM sesiones WHERE cliente_id IN ({$phC})", $clienteIds];
+            $plan[] = ['sesion_series', "SELECT * FROM sesion_series WHERE cliente_id IN ({$phC})", $clienteIds];
+            $plan[] = ['sesiones_asistencia', "SELECT * FROM sesiones_asistencia WHERE cliente_id IN ({$phC})", $clienteIds];
+            $plan[] = ['rutinas_aplazamientos', "SELECT * FROM rutinas_aplazamientos WHERE cliente_id IN ({$phC})", $clienteIds];
+        }
+        if (!empty($rutinaIds)) {
+            $phR = implode(',', array_fill(0, count($rutinaIds), '?'));
+            $plan[] = ['rutinas', "SELECT * FROM rutinas WHERE id IN ({$phR})", $rutinaIds];
+            $plan[] = ['rutina_dias', "SELECT * FROM rutina_dias WHERE rutina_id IN ({$phR})", $rutinaIds];
+            $plan[] = ['ejercicios', "SELECT * FROM ejercicios WHERE rutina_id IN ({$phR})", $rutinaIds];
+        }
+        if (!empty($plantillaIds)) {
+            $phP = implode(',', array_fill(0, count($plantillaIds), '?'));
+            $plan[] = ['plantillas_rutinas', "SELECT * FROM plantillas_rutinas WHERE id IN ({$phP})", $plantillaIds];
+            $plan[] = ['plantilla_ejercicios', "SELECT * FROM plantilla_ejercicios WHERE plantilla_id IN ({$phP})", $plantillaIds];
+        }
+        if (!empty($plantillaEjIds)) {
+            $phPE = implode(',', array_fill(0, count($plantillaEjIds), '?'));
+            $plan[] = ['plantilla_series', "SELECT * FROM plantilla_series WHERE plantilla_ej_id IN ({$phPE})", $plantillaEjIds];
+        }
+        $plan[] = ['metodos_pago', 'SELECT * FROM metodos_pago WHERE entrenador_id = ?', [$entrenadorId]];
+        $plan[] = ['catalogo_ejercicios', 'SELECT * FROM catalogo_ejercicios WHERE entrenador_id = ?', [$entrenadorId]];
+        $plan[] = ['tienda_secciones', 'SELECT * FROM tienda_secciones WHERE entrenador_id = ?', [$entrenadorId]];
+        if (!empty($seccionIds)) {
+            $phS = implode(',', array_fill(0, count($seccionIds), '?'));
+            $plan[] = ['tienda_productos', "SELECT * FROM tienda_productos WHERE seccion_id IN ({$phS})", $seccionIds];
+        }
+
+        foreach ($plan as [$table, $sql, $params]) {
+            if (!isset($existingTables[$table])) continue;
+            $numericCols = self::obtenerColumnasNumericas($db, $table);
+            $st = $db->prepare($sql);
+            $st->execute($params);
+            $filasTabla = self::volcarStatementConColumnas($db, $st, $table, $numericCols, $gz, true);
+            $totalTablas++;
+            $totalFilas += $filasTabla;
+        }
+
+        $totalAtletas = count($clienteIds);
+        $cierre = <<<SQL
+-- ======================================================================
+-- FINALIZACIÓN DE COPIA DE SEGURIDAD POR ENTRENADOR
+-- Entrenador ID       : {$entrenadorId} ({$totalAtletas} atletas)
+-- Tablas Exportadas   : {$totalTablas}
+-- Registros Totales   : {$totalFilas}
+-- ======================================================================
+
+SET FOREIGN_KEY_CHECKS=1;
+
+SQL;
+        gzwrite($gz, $cierre);
+
+        return ['tablas' => $totalTablas, 'filas' => $totalFilas, 'atletas' => $totalAtletas];
+    }
+
+    /**
+     * Volcado GLOBAL completo (esquema DDL + datos DML con comillado seguro por tipo de columna).
+     */
+    private static function ejecutarVolcadoGlobal(PDO $db, $gz): array {
         $fechaGeneracion = date('Y-m-d H:i:s');
         $encabezado = <<<SQL
 -- ======================================================================
--- XPROD FIT — COPIA DE SEGURIDAD DE BASE DE DATOS (.SQL)
+-- ATLAS FIT — COPIA DE SEGURIDAD GLOBAL DE BASE DE DATOS (.SQL)
 -- Fecha de Generación : {$fechaGeneracion}
--- Sistema             : Xprod Fit Management Platform
+-- Sistema             : Atlas Fit Management Platform
 -- Servidor            : MySQL / MariaDB / TiDB Compatible
 -- ======================================================================
 
@@ -141,15 +271,11 @@ SET time_zone = "+00:00";
 SQL;
         gzwrite($gz, $encabezado);
 
-        // 1. Obtener todas las tablas de base (excluyendo vistas temporales)
-        $stTables = $db->query("SHOW FULL TABLES WHERE Table_type = 'BASE TABLE'");
-        $tables = $stTables->fetchAll(PDO::FETCH_COLUMN);
-
+        $tables = $db->query("SHOW FULL TABLES WHERE Table_type = 'BASE TABLE'")->fetchAll(PDO::FETCH_COLUMN);
         $totalTablas = count($tables);
         $totalFilasGlobales = 0;
 
         foreach ($tables as $table) {
-            // Estructura de la tabla (DDL)
             $stCreate = $db->query("SHOW CREATE TABLE `{$table}`");
             $rowCreate = $stCreate->fetch(PDO::FETCH_ASSOC);
             $createTableSql = $rowCreate['Create Table'] ?? '';
@@ -165,53 +291,14 @@ DROP TABLE IF EXISTS `{$table}`;
 SQL;
             gzwrite($gz, $seccionTabla);
 
-            // 2. Volcado de datos en lotes pequeños (DML)
-            $stCount = $db->query("SELECT COUNT(*) FROM `{$table}`");
-            $numRows = (int)$stCount->fetchColumn();
-
-            if ($numRows > 0) {
-                gzwrite($gz, "-- Volcando datos para la tabla: `{$table}` ({$numRows} registros)\n");
-
-                $stData = $db->query("SELECT * FROM `{$table}`");
-                $chunk = [];
-                $chunkSize = 200; // 200 registros por bloque INSERT para máxima compatibilidad SQL
-
-                while ($row = $stData->fetch(PDO::FETCH_ASSOC)) {
-                    $valores = [];
-                    foreach ($row as $colVal) {
-                        if ($colVal === null) {
-                            $valores[] = 'NULL';
-                        } elseif (preg_match('/^-?\d+$/', (string)$colVal) && (!str_starts_with((string)$colVal, '0') || $colVal === '0')) {
-                            $valores[] = $colVal;
-                        } elseif (preg_match('/^-?\d+\.\d+$/', (string)$colVal) && (!str_starts_with((string)$colVal, '0') || str_starts_with((string)$colVal, '0.'))) {
-                            $valores[] = $colVal;
-                        } else {
-                            $valores[] = $db->quote((string)$colVal);
-                        }
-                    }
-                    $chunk[] = '(' . implode(', ', $valores) . ')';
-                    $totalFilasGlobales++;
-
-                    if (count($chunk) >= $chunkSize) {
-                        $insertSql = "INSERT INTO `{$table}` VALUES\n" . implode(",\n", $chunk) . ";\n";
-                        gzwrite($gz, $insertSql);
-                        $chunk = [];
-                    }
-                }
-
-                if (!empty($chunk)) {
-                    $insertSql = "INSERT INTO `{$table}` VALUES\n" . implode(",\n", $chunk) . ";\n";
-                    gzwrite($gz, $insertSql);
-                }
-
-                gzwrite($gz, "\n");
-            }
+            $numericCols = self::obtenerColumnasNumericas($db, (string)$table);
+            $stData = $db->query("SELECT * FROM `{$table}`");
+            $totalFilasGlobales += self::volcarStatementConColumnas($db, $stData, (string)$table, $numericCols, $gz, false);
         }
 
-        // Cierre de seguridad
         $cierre = <<<SQL
 -- ======================================================================
--- FINALIZACIÓN DE COPIA DE SEGURIDAD
+-- FINALIZACIÓN DE COPIA DE SEGURIDAD GLOBAL
 -- Tablas Respaldadas : {$totalTablas}
 -- Registros Totales  : {$totalFilasGlobales}
 -- ======================================================================
@@ -221,9 +308,87 @@ SET FOREIGN_KEY_CHECKS=1;
 SQL;
         gzwrite($gz, $cierre);
 
-        return [
-            'tablas' => $totalTablas,
-            'filas'  => $totalFilasGlobales
-        ];
+        return ['tablas' => $totalTablas, 'filas' => $totalFilasGlobales];
+    }
+
+    private static function obtenerColumnasNumericas(PDO $db, string $table): array {
+        $map = [];
+        try {
+            $cols = $db->query("SHOW COLUMNS FROM `{$table}`")->fetchAll(PDO::FETCH_ASSOC);
+            foreach ($cols as $c) {
+                $baseType = strtolower(preg_replace('/[^a-z].*$/i', '', (string)($c['Type'] ?? '')));
+                if (in_array($baseType, self::NUMERIC_TYPES, true)) {
+                    $map[(string)$c['Field']] = true;
+                }
+            }
+        } catch (\Throwable $e) {}
+        return $map;
+    }
+
+    private static function volcarStatementConColumnas(
+        PDO $db,
+        PDOStatement $st,
+        string $table,
+        array $numericCols,
+        $gz,
+        bool $useInsertIgnore
+    ): int {
+        $count = 0;
+        $chunk = [];
+        $chunkSize = 150;
+        $colHeaderSql = '';
+        $prefix = $useInsertIgnore ? 'INSERT IGNORE INTO' : 'INSERT INTO';
+
+        while ($row = $st->fetch(PDO::FETCH_ASSOC)) {
+            if ($colHeaderSql === '') {
+                $colNames = array_map(static fn(string $c): string => '`' . str_replace('`', '``', $c) . '`', array_keys($row));
+                $colHeaderSql = ' (' . implode(', ', $colNames) . ')';
+                gzwrite($gz, "-- Volcando datos para la tabla: `{$table}`\n");
+            }
+
+            $valores = [];
+            foreach ($row as $colName => $colVal) {
+                if ($colVal === null) {
+                    $valores[] = 'NULL';
+                } elseif (isset($numericCols[$colName]) && is_numeric($colVal)) {
+                    $valores[] = (string)$colVal;
+                } else {
+                    $valores[] = $db->quote((string)$colVal);
+                }
+            }
+
+            $chunk[] = '(' . implode(', ', $valores) . ')';
+            $count++;
+
+            if (count($chunk) >= $chunkSize) {
+                gzwrite($gz, "{$prefix} `{$table}`{$colHeaderSql} VALUES\n" . implode(",\n", $chunk) . ";\n");
+                $chunk = [];
+            }
+        }
+
+        if (!empty($chunk)) {
+            gzwrite($gz, "{$prefix} `{$table}`{$colHeaderSql} VALUES\n" . implode(",\n", $chunk) . ";\n");
+        }
+        if ($count > 0) {
+            gzwrite($gz, "\n");
+        }
+        return $count;
+    }
+
+    private static function prepararEntornoStreaming(): void {
+        @set_time_limit(0);
+        @ini_set('memory_limit', '256M');
+        while (ob_get_level() > 0) {
+            ob_end_clean();
+        }
+    }
+
+    private static function enviarHeadersDescarga(string $filename): void {
+        header('Content-Type: application/gzip');
+        header('Content-Disposition: attachment; filename="' . $filename . '"');
+        header('Content-Transfer-Encoding: binary');
+        header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
+        header('Pragma: no-cache');
+        header('Expires: 0');
     }
 }

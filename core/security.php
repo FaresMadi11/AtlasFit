@@ -191,7 +191,8 @@ function addSecurityHeaders(bool $isHttps = false): void {
  * Clave HMAC interna derivada del entorno para firmar cookies de sesión persistente ("Remember Me").
  */
 function xpRememberSecret(): string {
-    $base = (string)env('APP_KEY', '') . '|' . (string)DB_HOST . '|' . (string)DB_NAME . '|' . (string)DB_USER . '|xp_persist_v1';
+    $dbPass = defined('DB_PASS') ? (string)DB_PASS : '';
+    $base = (string)env('APP_KEY', '') . '|' . (string)DB_HOST . '|' . (string)DB_NAME . '|' . (string)DB_USER . '|' . $dbPass . '|xp_persist_v2';
     return hash('sha256', $base);
 }
 
@@ -309,6 +310,10 @@ function xpRestoreRememberSession(): void {
         if (!hash_equals($expected, $sig)) {
             xpClearRememberCookie();
             return;
+        }
+
+        if (session_status() === PHP_SESSION_ACTIVE) {
+            session_regenerate_id(true);
         }
 
         $_SESSION['user_id']    = (int)$user['id'];

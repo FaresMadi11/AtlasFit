@@ -161,7 +161,7 @@ function adminApiDiaDetalle(): void {
     } catch (\Throwable $e) {
         error_log('[adminApiDiaDetalle] ' . $e->getMessage());
         http_response_code(500);
-        echo json_encode(['ok' => false, 'msg' => 'Error al consultar la rutina del día: ' . $e->getMessage()]);
+        echo json_encode(['ok' => false, 'msg' => 'Error interno al consultar la rutina del día.']);
     }
     exit;
 }
@@ -359,7 +359,7 @@ function adminApiCrearRutinaPropia(): void {
             $db->rollBack();
         }
         error_log('[adminApiCrearRutinaPropia] ' . $e->getMessage());
-        jsonOut(false, 'Error al crear la rutina: ' . $e->getMessage(), [], 500);
+        jsonOut(false, 'Error interno al crear la rutina.', [], 500);
     }
 }
 
@@ -384,15 +384,21 @@ function adminApiActualizarRutinaCompleta(): void {
         jsonOut(false, 'Rutina no encontrada.', [], 404);
     }
 
+    $tituloNuevo = trim(sanitizeInput((string)($payload['titulo'] ?? ($rutRow['titulo'] ?? '')), 120));
+    if ($tituloNuevo === '') {
+        $tituloNuevo = (string)($rutRow['titulo'] ?: 'Mi Rutina');
+    }
+    $descNueva = trim(sanitizeInput((string)($payload['descripcion'] ?? $tituloNuevo), 255));
+
     $cardioActivo       = !empty($payload['cardio_activo']) ? 1 : 0;
     $cardioTiempo       = $cardioActivo && !empty($payload['cardio_tiempo']) ? max(1, min(300, (int)$payload['cardio_tiempo'])) : null;
     $cardioIndicaciones = $cardioActivo ? trim((string)($payload['cardio_indicaciones'] ?? '')) : '';
 
     // Permitir actualizar también los días asignados si se envían
     $diasStr = (string)($rutRow['dias_semana'] ?? '');
+    $dClean = [];
     if (!empty($payload['dias_semana'])) {
         $dArr = is_array($payload['dias_semana']) ? $payload['dias_semana'] : explode(',', (string)$payload['dias_semana']);
-        $dClean = [];
         foreach ($dArr as $d) {
             $dn = (int)$d;
             if ($dn >= 1 && $dn <= 7) $dClean[$dn] = $dn;
@@ -409,21 +415,43 @@ function adminApiActualizarRutinaCompleta(): void {
     try {
         $db->beginTransaction();
 
+        // Resolver colisiones de días con otras rutinas activas del Super Admin (1 rutina por día)
+        if (!empty($dClean)) {
+            $stOtras = $db->prepare("
+                SELECT id, dias_semana FROM rutinas
+                WHERE cliente_id = ? AND id != ? AND estado != 'completada' AND estado != 'archivada'
+                  AND (es_modificacion IS NULL OR es_modificacion = 0 OR estado_modificacion = 'aprobada')
+            ");
+            $stOtras->execute([$adminClienteId, $rutinaId]);
+            foreach ($stOtras->fetchAll(PDO::FETCH_ASSOC) as $otra) {
+                $oDias = array_values(array_filter(array_map('intval', explode(',', (string)$otra['dias_semana'])), static fn($x) => $x >= 1 && $x <= 7));
+                $restantes = array_values(array_diff($oDias, array_values($dClean)));
+                if (count($restantes) !== count($oDias)) {
+                    if (empty($restantes)) {
+                        $db->prepare("UPDATE rutinas SET estado = 'archivada', dias_semana = '' WHERE id = ?")->execute([(int)$otra['id']]);
+                    } else {
+                        sort($restantes);
+                        $db->prepare("UPDATE rutinas SET dias_semana = ? WHERE id = ?")->execute([implode(',', $restantes), (int)$otra['id']]);
+                    }
+                }
+            }
+        }
+
         $db->prepare("
             UPDATE rutinas
-            SET cardio_activo = ?, cardio_tiempo = ?, cardio_indicaciones = ?, dias_semana = ?
+            SET titulo = ?, descripcion = ?, cardio_activo = ?, cardio_tiempo = ?, cardio_indicaciones = ?, dias_semana = ?
             WHERE id = ?
-        ")->execute([$cardioActivo, $cardioTiempo, $cardioIndicaciones, $diasStr, $rutinaId]);
+        ")->execute([$tituloNuevo, $descNueva, $cardioActivo, $cardioTiempo, $cardioIndicaciones, $diasStr, $rutinaId]);
 
         $plantillaId = (int)($rutRow['plantilla_id'] ?? 0);
         if ($plantillaId <= 0) {
             $stInsPl = $db->prepare("INSERT INTO plantillas_rutinas (entrenador_id, titulo, cardio_activo, cardio_tiempo, cardio_indicaciones) VALUES (?, ?, ?, ?, ?)");
-            $stInsPl->execute([$adminUserId, $rutRow['titulo'] ?: 'Entrenamiento', $cardioActivo, $cardioTiempo, $cardioIndicaciones]);
+            $stInsPl->execute([$adminUserId, $tituloNuevo, $cardioActivo, $cardioTiempo, $cardioIndicaciones]);
             $plantillaId = (int)$db->lastInsertId();
             $db->prepare("UPDATE rutinas SET plantilla_id = ? WHERE id = ?")->execute([$plantillaId, $rutinaId]);
         } else {
-            $db->prepare("UPDATE plantillas_rutinas SET cardio_activo = ?, cardio_tiempo = ?, cardio_indicaciones = ? WHERE id = ?")
-               ->execute([$cardioActivo, $cardioTiempo, $cardioIndicaciones, $plantillaId]);
+            $db->prepare("UPDATE plantillas_rutinas SET titulo = ?, cardio_activo = ?, cardio_tiempo = ?, cardio_indicaciones = ? WHERE id = ?")
+               ->execute([$tituloNuevo, $cardioActivo, $cardioTiempo, $cardioIndicaciones, $plantillaId]);
         }
 
         $db->prepare("DELETE FROM plantilla_series WHERE plantilla_ej_id IN (SELECT id FROM plantilla_ejercicios WHERE plantilla_id = ?)")->execute([$plantillaId]);
@@ -559,7 +587,7 @@ function adminApiActualizarRutinaCompleta(): void {
             $db->rollBack();
         }
         error_log('[adminApiActualizarRutinaCompleta] ' . $e->getMessage());
-        jsonOut(false, 'Error al actualizar la rutina: ' . $e->getMessage(), [], 500);
+        jsonOut(false, 'Error interno al actualizar la rutina.', [], 500);
     }
 }
 
@@ -594,7 +622,7 @@ function adminApiEliminarRutina(): void {
             $db->rollBack();
         }
         error_log('[adminApiEliminarRutina] ' . $e->getMessage());
-        jsonOut(false, 'Error al eliminar la rutina: ' . $e->getMessage(), [], 500);
+        jsonOut(false, 'Error interno al eliminar la rutina.', [], 500);
     }
 }
 
@@ -624,7 +652,7 @@ function adminApiGuardarSerie(): void {
             $fechaEntrenamiento = date('Y-m-d');
         }
 
-        if ($ejercicioId < 1 || $numSerie < 1 || $numSerie > 20) {
+        if ($ejercicioId < 1 || $numSerie < 1 || $numSerie > 30) {
             jsonOut(false, 'Número de serie inválido.', [], 422);
         }
 
@@ -696,7 +724,7 @@ function adminApiGuardarSerie(): void {
         $kgReal      = 0.00;
 
         if ($tipoImplemento !== 'sin_peso' && $unidadCarga !== 'ninguna' && $rawPeso !== '') {
-            $valNumeric = round((float)str_replace(',', '.', $rawPeso), 2);
+            $valNumeric = max(0.0, round((float)str_replace(',', '.', $rawPeso), 2));
             if ($tipoImplemento === 'mancuerna') {
                 $maxM        = ($unidadCarga === 'lbs') ? 450 : 200;
                 $pesoUsado   = min($maxM, $valNumeric);
@@ -790,7 +818,7 @@ function adminApiGuardarSerie(): void {
             $db->rollBack();
         }
         error_log('[adminApiGuardarSerie] ' . $e->getMessage());
-        jsonOut(false, 'Error al guardar serie: ' . $e->getMessage(), [], 500);
+        jsonOut(false, 'Error interno al guardar la serie.', [], 500);
     }
 }
 
@@ -843,28 +871,69 @@ function adminApiGuardarRutinaComoPlantilla(): void {
         $ejs = $stEjs->fetchAll(PDO::FETCH_ASSOC);
 
         $stInsPlEj = $db->prepare("
-            INSERT INTO plantilla_ejercicios (plantilla_id, nombre_override, orden, tipo_implemento, unidad_carga)
-            VALUES (?, ?, ?, ?, ?)
+            INSERT INTO plantilla_ejercicios (plantilla_id, nombre_override, orden, descanso_segundos, tipo_implemento, unidad_carga)
+            VALUES (?, ?, ?, ?, ?, ?)
         ");
         $stInsPlS = $db->prepare("
             INSERT INTO plantilla_series (plantilla_ej_id, numero_serie, tipo_serie, kg_objetivo, reps_objetivo, rir)
-            VALUES (?, ?, 'normal', NULL, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?)
         ");
 
+        // Precargar series y descansos reales desde la plantilla vinculada de la rutina (si existe)
+        $origPlId = (int)($rut['plantilla_id'] ?? 0);
+        $origSeriesPorOrden = [];
+        $origDescansoPorOrden = [];
+        if ($origPlId > 0) {
+            $stOrigS = $db->prepare("
+                SELECT pe.orden, pe.descanso_segundos, ps.numero_serie, ps.tipo_serie, ps.kg_objetivo, ps.reps_objetivo, ps.rir
+                FROM plantilla_ejercicios pe
+                LEFT JOIN plantilla_series ps ON ps.plantilla_ej_id = pe.id
+                WHERE pe.plantilla_id = ?
+                ORDER BY pe.orden ASC, ps.numero_serie ASC
+            ");
+            $stOrigS->execute([$origPlId]);
+            foreach ($stOrigS->fetchAll(PDO::FETCH_ASSOC) as $os) {
+                $ord = (int)$os['orden'];
+                if (!array_key_exists($ord, $origDescansoPorOrden) && $os['descanso_segundos'] !== null) {
+                    $origDescansoPorOrden[$ord] = (int)$os['descanso_segundos'];
+                }
+                if ($os['numero_serie'] !== null) {
+                    $origSeriesPorOrden[$ord][] = $os;
+                }
+            }
+        }
+
         foreach ($ejs as $idx => $ej) {
+            $ordEj = (int)($ej['orden'] ?? ($idx + 1));
+            $descEj = $origDescansoPorOrden[$ordEj] ?? null;
             $stInsPlEj->execute([
                 $newPlId,
                 $ej['nombre'],
                 $idx + 1,
+                $descEj,
                 $ej['tipo_implemento'] ?? 'barra',
                 $ej['unidad_carga'] ?? 'kg',
             ]);
             $plEjId = (int)$db->lastInsertId();
-            $numS = max(1, (int)($ej['series'] ?? 3));
-            $reps = (int)($ej['repeticiones'] ?? 10) ?: 10;
-            $rir  = isset($ej['rir']) && is_numeric($ej['rir']) ? (int)$ej['rir'] : 2;
-            for ($s = 1; $s <= $numS; $s++) {
-                $stInsPlS->execute([$plEjId, $s, $reps, $rir]);
+
+            if (!empty($origSeriesPorOrden[$ordEj])) {
+                foreach ($origSeriesPorOrden[$ordEj] as $os) {
+                    $stInsPlS->execute([
+                        $plEjId,
+                        (int)$os['numero_serie'],
+                        in_array((string)($os['tipo_serie'] ?? 'normal'), ['normal', 'calentamiento', 'fallo', 'drop'], true) ? $os['tipo_serie'] : 'normal',
+                        $os['kg_objetivo'] !== null ? (float)$os['kg_objetivo'] : null,
+                        $os['reps_objetivo'] !== null ? (int)$os['reps_objetivo'] : null,
+                        $os['rir'] !== null ? (int)$os['rir'] : null,
+                    ]);
+                }
+            } else {
+                $numS = max(1, (int)($ej['series'] ?? 3));
+                $reps = (int)($ej['repeticiones'] ?? 10) ?: 10;
+                $rir  = isset($ej['rir']) && is_numeric($ej['rir']) ? (int)$ej['rir'] : 2;
+                for ($s = 1; $s <= $numS; $s++) {
+                    $stInsPlS->execute([$plEjId, $s, 'normal', null, $reps, $rir]);
+                }
             }
         }
 
@@ -874,7 +943,8 @@ function adminApiGuardarRutinaComoPlantilla(): void {
         if ($db->inTransaction()) {
             $db->rollBack();
         }
-        jsonOut(false, 'Error al guardar plantilla: ' . $e->getMessage(), [], 500);
+        error_log('[adminApiGuardarRutinaComoPlantilla] ' . $e->getMessage());
+        jsonOut(false, 'Error interno al guardar la plantilla.', [], 500);
     }
 }
 
@@ -891,27 +961,50 @@ function adminApiListarPlantillasCatalogo(): void {
         ORDER BY p.id DESC
     ");
     $plantillas = $st ? $st->fetchAll(PDO::FETCH_ASSOC) : [];
-    foreach ($plantillas as &$pl) {
+
+    // Zero N+1: cargar ejercicios y series en 2 consultas por lotes
+    $plIds = array_values(array_unique(array_filter(array_map(static fn($r) => (int)$r['id'], $plantillas))));
+    $ejsPorPl = [];
+    if (!empty($plIds)) {
+        $phPl = implode(',', array_fill(0, count($plIds), '?'));
         $stEj = $db->prepare("
-            SELECT pe.id, pe.nombre_override AS nombre, pe.orden, pe.descanso_segundos, pe.tipo_implemento, pe.unidad_carga
+            SELECT pe.id, pe.plantilla_id, pe.nombre_override AS nombre, pe.orden, pe.descanso_segundos, pe.tipo_implemento, pe.unidad_carga
             FROM plantilla_ejercicios pe
-            WHERE pe.plantilla_id = ?
-            ORDER BY pe.orden ASC
+            WHERE pe.plantilla_id IN ($phPl)
+            ORDER BY pe.plantilla_id DESC, pe.orden ASC, pe.id ASC
         ");
-        $stEj->execute([$pl['id']]);
-        $ejs = $stEj->fetchAll(PDO::FETCH_ASSOC);
-        foreach ($ejs as &$ex) {
+        $stEj->execute($plIds);
+        $todosEjs = $stEj->fetchAll(PDO::FETCH_ASSOC);
+
+        $ejIds = array_values(array_unique(array_filter(array_map(static fn($r) => (int)$r['id'], $todosEjs))));
+        $seriesPorEj = [];
+        if (!empty($ejIds)) {
+            $phEj = implode(',', array_fill(0, count($ejIds), '?'));
             $stS = $db->prepare("
-                SELECT numero_serie, tipo_serie, kg_objetivo, reps_objetivo, rir
+                SELECT plantilla_ej_id, numero_serie, tipo_serie, kg_objetivo, reps_objetivo, rir
                 FROM plantilla_series
-                WHERE plantilla_ej_id = ?
-                ORDER BY numero_serie ASC
+                WHERE plantilla_ej_id IN ($phEj)
+                ORDER BY plantilla_ej_id ASC, numero_serie ASC
             ");
-            $stS->execute([$ex['id']]);
-            $ex['series'] = $stS->fetchAll(PDO::FETCH_ASSOC);
+            $stS->execute($ejIds);
+            foreach ($stS->fetchAll(PDO::FETCH_ASSOC) as $sRow) {
+                $ejKey = (int)$sRow['plantilla_ej_id'];
+                unset($sRow['plantilla_ej_id']);
+                $seriesPorEj[$ejKey][] = $sRow;
+            }
         }
-        unset($ex);
-        $pl['ejercicios'] = $ejs;
+
+        foreach ($todosEjs as $ex) {
+            $pid = (int)$ex['plantilla_id'];
+            $exId = (int)$ex['id'];
+            unset($ex['plantilla_id']);
+            $ex['series'] = $seriesPorEj[$exId] ?? [];
+            $ejsPorPl[$pid][] = $ex;
+        }
+    }
+
+    foreach ($plantillas as &$pl) {
+        $pl['ejercicios'] = $ejsPorPl[(int)$pl['id']] ?? [];
     }
     unset($pl);
     echo json_encode(['ok' => true, 'plantillas' => $plantillas], JSON_UNESCAPED_UNICODE);
@@ -1219,12 +1312,17 @@ function adminApiGuardarConfiguracion(): void {
                 ON DUPLICATE KEY UPDATE valor = VALUES(valor)
             ")->execute([$cfgTipo['claveGlobal'], $mensaje]);
 
-            $stIds = $db->query("SELECT id FROM usuarios WHERE rol = 'entrenador'");
-            foreach ($stIds->fetchAll(PDO::FETCH_COLUMN) as $eid) {
-                obtenerEstadoMembresiaEntrenador((int)$eid);
+            $stIds = $db->query("SELECT id FROM usuarios WHERE rol = 'entrenador' AND estado_cuenta = 'activo' AND activo = 1");
+            $activeIds = array_map('intval', $stIds->fetchAll(PDO::FETCH_COLUMN));
+            foreach ($activeIds as $eid) {
+                obtenerEstadoMembresiaEntrenador($eid);
             }
-            $db->prepare("UPDATE entrenadores_membresias SET `{$col}` = ?")->execute([$mensaje]);
-            jsonOut(true, $cfgTipo['etiqueta'] . ' guardado para todos los entrenadores.', $outPayload);
+            if (!empty($activeIds)) {
+                $phEnt = implode(',', array_fill(0, count($activeIds), '?'));
+                $db->prepare("UPDATE entrenadores_membresias SET `{$col}` = ? WHERE entrenador_id IN ($phEnt)")
+                   ->execute(array_merge([$mensaje], $activeIds));
+            }
+            jsonOut(true, $cfgTipo['etiqueta'] . ' guardado para todos los entrenadores activos.', $outPayload);
         } else {
             $entId = (int)$alcance;
             if ($entId <= 0) {
@@ -1237,7 +1335,7 @@ function adminApiGuardarConfiguracion(): void {
         }
     } catch (\Throwable $e) {
         error_log('[adminApiGuardarConfiguracion] ' . $e->getMessage());
-        jsonOut(false, 'Error al guardar configuración: ' . $e->getMessage(), [], 500);
+        jsonOut(false, 'Error interno al guardar la configuración.', [], 500);
     }
 }
 
@@ -1364,7 +1462,7 @@ function adminApiCrearEntrenador(): void {
             $db->rollBack();
         }
         error_log('[AdminController][crearEntrenador] ' . $e->getMessage());
-        jsonOut(false, 'Error al crear/designar el entrenador: ' . $e->getMessage());
+        jsonOut(false, 'Error interno al crear o designar el entrenador.', [], 500);
     }
 }
 
@@ -1494,22 +1592,26 @@ function adminApiTogglePausa(): void {
     $motivo = trim(sanitizeInput((string)($in['mensaje_bloqueo'] ?? ''), 255));
 
     if ($target === 'todos') {
-        $stIds = $db->query("SELECT id FROM usuarios WHERE rol = 'entrenador'");
-        foreach ($stIds->fetchAll(PDO::FETCH_COLUMN) as $eid) {
-            obtenerEstadoMembresiaEntrenador((int)$eid);
+        $stIds = $db->query("SELECT id FROM usuarios WHERE rol = 'entrenador' AND estado_cuenta = 'activo' AND activo = 1");
+        $activeIds = array_map('intval', $stIds->fetchAll(PDO::FETCH_COLUMN));
+        foreach ($activeIds as $eid) {
+            obtenerEstadoMembresiaEntrenador($eid);
         }
 
-        if ($motivo !== '') {
-            $db->prepare("UPDATE entrenadores_membresias SET pausado_manualmente = ?, estado_suscripcion = ?, mensaje_bloqueo = ?")
-               ->execute([$pausar, $pausar ? 'suspendida' : 'activa', $motivo]);
-        } else {
-            $db->prepare("UPDATE entrenadores_membresias SET pausado_manualmente = ?, estado_suscripcion = ?")
-               ->execute([$pausar, $pausar ? 'suspendida' : 'activa']);
+        if (!empty($activeIds)) {
+            $phEnt = implode(',', array_fill(0, count($activeIds), '?'));
+            if ($motivo !== '') {
+                $db->prepare("UPDATE entrenadores_membresias SET pausado_manualmente = ?, estado_suscripcion = ?, mensaje_bloqueo = ? WHERE entrenador_id IN ($phEnt)")
+                   ->execute(array_merge([$pausar, $pausar ? 'suspendida' : 'activa', $motivo], $activeIds));
+            } else {
+                $db->prepare("UPDATE entrenadores_membresias SET pausado_manualmente = ?, estado_suscripcion = ? WHERE entrenador_id IN ($phEnt)")
+                   ->execute(array_merge([$pausar, $pausar ? 'suspendida' : 'activa'], $activeIds));
+            }
         }
 
         $msg = $pausar
-            ? 'Se ha pausado el acceso web para todos los entrenadores.'
-            : 'Se ha reanudado el acceso web para todos los entrenadores.';
+            ? 'Se ha pausado el acceso web para todos los entrenadores activos.'
+            : 'Se ha reanudado el acceso web para todos los entrenadores activos.';
         jsonOut(true, $msg);
     }
 
@@ -1557,15 +1659,27 @@ function adminApiReasignarAtleta(): void {
         jsonOut(false, 'Selecciona un atleta y un entrenador válidos.');
     }
 
-    $stE = $db->prepare("SELECT id, nombre FROM usuarios WHERE id = ? AND rol = 'entrenador' LIMIT 1");
+    $stE = $db->prepare("SELECT id, nombre FROM usuarios WHERE id = ? AND rol = 'entrenador' AND estado_cuenta = 'activo' AND activo = 1 LIMIT 1");
     $stE->execute([$entrenadorId]);
     $ent = $stE->fetch(PDO::FETCH_ASSOC);
     if (!$ent) {
-        jsonOut(false, 'El entrenador seleccionado no es válido.');
+        jsonOut(false, 'El entrenador seleccionado no es válido o no está activo.');
     }
 
-    $db->prepare("UPDATE clientes SET entrenador_id = ? WHERE id = ?")
-       ->execute([$entrenadorId, $clienteId]);
+    try {
+        $db->beginTransaction();
+        $db->prepare("UPDATE clientes SET entrenador_id = ? WHERE id = ?")
+           ->execute([$entrenadorId, $clienteId]);
+        $db->prepare("UPDATE rutinas SET entrenador_id = ? WHERE cliente_id = ?")
+           ->execute([$entrenadorId, $clienteId]);
+        $db->commit();
+    } catch (\Throwable $e) {
+        if ($db->inTransaction()) {
+            $db->rollBack();
+        }
+        error_log('[adminApiReasignarAtleta] ' . $e->getMessage());
+        jsonOut(false, 'Error interno al reasignar el atleta.', [], 500);
+    }
 
     jsonOut(true, "Atleta asignado al entrenador {$ent['nombre']}.", [
         'entrenador_id'     => $entrenadorId,
@@ -1585,31 +1699,41 @@ function adminApiRevocarEntrenador(): void {
         jsonOut(false, 'Entrenador inválido.');
     }
 
-    $stCount = $db->query("SELECT COUNT(*) FROM usuarios WHERE rol = 'entrenador'");
+    $stCount = $db->query("SELECT COUNT(*) FROM usuarios WHERE rol = 'entrenador' AND estado_cuenta = 'activo' AND activo = 1");
     if ((int)$stCount->fetchColumn() <= 1) {
-        jsonOut(false, 'Debe existir al menos un entrenador en el sistema.');
+        jsonOut(false, 'Debe existir al menos un entrenador activo en el sistema.');
     }
 
+    if ($reemplazoId > 0 && $reemplazoId !== $entrenadorId) {
+        $stRep = $db->prepare("SELECT id FROM usuarios WHERE id = ? AND rol = 'entrenador' AND estado_cuenta = 'activo' AND activo = 1 LIMIT 1");
+        $stRep->execute([$reemplazoId]);
+        if (!$stRep->fetchColumn()) {
+            $reemplazoId = 0;
+        }
+    }
     if ($reemplazoId <= 0 || $reemplazoId === $entrenadorId) {
-        $stAlt = $db->prepare("SELECT id FROM usuarios WHERE rol = 'entrenador' AND id != ? ORDER BY id ASC LIMIT 1");
+        $stAlt = $db->prepare("SELECT id FROM usuarios WHERE rol = 'entrenador' AND estado_cuenta = 'activo' AND activo = 1 AND id != ? ORDER BY id ASC LIMIT 1");
         $stAlt->execute([$entrenadorId]);
         $reemplazoId = (int)$stAlt->fetchColumn();
+    }
+    if ($reemplazoId <= 0) {
+        jsonOut(false, 'No hay otro entrenador activo disponible para reasignar los atletas.');
     }
 
     try {
         $db->beginTransaction();
 
-        if ($reemplazoId > 0) {
-            $db->prepare("UPDATE clientes SET entrenador_id = ? WHERE entrenador_id = ?")
-               ->execute([$reemplazoId, $entrenadorId]);
-        }
+        $db->prepare("UPDATE clientes SET entrenador_id = ? WHERE entrenador_id = ?")
+           ->execute([$reemplazoId, $entrenadorId]);
+        $db->prepare("UPDATE rutinas SET entrenador_id = ? WHERE entrenador_id = ?")
+           ->execute([$reemplazoId, $entrenadorId]);
 
         $db->prepare("UPDATE usuarios SET rol = 'cliente' WHERE id = ? AND rol = 'entrenador'")
            ->execute([$entrenadorId]);
 
         $stChk = $db->prepare("SELECT id FROM clientes WHERE usuario_id = ? LIMIT 1");
         $stChk->execute([$entrenadorId]);
-        if (!$stChk->fetchColumn() && $reemplazoId > 0) {
+        if (!$stChk->fetchColumn()) {
             $db->prepare("INSERT INTO clientes (usuario_id, entrenador_id) VALUES (?, ?)")
                ->execute([$entrenadorId, $reemplazoId]);
         }
@@ -1620,7 +1744,8 @@ function adminApiRevocarEntrenador(): void {
         if ($db->inTransaction()) {
             $db->rollBack();
         }
-        jsonOut(false, 'Error al revocar entrenador: ' . $e->getMessage());
+        error_log('[adminApiRevocarEntrenador] ' . $e->getMessage());
+        jsonOut(false, 'Error interno al revocar entrenador.', [], 500);
     }
 }
 
@@ -1737,7 +1862,7 @@ function adminApiAprobarEntrenador(): void {
 function adminApiNotificaciones(): void {
     $adminUid = (int)($_SESSION['user_id'] ?? 0);
     $notifs = obtenerNotificacionesUsuario($adminUid, 'admin', 20, true);
-    $unread = count($notifs);
+    $unread = contarNotificacionesNoLeidas($adminUid, 'admin');
     jsonOut(true, 'OK', ['notificaciones' => $notifs, 'unread_count' => $unread]);
 }
 
@@ -1803,14 +1928,32 @@ function adminDescargarRespaldoDb(): void {
     csrfCheck();
     try {
         $db = getDB();
-        $filename = 'xprod_fit_backup_' . date('Y-m-d_His') . '.sql.gz';
+        $alcance = strtolower(trim((string)($_POST['alcance'] ?? 'global')));
+        $targetEntId = (int)($_POST['entrenador_id'] ?? 0);
+
+        if ($alcance === 'entrenador' && $targetEntId > 0) {
+            $stChk = $db->prepare("SELECT nombre FROM usuarios WHERE id = ? AND rol = 'entrenador' LIMIT 1");
+            $stChk->execute([$targetEntId]);
+            $entNom = $stChk->fetchColumn();
+            if (!$entNom) {
+                jsonOut(false, 'Entrenador seleccionado no válido.', [], 404);
+            }
+            $slug = preg_replace('/[^a-z0-9]+/i', '_', strtolower(trim((string)$entNom)));
+            $slug = trim((string)$slug, '_') ?: ('ent_' . $targetEntId);
+            $filename = 'atlas_fit_entrenador_' . $slug . '_' . date('Y-m-d_His') . '.sql.gz';
+            BackupService::descargarRespaldoEntrenador($db, $targetEntId, $filename);
+            return;
+        }
+
+        $filename = 'atlas_fit_global_' . date('Y-m-d_His') . '.sql.gz';
         BackupService::descargarRespaldo($db, $filename);
     } catch (\Throwable $e) {
+        error_log('[adminDescargarRespaldoDb] ' . $e->getMessage());
         http_response_code(500);
         header('Content-Type: application/json; charset=utf-8');
         echo json_encode([
             'ok'  => false,
-            'msg' => 'Error al generar la copia de seguridad: ' . $e->getMessage()
+            'msg' => 'Error interno al generar la copia de seguridad.'
         ]);
         exit;
     }

@@ -211,7 +211,8 @@ INSTRUCCIONES;
         @ini_set('default_socket_timeout', '120');
         $jsonPayload = json_encode($payload);
 
-        // 1. Usar cURL si está disponible en la instalación de PHP
+        // 1. Usar cURL si está disponible en la instalación de PHP (TLS estricto)
+        $caBundle = function_exists('xpResolveCaBundle') ? xpResolveCaBundle() : null;
         if (function_exists('curl_init')) {
             $ch = curl_init($url);
             curl_setopt($ch, CURLOPT_POST, true);
@@ -222,8 +223,11 @@ INSTRUCCIONES;
             ]);
             curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
             curl_setopt($ch, CURLOPT_TIMEOUT, 90);
-            curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
-            curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, false);
+            curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, true);
+            curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, 2);
+            if ($caBundle !== null) {
+                curl_setopt($ch, CURLOPT_CAINFO, $caBundle);
+            }
 
             $response = curl_exec($ch);
             $httpCode = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
@@ -239,7 +243,14 @@ INSTRUCCIONES;
             error_log("[GeminiService] cURL falló ({$curlError}); intentando fallback con file_get_contents.");
         }
 
-        // 2. Fallback universal con stream_context nativo de PHP (sin dependencias externas)
+        // 2. Fallback universal con stream_context nativo de PHP (TLS estricto)
+        $sslOpts = [
+            'verify_peer' => true,
+            'verify_peer_name' => true,
+        ];
+        if ($caBundle !== null) {
+            $sslOpts['cafile'] = $caBundle;
+        }
         $opts = [
             'http' => [
                 'method' => 'POST',
@@ -250,10 +261,7 @@ INSTRUCCIONES;
                 'timeout' => 90,
                 'ignore_errors' => true
             ],
-            'ssl' => [
-                'verify_peer' => false,
-                'verify_peer_name' => false
-            ]
+            'ssl' => $sslOpts
         ];
 
         $context = stream_context_create($opts);

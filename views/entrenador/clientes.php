@@ -381,13 +381,20 @@ function gestionarSolicitud(usuarioId, accion) {
   .then(data => {
     if (data.ok) {
       card.classList.add('fade-out-left');
+      const listContainer = card.parentElement;
+      const panelSolicitudes = listContainer ? listContainer.parentElement : null;
       setTimeout(() => { 
         card.remove(); 
-        // Si no quedan tarjetas, se podría ocultar el panel completo
-        const parent = document.querySelector('.solicitud-card')?.parentElement;
-        if (parent && parent.children.length === 0) {
-            parent.parentElement.classList.add('fade-out-left');
-            setTimeout(() => parent.parentElement.remove(), 500);
+        // Si no quedan tarjetas, ocultar y eliminar el contenedor completo
+        if (listContainer && listContainer.querySelectorAll('.solicitud-card').length === 0 && panelSolicitudes) {
+            panelSolicitudes.classList.add('fade-out-left');
+            setTimeout(() => panelSolicitudes.remove(), 400);
+        } else if (panelSolicitudes) {
+            const titleEl = panelSolicitudes.querySelector('h3');
+            if (titleEl) {
+                const rem = listContainer.querySelectorAll('.solicitud-card').length;
+                titleEl.innerHTML = `<i class="ti ti-user-plus"></i> Nuevas Solicitudes (${rem})`;
+            }
         }
       }, 500);
       Swal.fire({

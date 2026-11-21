@@ -50,7 +50,11 @@ function xpMediaUrl(?string $path): string {
         return $clean;
     }
     $rel = ltrim(str_replace('\\', '/', $clean), '/');
-    $isUserMedia = (
+    $isComprobantePath = (
+        str_starts_with($rel, 'uploads/comprobantes/') ||
+        str_starts_with($rel, 'public/uploads/comprobantes/')
+    );
+    $isUserMedia = !$isComprobantePath && (
         str_starts_with($rel, 'uploads/') ||
         str_starts_with($rel, 'public/uploads/') ||
         str_starts_with($rel, 'assets/img/tienda/')
@@ -282,13 +286,7 @@ function comprimirImagenGD(string $rawBytes, string $ext, int $maxDim = 800, int
 
     $src = @imagecreatefromstring($rawBytes);
     if (!$src) {
-        $fallbackMime = match ($ext) {
-            'png'  => 'image/png',
-            'webp' => 'image/webp',
-            'gif'  => 'image/gif',
-            default => 'image/jpeg',
-        };
-        return ['bytes' => $rawBytes, 'mime' => $fallbackMime];
+        return ['bytes' => '', 'mime' => ''];
     }
 
     $w = imagesx($src);
@@ -351,6 +349,9 @@ function guardarMediaPermanente(
     $ext = strtolower(pathinfo($relativePath, PATHINFO_EXTENSION));
 
     $processed = comprimirImagenGD($rawBytes, $ext, $maxDim, $quality);
+    if ($processed['bytes'] === '') {
+        return false;
+    }
     $fullPath  = BASE_DIR . '/' . $relativePath;
     $dir       = dirname($fullPath);
     if (!is_dir($dir)) {
@@ -360,14 +361,17 @@ function guardarMediaPermanente(
     // 1. Guardar en caché de disco local
     $okDisk = (@file_put_contents($fullPath, $processed['bytes']) !== false);
 
-    // 2. Prioridad 1: Cloudflare R2 (almacenamiento de objetos sin consumir cuota de TiDB Cloud)
-    if (r2IsConfigured()) {
+    // 2. Prioridad 1: Cloudflare R2 (solo media pública; los comprobantes privados se sirven vía PHP autenticado)
+    $isPrivateReceipt = $esComprobante
+        || str_starts_with($relativePath, 'uploads/comprobantes/')
+        || str_starts_with($relativePath, 'public/uploads/comprobantes/');
+    if (!$isPrivateReceipt && r2IsConfigured()) {
         if (r2UploadBytes($relativePath, $processed['bytes'], $processed['mime'])) {
             return true;
         }
     }
 
-    // 3. Prioridad 2 (Fallback): Respaldar en TiDB Cloud para persistencia ante redeploys en Render
+    // 3. Prioridad 2 (Fallback / Comprobantes privados): Respaldar en TiDB Cloud para persistencia ante redeploys en Render
     try {
         $db = getDB();
         ensureMediaTable($db);
@@ -384,7 +388,7 @@ function guardarMediaPermanente(
             $relativePath,
             $processed['mime'],
             $processed['bytes'],
-            $esComprobante ? 1 : 0,
+            $isPrivateReceipt ? 1 : 0,
         ]);
         return true;
     } catch (\Throwable $e) {
@@ -436,6 +440,79 @@ function intentarServirMediaRespaldado(string $route): bool {
         str_starts_with($route, 'assets/img/tienda/')
     );
     if (!$isMediaRoute) return false;
+
+    $isComprobante = (
+        str_starts_with($route, 'uploads/comprobantes/') ||
+        str_starts_with($route, 'public/uploads/comprobantes/')
+    );
+
+    // Comprobantes privados: exigir sesión autenticada y verificar propiedad (atleta dueño, su entrenador o Super Admin)
+    if ($isComprobante) {
+        $uid = (int)($_SESSION['user_id'] ?? 0);
+        $rol = (string)($_SESSION['rol'] ?? '');
+        if ($uid <= 0 || !in_array($rol, ['admin', 'entrenador', 'cliente'], true)) {
+            http_response_code(403);
+            exit('Acceso denegado.');
+        }
+
+        try {
+            $db = getDB();
+            if ($rol !== 'admin') {
+                $altRoute = str_starts_with($route, 'public/') ? substr($route, 7) : ('public/' . $route);
+                if ($rol === 'cliente') {
+                    $cid = (int)($_SESSION['cliente_id'] ?? 0);
+                    $stOwn = $db->prepare("SELECT 1 FROM pagos WHERE cliente_id = ? AND (comprobante_img = ? OR comprobante_img = ?) LIMIT 1");
+                    $stOwn->execute([$cid, $route, $altRoute]);
+                } else {
+                    $stOwn = $db->prepare(
+                        "SELECT 1 FROM pagos p JOIN clientes c ON c.id = p.cliente_id
+                         WHERE c.entrenador_id = ? AND (p.comprobante_img = ? OR p.comprobante_img = ?) LIMIT 1"
+                    );
+                    $stOwn->execute([$uid, $route, $altRoute]);
+                }
+                if (!$stOwn->fetchColumn()) {
+                    http_response_code(403);
+                    exit('Sin permisos para ver este comprobante.');
+                }
+            }
+
+            $diskPath = BASE_DIR . '/' . $route;
+            $bytes = null;
+            $mime = null;
+            if (is_file($diskPath)) {
+                $bytes = (string)@file_get_contents($diskPath);
+                if (function_exists('finfo_open')) {
+                    $fi = finfo_open(FILEINFO_MIME_TYPE);
+                    $mime = $fi ? (string)finfo_buffer($fi, $bytes) : null;
+                    if ($fi) finfo_close($fi);
+                }
+            }
+            if ($bytes === null || $bytes === '') {
+                ensureMediaTable($db);
+                $stmt = $db->prepare("SELECT mime_type, contenido FROM archivos_media WHERE ruta = ? LIMIT 1");
+                $stmt->execute([$route]);
+                $row = $stmt->fetch(PDO::FETCH_ASSOC);
+                if ($row && !empty($row['contenido'])) {
+                    $bytes = (string)$row['contenido'];
+                    $mime = (string)($row['mime_type'] ?: 'image/jpeg');
+                }
+            }
+            if ($bytes === null || $bytes === '') {
+                http_response_code(404);
+                exit('Comprobante no encontrado.');
+            }
+            header('Content-Type: ' . ($mime ?: 'application/octet-stream'));
+            header('Cache-Control: private, no-store, max-age=0');
+            header('X-Content-Type-Options: nosniff');
+            header('Content-Length: ' . strlen($bytes));
+            echo $bytes;
+            exit;
+        } catch (\Throwable $e) {
+            error_log('[Xprod Fit Media] Error sirviendo comprobante protegido: ' . $e->getMessage());
+            http_response_code(500);
+            exit('Error al servir comprobante.');
+        }
+    }
 
     try {
         $db = getDB();

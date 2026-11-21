@@ -295,6 +295,12 @@ function cliApiRutinaSync(): void {
         $stRut->execute([$rutinaId, $clienteId]);
         $rutRow = $stRut->fetch(PDO::FETCH_ASSOC);
 
+        if (!$rutRow) {
+            http_response_code(404);
+            echo json_encode(['ok' => false, 'msg' => 'Rutina no encontrada o sin permisos.']);
+            exit;
+        }
+
         // Si la rutina fue reemplazada (ej. entrenador aprobó modificación o reasignó rutina)
         if ($rutRow && $rutRow['estado'] !== 'en_progreso') {
             $stNew = $db->prepare("
@@ -371,7 +377,9 @@ function cliApiRutinaSync(): void {
             'rutina_id' => $rutinaId
         ]);
     } catch (\Throwable $e) {
-        echo json_encode(['ok' => false, 'msg' => $e->getMessage()]);
+        error_log('[cliApiRutinaSync] ' . $e->getMessage());
+        http_response_code(500);
+        echo json_encode(['ok' => false, 'msg' => 'Error al sincronizar la rutina.']);
     }
     exit;
 }
@@ -536,7 +544,7 @@ function cliRutinaDia(): void {
 
     if ($rutinaId) {
         $stRut = $db->prepare(
-            "SELECT r.id, r.entrenador_id, r.descripcion, r.dias_semana, r.estado, r.cardio_activo, r.cardio_tiempo, r.cardio_indicaciones, u.nombre AS entrenador
+            "SELECT r.id, r.entrenador_id, r.plantilla_id, r.descripcion, r.dias_semana, r.estado, r.cardio_activo, r.cardio_tiempo, r.cardio_indicaciones, u.nombre AS entrenador
              FROM rutinas r
              JOIN usuarios u ON r.entrenador_id = u.id
              WHERE r.id = ? AND r.cliente_id = ?"
@@ -675,6 +683,12 @@ function cliRutinaDia(): void {
     $stEntCli = $db->prepare("SELECT entrenador_id FROM clientes WHERE id = ? LIMIT 1");
     $stEntCli->execute([$clienteId]);
     $entScopeCli = (int)($stEntCli->fetchColumn() ?: 0);
+    $categorias = [];
+    try {
+        $categorias = $db->query("SELECT id, nombre, grupo, icono FROM categorias_musculares ORDER BY orden ASC, id ASC")->fetchAll(PDO::FETCH_ASSOC);
+    } catch (\Throwable $e) {
+        $categorias = [];
+    }
     $catalogoVis = CatalogoService::obtenerEjerciciosVisibles($db, $entScopeCli > 0 ? $entScopeCli : null);
     $catalogo = array_map(static fn(array $c): array => [
         'id'               => (int)$c['id'],
@@ -1278,7 +1292,7 @@ function cliSolicitarModificacionAtleta(): void {
     try {
         $db->beginTransaction();
 
-        $stPadre = $db->prepare("SELECT descripcion, dias_semana FROM rutinas WHERE id = ? AND cliente_id = ?");
+        $stPadre = $db->prepare("SELECT entrenador_id, descripcion, dias_semana FROM rutinas WHERE id = ? AND cliente_id = ?");
         $stPadre->execute([$rutinaId, $clienteId]);
         $padre = $stPadre->fetch();
         if (!$padre) {
@@ -1286,8 +1300,16 @@ function cliSolicitarModificacionAtleta(): void {
             jsonOut(false, 'Rutina no encontrada.');
         }
 
+        $entIdPadre = (int)($padre['entrenador_id'] ?? 0);
+        if ($entIdPadre <= 0) {
+            $stEntFallback = $db->prepare("SELECT entrenador_id FROM clientes WHERE id = ? LIMIT 1");
+            $stEntFallback->execute([$clienteId]);
+            $entIdPadre = (int)($stEntFallback->fetchColumn() ?: 0);
+        }
+
         $desc = 'Modificación de rutina (' . ($tipoMod === 'permanente' ? 'Permanente' : 'Solo por hoy') . ')';
         $diasSemana = $padre['dias_semana'] ?? '';
+        $hoyFecha = date('Y-m-d');
 
         // Archivar solicitudes pendientes previas de la misma rutina padre para evitar duplicados
         $db->prepare("
@@ -1297,10 +1319,10 @@ function cliSolicitarModificacionAtleta(): void {
         ")->execute([$clienteId, $rutinaId]);
 
         $stIns = $db->prepare("
-            INSERT INTO rutinas (cliente_id, descripcion, dias_semana, estado, es_modificacion, estado_modificacion, tipo_modificacion, rutina_padre_id, creado_en)
-            VALUES (?, ?, ?, 'pendiente', 1, 'pendiente', ?, ?, NOW())
+            INSERT INTO rutinas (cliente_id, entrenador_id, nombre, descripcion, fecha_inicio, dias_semana, estado, es_modificacion, estado_modificacion, tipo_modificacion, rutina_padre_id, creado_en)
+            VALUES (?, ?, ?, ?, ?, ?, 'pendiente', 1, 'pendiente', ?, ?, NOW())
         ");
-        $stIns->execute([$clienteId, $desc, $diasSemana, $tipoMod, $rutinaId]);
+        $stIns->execute([$clienteId, $entIdPadre ?: null, $desc, $desc, $hoyFecha, $diasSemana, $tipoMod, $rutinaId]);
         $nuevaRutinaId = (int)$db->lastInsertId();
 
         $stEj = $db->prepare("
@@ -1349,7 +1371,8 @@ function cliSolicitarModificacionAtleta(): void {
     } catch (\Throwable $e) {
         if ($db->inTransaction()) $db->rollBack();
         error_log('[cliSolicitarModificacionAtleta] ' . $e->getMessage());
-        jsonOut(false, 'Error al procesar la solicitud: ' . $e->getMessage());
+        http_response_code(500);
+        jsonOut(false, 'Error interno al procesar la solicitud.');
     }
 }
 
@@ -1459,7 +1482,8 @@ function cliGuardarModificacionDirectaLegacy(): void {
     } catch (\Throwable $e) {
         if ($db->inTransaction()) $db->rollBack();
         error_log('[cliGuardarModificacionDirecta] ' . $e->getMessage());
-        jsonOut(false, 'Error al guardar los cambios: ' . $e->getMessage());
+        http_response_code(500);
+        jsonOut(false, 'Error interno al guardar los cambios.');
     }
 }
 
@@ -1569,25 +1593,33 @@ function cliApiSubirFoto(): void {
     csrfCheck();
     header('Content-Type: application/json');
     $body     = json_decode(file_get_contents('php://input'), true);
-    $dataUrl  = $body['imagen'] ?? '';
+    $dataUrl  = (string)($body['imagen'] ?? '');
 
-    if (!preg_match('/^data:image\/(jpeg|png|webp);base64,/', $dataUrl, $m)) {
+    if (!preg_match('/^data:image\/(jpeg|png|webp);base64,/', $dataUrl)) {
         echo json_encode(['ok' => false, 'msg' => 'Formato inválido.']); exit;
     }
 
     $base64  = preg_replace('/^data:image\/[a-z]+;base64,/', '', $dataUrl);
-    $imgData = base64_decode($base64);
-    if (!$imgData) {
-        echo json_encode(['ok' => false, 'msg' => 'Error al decodificar imagen.']); exit;
+    $imgData = base64_decode((string)$base64, true);
+    if ($imgData === false || $imgData === '' || strlen($imgData) > 5 * 1024 * 1024) {
+        echo json_encode(['ok' => false, 'msg' => 'Imagen inválida o supera el tamaño máximo (5 MB).']); exit;
     }
 
-    $clienteId = $_SESSION['cliente_id'];
-    $filename  = 'uploads/fotos/cli_' . $clienteId . '_' . time() . '.jpg';
-    $path      = BASE_DIR . '/' . $filename;
+    if (function_exists('finfo_open')) {
+        $fi = finfo_open(FILEINFO_MIME_TYPE);
+        $realMime = $fi ? (string)finfo_buffer($fi, $imgData) : '';
+        if ($fi) finfo_close($fi);
+        if (!in_array($realMime, ['image/jpeg', 'image/png', 'image/webp'], true)) {
+            echo json_encode(['ok' => false, 'msg' => 'El archivo no corresponde a una imagen válida.']); exit;
+        }
+    }
 
-    // Save the decoded image directly (JS already cropped and resized it)
+    $clienteId = (int)$_SESSION['cliente_id'];
+    $filename  = 'uploads/fotos/cli_' . $clienteId . '_' . bin2hex(random_bytes(8)) . '.jpg';
+
+    // Comprimir y guardar (comprimirImagenGD también valida decodificación real de imagen)
     if (!guardarMediaPermanente($imgData, $filename, 360, 80, false)) {
-        echo json_encode(['ok' => false, 'msg' => 'Error al guardar la imagen.']); exit;
+        echo json_encode(['ok' => false, 'msg' => 'Error al procesar o guardar la imagen.']); exit;
     }
 
     // Delete old photo if any
@@ -1599,7 +1631,7 @@ function cliApiSubirFoto(): void {
 
     $db->prepare("UPDATE clientes SET foto = ? WHERE id = ?")->execute([$filename, $clienteId]);
 
-    echo json_encode(['ok' => true, 'url' => APP_URL . '/' . $filename]);
+    echo json_encode(['ok' => true, 'url' => xpMediaUrl($filename)]);
     exit;
 }
 
@@ -1663,8 +1695,9 @@ function cliApiEditarPerfil(): void {
         // Nombre completo sincronizado con la columna usuarios.nombre
         $nombreCompleto = trim($nombre . ($apellido !== '' ? ' ' . $apellido : ''));
 
-        // Actualizar tabla usuarios
+        // Actualizar tabla usuarios y sincronizar nombre en sesión
         $db->prepare("UPDATE usuarios SET nombre = ? WHERE id = ?")->execute([$nombreCompleto, $userId]);
+        $_SESSION['nombre'] = $nombreCompleto;
 
         // Actualizar tabla clientes (los días de entrenamiento se calculan automáticamente y no se sobreescriben)
         $db->prepare(
@@ -1675,6 +1708,15 @@ function cliApiEditarPerfil(): void {
             $fechaNac ?: null,
             $clienteId
         ]);
+
+        // Sincronizar peso corporal con historial diario
+        if ($peso !== null) {
+            $db->prepare(
+                "INSERT INTO peso_historial (cliente_id, peso_kg, fecha)
+                 VALUES (?, ?, CURDATE())
+                 ON DUPLICATE KEY UPDATE peso_kg = VALUES(peso_kg)"
+            )->execute([$clienteId, $peso]);
+        }
 
         echo json_encode([
             'ok'              => true,
@@ -1928,6 +1970,15 @@ function cliPago(): void {
     $stMetodos->execute([$entId]);
     $metodos = $stMetodos->fetchAll();
 
+    $stPagos = $db->prepare(
+        "SELECT id, concepto, monto, fecha_emision, fecha_vence, estado, referencia, comprobante_img, notas_cliente
+         FROM pagos
+         WHERE cliente_id = ?
+         ORDER BY fecha_emision DESC, id DESC"
+    );
+    $stPagos->execute([$clienteId]);
+    $pagos = $stPagos->fetchAll();
+
     $pageTitle = 'Mis Pagos';
     require BASE_DIR . '/views/cliente/pago.php';
 }
@@ -1941,24 +1992,50 @@ function cliGuardarPago(): void {
     $referencia= trim($_POST['referencia'] ?? '');
     $notas     = trim($_POST['notas']      ?? '');
 
-    // Subir comprobante si viene
-    $imgPath = null;
-    if (!empty($_FILES['comprobante']['name'])) {
-        $ext     = strtolower(pathinfo($_FILES['comprobante']['name'], PATHINFO_EXTENSION));
-        $allowed = ['jpg','jpeg','png','gif','webp','pdf'];
-        if (!in_array($ext, $allowed)) jsonOut(false, 'Formato de archivo no permitido.');
-        $filename = 'uploads/comprobantes/' . uniqid('cmp_') . '.' . $ext;
-        purgarComprobantesVencidos($db, 10);
-        $rawCmp = (string)@file_get_contents($_FILES['comprobante']['tmp_name']);
-        if ($rawCmp !== '' && guardarMediaPermanente($rawCmp, $filename, 900, 75, true)) {
-            $imgPath = $filename;
-        }
-    }
-
+    // Verificar propiedad del pago ANTES de aceptar o guardar cualquier archivo
     $stPagoOwn = $db->prepare("SELECT id FROM pagos WHERE id = ? AND cliente_id = ? LIMIT 1");
     $stPagoOwn->execute([$pagoId, $clienteId]);
     if (!$stPagoOwn->fetchColumn()) {
         jsonOut(false, 'Pago no encontrado o sin permisos.', [], 404);
+    }
+
+    // Subir comprobante si viene (validando error, tamaño máximo 8 MB y MIME real)
+    $imgPath = null;
+    if (!empty($_FILES['comprobante']['name'])) {
+        $f = $_FILES['comprobante'];
+        if (($f['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK) {
+            jsonOut(false, 'Error al subir el archivo del comprobante.');
+        }
+        if ((int)($f['size'] ?? 0) <= 0 || (int)($f['size'] ?? 0) > 8 * 1024 * 1024) {
+            jsonOut(false, 'El comprobante no puede superar los 8 MB.');
+        }
+        $ext     = strtolower(pathinfo((string)$f['name'], PATHINFO_EXTENSION));
+        $allowed = ['jpg','jpeg','png','gif','webp','pdf'];
+        if (!in_array($ext, $allowed, true)) {
+            jsonOut(false, 'Formato de archivo no permitido.');
+        }
+        $rawCmp = (string)@file_get_contents((string)$f['tmp_name']);
+        if ($rawCmp === '') {
+            jsonOut(false, 'No se pudo leer el archivo del comprobante.');
+        }
+        if (function_exists('finfo_open')) {
+            $fi = finfo_open(FILEINFO_MIME_TYPE);
+            $realMime = $fi ? (string)finfo_buffer($fi, $rawCmp) : '';
+            if ($fi) finfo_close($fi);
+            $allowedMimes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'application/pdf'];
+            if (!in_array($realMime, $allowedMimes, true)) {
+                jsonOut(false, 'El contenido del comprobante no corresponde a una imagen o PDF válido.');
+            }
+            if ($realMime === 'application/pdf') {
+                $ext = 'pdf';
+            }
+        }
+        $filename = 'uploads/comprobantes/cmp_' . $clienteId . '_' . bin2hex(random_bytes(8)) . '.' . $ext;
+        purgarComprobantesVencidos($db, 10);
+        if (!guardarMediaPermanente($rawCmp, $filename, 900, 75, true)) {
+            jsonOut(false, 'No se pudo procesar la imagen del comprobante. Verifica el archivo.');
+        }
+        $imgPath = $filename;
     }
 
     $upd = $db->prepare(
@@ -2234,7 +2311,8 @@ function cliGuardarModificacion(): void {
             $db->rollBack();
         }
         error_log('[cliGuardarModificacion] Error: ' . $e->getMessage());
-        jsonOut(false, 'OcurriÃ³ un error al guardar la modificaciÃ³n: ' . $e->getMessage());
+        http_response_code(500);
+        jsonOut(false, 'Ocurrió un error al guardar la modificación.');
     }
 }
 
@@ -2908,7 +2986,7 @@ function cliApiProgresoEjercicios(): void {
     } catch (\Throwable $e) {
         error_log('[cliApiProgresoEjercicios] Error: ' . $e->getMessage());
         http_response_code(500);
-        echo json_encode(['ok' => false, 'msg' => 'Error al consultar ejercicios', 'error' => $e->getMessage()]);
+        echo json_encode(['ok' => false, 'msg' => 'Error al consultar ejercicios']);
     }
     exit;
 }
@@ -2941,7 +3019,7 @@ function cliApiProgresoHistorial(): void {
     } catch (\Throwable $e) {
         error_log('[cliApiProgresoHistorial] Error: ' . $e->getMessage());
         http_response_code(500);
-        echo json_encode(['ok' => false, 'msg' => 'Error al consultar historial', 'error' => $e->getMessage()]);
+        echo json_encode(['ok' => false, 'msg' => 'Error al consultar historial']);
     }
     exit;
 }

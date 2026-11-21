@@ -1305,7 +1305,7 @@ $fraseDelDia = $frasesMotivadoras[$indiceFrase];
 <script>
 const PESO_ACTUAL  = <?= $pesoActual ?: 0 ?>;
 const PESO_INICIAL = <?= $pesoInicial ?: 0 ?>;
-const META_TEXTO   = <?= json_encode($objetivo ?: '--') ?>;
+const META_TEXTO   = <?= json_encode($objetivo ?: '--', JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_UNESCAPED_UNICODE) ?>;
 
 // Calcula el stroke-dashoffset para el arco (total = 220)
 function pctToOffset(pct) {
@@ -1358,7 +1358,7 @@ function switchTab(tab) {
 }
 
 // ── Shuffle de Frase Motivadora ──
-const MOTIVATIONAL_QUOTES = <?= json_encode($frasesMotivadoras, JSON_UNESCAPED_UNICODE) ?>;
+const MOTIVATIONAL_QUOTES = <?= json_encode($frasesMotivadoras, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
 let currentQuoteIdx = <?= $indiceFrase ?>;
 
 function shuffleQuote() {
@@ -1456,7 +1456,7 @@ document.addEventListener('DOMContentLoaded', () => {
 // ═══════════════════════════════════════════════════════
 //   BENTO METAS (Expansible In-Situ & Sin Recargas)
 // ═══════════════════════════════════════════════════════
-let CURRENT_META = <?= json_encode($metaDetalle, JSON_UNESCAPED_UNICODE) ?>;
+let CURRENT_META = <?= json_encode($metaDetalle, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
 let selectedGoalTemp = CURRENT_META?.id || (CURRENT_META?.custom_texto ? 'otros' : null);
 let selectedSublevelTemp = CURRENT_META?.subnivel?.clave || 'estetico';
 
@@ -1628,7 +1628,7 @@ function renderDashboardMetaSelector(containerId) {
           <div class="meta-otros-bubble">
             <label class="meta-otros-label"><i class="ti ti-sparkles"></i> ¿Cuál es tu meta específica?</label>
             <div class="meta-otros-input-wrap">
-              <input type="text" id="${containerId}_inputOtros" maxlength="150" value="${CURRENT_META?.custom_texto || ''}" placeholder="Ej: Calistenia, Maratón, Rehabilitación..." class="meta-otros-input" autocomplete="off">
+              <input type="text" id="${containerId}_inputOtros" maxlength="150" value="${xpEscapeHtml(CURRENT_META?.custom_texto || '')}" placeholder="Ej: Calistenia, Maratón, Rehabilitación..." class="meta-otros-input" autocomplete="off">
             </div>
           </div>
         </div>
@@ -1843,7 +1843,8 @@ async function saveDashboardMeta(containerId) {
 
       if (subEl) {
         if (res.meta.subnivel) {
-          subEl.innerHTML = `<span class="badge" style="background:rgba(138,43,226,0.2);color:#c4b5fd;font-weight:700;border:1px solid rgba(138,43,226,0.3);padding:3px 8px;border-radius:6px;"><i class="ti ${res.meta.subnivel.icono || 'ti-sparkles'}"></i> ${res.meta.subnivel.titulo}</span>`;
+          const safeSubIcon = /^[a-z0-9\-]+$/i.test(String(res.meta.subnivel.icono || '')) ? String(res.meta.subnivel.icono) : 'ti-sparkles';
+          subEl.innerHTML = `<span class="badge" style="background:rgba(138,43,226,0.2);color:#c4b5fd;font-weight:700;border:1px solid rgba(138,43,226,0.3);padding:3px 8px;border-radius:6px;"><i class="ti ${safeSubIcon}"></i> ${xpEscapeHtml(res.meta.subnivel.titulo || '')}</span>`;
         } else if (res.meta.custom_texto) {
           subEl.innerHTML = `<span class="badge" style="background:rgba(236,72,153,0.15);color:#f472b6;font-weight:700;border:1px solid rgba(236,72,153,0.3);padding:3px 8px;border-radius:6px;">Personalizado</span>`;
         } else {
@@ -1853,9 +1854,9 @@ async function saveDashboardMeta(containerId) {
 
       if (descEnfoque) {
         if (res.meta.subnivel) {
-          descEnfoque.innerHTML = `<strong>${res.meta.subnivel.titulo}:</strong> ${res.meta.subnivel.subtitulo}`;
+          descEnfoque.innerHTML = `<strong>${xpEscapeHtml(res.meta.subnivel.titulo || '')}:</strong> ${xpEscapeHtml(res.meta.subnivel.subtitulo || '')}`;
         } else if (res.meta.custom_texto) {
-          descEnfoque.innerHTML = `<strong>Meta Personalizada:</strong> ${res.meta.custom_texto}`;
+          descEnfoque.innerHTML = `<strong>Meta Personalizada:</strong> ${xpEscapeHtml(res.meta.custom_texto)}`;
         } else {
           descEnfoque.textContent = res.meta.titulo;
         }

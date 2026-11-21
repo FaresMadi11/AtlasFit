@@ -144,35 +144,69 @@ function redirect(string $path): never {
     exit;
 }
 
+/**
+ * Localiza un bundle CA válido para verificación TLS estricta en cURL y streams PHP
+ * (compatible con Linux/Render y Windows XAMPP donde curl.cainfo puede venir vacío).
+ */
+function xpResolveCaBundle(): ?string {
+    static $resolved = false;
+    static $caPath   = null;
+    if ($resolved) {
+        return $caPath;
+    }
+    $resolved = true;
+    $candidates = [
+        trim((string)ini_get('curl.cainfo')),
+        trim((string)ini_get('openssl.cafile')),
+        trim((string)(function_exists('env') ? env('SSL_CERT_FILE', '') : (getenv('SSL_CERT_FILE') ?: ''))),
+        '/etc/ssl/certs/ca-certificates.crt',
+        '/etc/pki/tls/certs/ca-bundle.crt',
+        'C:/xampp/apache/bin/curl-ca-bundle.crt',
+        'C:/xampp/php/extras/ssl/cacert.pem',
+    ];
+    foreach ($candidates as $path) {
+        if ($path !== '' && is_file($path) && is_readable($path)) {
+            $caPath = $path;
+            break;
+        }
+    }
+    return $caPath;
+}
+
 /** Verifica que el usuario esté logueado y activo; si no, redirige al login */
 function requireLogin(): void {
     if (empty($_SESSION['user_id'])) {
         redirect('auth/login');
     }
-    // Verificación de estado de cuenta para atletas y entrenadores (cacheada 60s en sesión)
-    if (($_SESSION['rol'] ?? '') !== 'admin') {
-        $now = time();
-        $lastCheck = (int)($_SESSION['_acc_ok_ts'] ?? 0);
-        if (($now - $lastCheck) > 60) {
-            try {
-                $db = getDB();
-                $stmt = $db->prepare("SELECT estado_cuenta, activo FROM usuarios WHERE id = ? LIMIT 1");
-                $stmt->execute([(int)$_SESSION['user_id']]);
-                $accRow = $stmt->fetch(PDO::FETCH_ASSOC);
-                if (!$accRow || ($accRow['estado_cuenta'] ?? '') !== 'activo' || empty($accRow['activo'])) {
-                    $rolPrev = (string)($_SESSION['rol'] ?? 'cliente');
-                    $_SESSION = [];
-                    if (ini_get('session.use_cookies')) {
-                        $params = session_get_cookie_params();
-                        setcookie(session_name(), '', time() - 42000, $params['path'], $params['domain'], $params['secure'], $params['httponly']);
-                    }
-                    session_destroy();
-                    redirect('auth/login?standby=1' . ($rolPrev === 'entrenador' ? '&rol=entrenador' : ''));
+    // Verificación de estado de cuenta (cacheada 60s en sesión) para TODOS los roles incluido admin
+    $rolActual = (string)($_SESSION['rol'] ?? '');
+    $now = time();
+    $lastCheck = (int)($_SESSION['_acc_ok_ts'] ?? 0);
+    if (($now - $lastCheck) > 60) {
+        try {
+            $db = getDB();
+            $stmt = $db->prepare("SELECT estado_cuenta, activo FROM usuarios WHERE id = ? LIMIT 1");
+            $stmt->execute([(int)$_SESSION['user_id']]);
+            $accRow = $stmt->fetch(PDO::FETCH_ASSOC);
+            $bloqueado = !$accRow
+                || empty($accRow['activo'])
+                || ($rolActual !== 'admin' && ($accRow['estado_cuenta'] ?? '') !== 'activo');
+            if ($bloqueado) {
+                $rolPrev = $rolActual ?: 'cliente';
+                if (function_exists('xpClearRememberCookie')) {
+                    xpClearRememberCookie();
                 }
-                $_SESSION['_acc_ok_ts'] = $now;
-            } catch (\Throwable $e) {
-                // Failsafe DB
+                $_SESSION = [];
+                if (ini_get('session.use_cookies')) {
+                    $params = session_get_cookie_params();
+                    setcookie(session_name(), '', time() - 42000, $params['path'], $params['domain'], $params['secure'], $params['httponly']);
+                }
+                session_destroy();
+                redirect('auth/login?standby=1' . ($rolPrev === 'entrenador' ? '&rol=entrenador' : ''));
             }
+            $_SESSION['_acc_ok_ts'] = $now;
+        } catch (\Throwable $e) {
+            // Failsafe DB
         }
     }
 }

@@ -3,13 +3,13 @@ $pageTitle = 'Pagos Recibidos';
 require __DIR__ . '/../layout/header.php'; 
 
 // Cálculos de métricas rápidas
-$cntTotal = count($pagos ?? []);
 $cntPendientes = 0;
-$cntRevisados = 0;
+$cntRevisados = (int)($cntRevisadosDb ?? 0);
 foreach(($pagos ?? []) as $item) {
     if(($item['estado'] ?? '') === 'pendiente') $cntPendientes++;
-    elseif(($item['estado'] ?? '') === 'pagado') $cntRevisados++;
+    elseif(($item['estado'] ?? '') === 'pagado' && !isset($cntRevisadosDb)) $cntRevisados++;
 }
+$cntTotal = count($pagos ?? []) + (isset($cntRevisadosDb) ? $cntRevisados : 0);
 ?>
 
 <style>
@@ -396,7 +396,7 @@ foreach(($pagos ?? []) as $item) {
       <i class="ti ti-clock-pause"></i>
     </div>
     <div class="pr-kpi-info">
-      <span class="pr-kpi-num"><?= $cntPendientes ?></span>
+      <span class="pr-kpi-num" id="prKpiPendientes"><?= $cntPendientes ?></span>
       <span class="pr-kpi-lbl">Por Revisar</span>
     </div>
   </div>
@@ -406,7 +406,7 @@ foreach(($pagos ?? []) as $item) {
       <i class="ti ti-circle-check"></i>
     </div>
     <div class="pr-kpi-info">
-      <span class="pr-kpi-num"><?= $cntRevisados ?></span>
+      <span class="pr-kpi-num" id="prKpiRevisados"><?= $cntRevisados ?></span>
       <span class="pr-kpi-lbl">Revisados</span>
     </div>
   </div>
@@ -632,6 +632,12 @@ async function aprobarPago() {
                 setTimeout(() => card.remove(), 300);
             }
             
+            // Actualizar contadores KPI en vivo
+            const elPend = document.getElementById('prKpiPendientes');
+            const elRev  = document.getElementById('prKpiRevisados');
+            if (elPend) elPend.textContent = String(Math.max(0, (parseInt(elPend.textContent, 10) || 0) - 1));
+            if (elRev)  elRev.textContent  = String((parseInt(elRev.textContent, 10) || 0) + 1);
+
             // Ocultar modal
             const modalEl = document.getElementById('modalComprobante');
             const modal = bootstrap.Modal.getInstance(modalEl);

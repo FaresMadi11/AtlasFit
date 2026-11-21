@@ -3291,7 +3291,7 @@ svg.silueta-interactive {
             <i class="ti ti-check"></i> <span class="d-none d-sm-inline">Activar Atleta</span>
           </button>
           <?php endif; ?>
-          <button type="button" class="btn-xp" style="padding:8px 14px;background:rgba(239,68,68,0.15);color:#ef4444;border:1px solid rgba(239,68,68,0.3);border-radius:12px;font-size:0.82rem;display:inline-flex;align-items:center;gap:6px;transition:all .2s;" onclick="eliminarAtletaPerfil(<?= (int)($cliente['usuario_id'] ?? 0) ?>, '<?= addslashes(e($cliente['nombre'])) ?>')" onmouseover="this.style.background='rgba(239,68,68,0.28)'" onmouseout="this.style.background='rgba(239,68,68,0.15)'" title="Eliminar atleta permanentemente">
+          <button type="button" class="btn-xp" style="padding:8px 14px;background:rgba(239,68,68,0.15);color:#ef4444;border:1px solid rgba(239,68,68,0.3);border-radius:12px;font-size:0.82rem;display:inline-flex;align-items:center;gap:6px;transition:all .2s;" data-uid="<?= (int)($cliente['usuario_id'] ?? 0) ?>" data-nombre="<?= e($cliente['nombre']) ?>" onclick="eliminarAtletaPerfil(Number(this.dataset.uid), this.dataset.nombre)" onmouseover="this.style.background='rgba(239,68,68,0.28)'" onmouseout="this.style.background='rgba(239,68,68,0.15)'" title="Eliminar atleta permanentemente">
             <i class="ti ti-trash"></i> <span class="d-none d-sm-inline">Eliminar</span>
           </button>
         </div>
@@ -3852,7 +3852,7 @@ svg.silueta-interactive {
             </div>
           </div>
           <div class="cal-card-actions">
-            <button type="button" class="cal-btn-exportar" onclick="exportarExcelAtleta(<?= (int)$cliente['id'] ?>, '<?= e(addslashes($cliente['nombre'])) ?>')" title="Exportar historial de entrenamiento a Excel">
+            <button type="button" class="cal-btn-exportar" data-cid="<?= (int)$cliente['id'] ?>" data-nombre="<?= e($cliente['nombre']) ?>" onclick="exportarExcelAtleta(Number(this.dataset.cid), this.dataset.nombre || '')" title="Exportar historial de entrenamiento a Excel">
               <i class="ti ti-file-spreadsheet"></i> <span>Exportar Excel</span>
             </button>
             <a href="<?= APP_URL ?>/entrenador/crear-rutina?atleta_id=<?= $cliente['id'] ?>" class="cal-btn-asignar">
@@ -4188,6 +4188,12 @@ svg.silueta-interactive {
       'use strict';
       const CLIENTE_ID = <?= (int)$cliente['id'] ?>;
       const $  = (id) => document.getElementById(id);
+      const el = (tag, cls, text) => {
+        const node = document.createElement(tag);
+        if (cls) node.className = cls;
+        if (text !== undefined && text !== null) node.textContent = String(text);
+        return node;
+      };
       const montoEl = $('xpayMonto'), listEl = $('xpayList'), countEl = $('xpayCount');
       const modalMonto = $('xpayModalMonto'), modalComp = $('xpayModalComp');
       const state = { monto: null, pagos: [] };
@@ -4418,8 +4424,8 @@ svg.silueta-interactive {
 // ── Variables base ─────────────────────────────────────────
 const CLIENTE_ID_STATS = <?= (int)$cliente['id'] ?>;
 const APP_URL_STATS    = (typeof APP !== 'undefined' ? APP : '<?= APP_URL ?>');
-const TREN_SUPERIOR    = <?= json_encode($trenoSuperior, JSON_UNESCAPED_UNICODE) ?>;
-const TREN_INFERIOR    = <?= json_encode($trenoInferior, JSON_UNESCAPED_UNICODE) ?>;
+const TREN_SUPERIOR    = <?= json_encode($trenoSuperior, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
+const TREN_INFERIOR    = <?= json_encode($trenoInferior, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
 
 // ── Radio-Tabs & Navegación de Paneles ────────────────────
 document.querySelectorAll('.xpf-tabs input[name="xpf-tab-group"]').forEach(radio => {
@@ -4910,7 +4916,7 @@ function initGraficaPeso() {
       'fecha' => $r['fecha'],
       'peso'  => (float)$r['peso_kg']
     ];
-  }, $pesoTodos), JSON_UNESCAPED_UNICODE) ?>;
+  }, $pesoTodos), JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
 
   if (!pesoRaw || pesoRaw.length === 0) return;
 
@@ -6228,7 +6234,7 @@ if (document.readyState === 'complete') {
 
   let fechaGlobalInline = FECHA_HOY;
   let rutinaIdActual = null;
-  const DIAS_PROGRAMADOS = <?= json_encode($diasProgramadosOrdenados) ?>;
+  const DIAS_PROGRAMADOS = <?= json_encode($diasProgramadosOrdenados, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
   const DIAS_NOMBRES = { 1:'Lun', 2:'Mar', 3:'Mié', 4:'Jue', 5:'Vie', 6:'Sáb', 7:'Dom' };
 
   function renderizarBarraDias(fechaActual) {
@@ -6523,6 +6529,7 @@ if (document.readyState === 'complete') {
       if (data.rutina && Array.isArray(data.ejercicios) && data.ejercicios.length > 0) {
         rutinaInlineState = {
           fecha: fecha,
+          modo: data.modo || 'planificacion',
           rutina_id: data.rutina.id,
           nombre: data.rutina.nombre || 'Entrenamiento',
           cardio_activo: data.rutina.cardio_activo ? 1 : 0,
@@ -6631,7 +6638,7 @@ if (document.readyState === 'complete') {
       <div class="crdi-rutina-card">
         <div class="crdi-rutina-actions" style="margin-left:auto;">
           ${!modoEdicionActivo ? `
-            <button type="button" class="crdi-btn-action crdi-btn-guardar" onclick="guardarRutinaAtletaComoPlantilla(${rutinaInlineState.rutina_id}, '${esc(rutinaInlineState.nombre)}')" title="Guardar como plantilla reusable">
+            <button type="button" class="crdi-btn-action crdi-btn-guardar" data-rutina-nombre="${esc(rutinaInlineState.nombre)}" onclick="guardarRutinaAtletaComoPlantilla(${Number(rutinaInlineState.rutina_id) || 0}, this.dataset.rutinaNombre || '')" title="Guardar como plantilla reusable">
               <i class="ti ti-device-floppy"></i> Guardar rutina
             </button>
             <button type="button" class="crdi-btn-action crdi-btn-actualizar" onclick="activarModoEdicionRutina()" title="Habilitar modo edición">
@@ -6961,8 +6968,46 @@ if (document.readyState === 'complete') {
     }
   }
 
-  // Activar y cancelar modo edición
-  function activarModoEdicionRutina() {
+  // Activar y cancelar modo edición (siempre cargar la rutina programada completa para evitar borrar ejercicios en días incompletos)
+  async function activarModoEdicionRutina() {
+    if (rutinaInlineState && rutinaInlineState.modo === 'historial' && rutinaInlineState.rutina_id) {
+      try {
+        const res = await fetch(`${APP_URL_STATS}/entrenador/api-dia-detalle?cliente_id=${CLIENTE_ID_STATS}&fecha=${encodeURIComponent(fechaGlobalInline)}&programada=1&rutina_id=${encodeURIComponent(rutinaInlineState.rutina_id)}`);
+        const data = await res.json();
+        if (data && data.ok && data.rutina && Array.isArray(data.ejercicios) && data.ejercicios.length > 0) {
+          rutinaInlineState.modo = 'planificacion';
+          rutinaInlineState.cardio_activo = data.rutina.cardio_activo ? 1 : 0;
+          rutinaInlineState.cardio_tiempo = data.rutina.cardio_tiempo ? parseInt(data.rutina.cardio_tiempo, 10) : 20;
+          rutinaInlineState.cardio_indicaciones = data.rutina.cardio_indicaciones || '';
+          rutinaInlineState.ejercicios = data.ejercicios.map((e) => {
+            const safeRir = (val) => (val === null || val === undefined || val === '') ? null : (isNaN(parseInt(val, 10)) ? null : parseInt(val, 10));
+            const rirFallback = e.rir_desmarcado ? null : safeRir(e.rir);
+            const rawSets = (Array.isArray(e.series_detalle) && e.series_detalle.length > 0) ? e.series_detalle : (Array.isArray(e.series) ? e.series : []);
+            const sets = rawSets.map((s, sIdx) => ({
+              numero: s.numero || (sIdx + 1),
+              tipo_serie: s.tipo_serie || s.tipo || 'normal',
+              peso: (s.peso !== null && s.peso !== undefined && s.peso !== '' && !isNaN(parseFloat(s.peso))) ? parseFloat(s.peso) : null,
+              reps: s.reps || e.repeticiones || '10',
+              rir: safeRir(s.rir) !== null ? safeRir(s.rir) : rirFallback,
+              unidad: s.unidad || e.unidad_carga || 'kg'
+            }));
+            return {
+              id: e.id,
+              nombre: e.nombre,
+              imagen_path: e.imagen_path || null,
+              series: sets.length || 3,
+              repeticiones: e.repeticiones || '10',
+              rir: rirFallback,
+              peso: sets[0]?.peso || null,
+              tipo_implemento: e.tipo_implemento || 'barra',
+              unidad_carga: e.unidad_carga || 'kg',
+              descanso: e.descanso_segundos || null,
+              series_detalle: sets
+            };
+          });
+        }
+      } catch (_) {}
+    }
     modoEdicionActivo = true;
     renderizarRutinaInline();
   }
@@ -7310,8 +7355,12 @@ if (document.readyState === 'complete') {
     try {
       const res = await fetch(`${APP_URL_STATS}/entrenador/api-catalogo-list`);
       const data = await res.json();
-      if (data && data.ok) {
-        catalogoEjerciciosCache = data.data || [];
+      if (Array.isArray(data)) {
+        catalogoEjerciciosCache = data;
+      } else if (data && data.ok) {
+        catalogoEjerciciosCache = Array.isArray(data.data)
+          ? data.data
+          : (Array.isArray(data.ejercicios) ? data.ejercicios : Object.values(data).filter(v => v && typeof v === 'object' && v.nombre));
       } else {
         catalogoEjerciciosCache = [];
       }
@@ -7743,6 +7792,7 @@ if (document.readyState === 'complete') {
           peso: e.peso,
           tipo_implemento: e.tipo_implemento || 'barra',
           unidad_carga: e.unidad_carga || 'kg',
+          descanso_segundos: e.descanso || null,
           orden: index + 1,
           series_detalle: (Array.isArray(e.series_detalle) ? e.series_detalle : []).map((s, sIdx) => ({
             numero_serie: s.numero || s.numero_serie || (sIdx + 1),

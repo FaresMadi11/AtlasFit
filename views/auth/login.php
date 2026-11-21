@@ -104,6 +104,10 @@ $metaColorLogin = $mapaMetaColorLogin[$temaGlobalLogin] ?? '#02040a';
       localStorage.removeItem('xp_auth_uid');
       localStorage.removeItem('xp_auth_home');
       localStorage.removeItem('xp_offline_ready_sig');
+      localStorage.removeItem('xp_offline_queue');
+      Object.keys(localStorage).forEach(function(k) {
+        if (k && k.indexOf('xprod_') === 0) localStorage.removeItem(k);
+      });
       sessionStorage.removeItem('xp_prewarm_ts');
     } catch (_) {}
     // Al cerrar sesión borramos SOLO los HTML/datos privados del usuario, manteniendo el App Shell estático en caché
@@ -2353,6 +2357,7 @@ const API        = APP + '/api';
 
 // ── Fallback Defensivo para Anime.js (asegura que ninguna llamada lance error) ──
 const safeAnime = (opts) => (typeof window.anime === 'function' ? window.anime(opts) : { finished: Promise.resolve() });
+window.safeAnime = safeAnime;
 
 // Entrance sutil sin ocultar #authBox al arranque (preserva LCP inmediato)
 document.addEventListener('DOMContentLoaded', () => {
@@ -2478,7 +2483,7 @@ document.getElementById('loginForm')?.addEventListener('submit', async e => {
     } else {
       Toast.fire({icon:'error', title: data.mensaje || data.msg || 'Credenciales incorrectas.'});
       setBtn(btn, false, origLogin);
-      anime({ targets:'#authBox', translateX:[0,-8,8,-5,5,0], duration:500, easing:'linear' });
+      safeAnime({ targets:'#authBox', translateX:[0,-8,8,-5,5,0], duration:500, easing:'linear' });
     }
   } catch(err) {
     console.error('Error de login:', err);
@@ -2937,7 +2942,7 @@ document.querySelectorAll('#goalsGrid .goal-chip').forEach(chip => {
       selectedGoals.add(goal);
 
       if (typeof anime !== 'undefined') {
-        anime({ targets: chip, scale: [1, 1.03, 1], duration: 220, easing: 'easeOutQuad' });
+        safeAnime({ targets: chip, scale: [1, 1.03, 1], duration: 220, easing: 'easeOutQuad' });
       }
 
       if (goal === 'otros' && boxMetaOtros) {
@@ -2961,7 +2966,7 @@ document.querySelectorAll('#boxSubnivelHipertrofia .subnivel-card').forEach(card
     card.classList.add('selected');
     activeSublevelHipertrofia = card.getAttribute('data-sub') || 'estetico';
     if (typeof anime !== 'undefined') {
-      anime({ targets: card, scale: [0.98, 1.03, 1], duration: 220, easing: 'easeOutQuad' });
+      safeAnime({ targets: card, scale: [0.98, 1.03, 1], duration: 220, easing: 'easeOutQuad' });
     }
   });
 });
@@ -2991,7 +2996,7 @@ window.forceStepSwitch = function(from, to) {
       p2.style.opacity = '1';
       p2.style.transform = 'none';
       if (typeof anime !== 'undefined') {
-        anime({ targets: p2, opacity: [0, 1], translateY: [12, 0], duration: 240, easing: 'easeOutQuad' });
+        safeAnime({ targets: p2, opacity: [0, 1], translateY: [12, 0], duration: 240, easing: 'easeOutQuad' });
       }
     }
     wizardCurrentStep = 2;
@@ -3003,7 +3008,7 @@ window.forceStepSwitch = function(from, to) {
       p1.style.opacity = '1';
       p1.style.transform = 'none';
       if (typeof anime !== 'undefined') {
-        anime({ targets: p1, opacity: [0, 1], translateY: [12, 0], duration: 240, easing: 'easeOutQuad' });
+        safeAnime({ targets: p1, opacity: [0, 1], translateY: [12, 0], duration: 240, easing: 'easeOutQuad' });
       }
     }
     wizardCurrentStep = 1;
@@ -3016,7 +3021,7 @@ window.forceStepSwitch = function(from, to) {
       p3.style.opacity = '1';
       p3.style.transform = 'none';
       if (typeof anime !== 'undefined') {
-        anime({ targets: p3, opacity: [0, 1], translateY: [12, 0], duration: 240, easing: 'easeOutQuad' });
+        safeAnime({ targets: p3, opacity: [0, 1], translateY: [12, 0], duration: 240, easing: 'easeOutQuad' });
       }
     }
     wizardCurrentStep = 3;
@@ -3561,7 +3566,7 @@ async function submitRegistration(isOmitido = false) {
         Toast.fire({ icon: 'error', title: errMsg });
       }
       if (typeof anime !== 'undefined') {
-        anime({ targets: '#authBox', translateX: [0, -8, 8, -5, 5, 0], duration: 500, easing: 'linear' });
+        safeAnime({ targets: '#authBox', translateX: [0, -8, 8, -5, 5, 0], duration: 500, easing: 'linear' });
       }
     }
   } catch (err) {
@@ -3658,7 +3663,7 @@ if (recoveryForm) {
       if (!idVal) {
         const inp = setRecoveryError('identificador', 'Ingresa tu correo electrónico o cédula.');
         if (inp) inp.focus();
-        anime({ targets:'#authBox', translateX:[0,-8,8,-5,5,0], duration:500, easing:'linear' });
+        safeAnime({ targets:'#authBox', translateX:[0,-8,8,-5,5,0], duration:500, easing:'linear' });
         return;
       }
 
@@ -3682,7 +3687,7 @@ if (recoveryForm) {
           recSubtitulo.textContent = 'Responde tu pregunta de seguridad.';
 
           recPaso2.style.display = 'block';
-          anime({
+          safeAnime({
             targets: '#recPaso2',
             opacity: [0, 1],
             translateY: [12, 0],
@@ -3697,7 +3702,7 @@ if (recoveryForm) {
           const inp = setRecoveryError(data.campo || 'identificador', data.msg || 'No se encontró la cuenta.');
           if (inp) inp.focus();
           setBtn(btnRecovery, false, 'CONTINUAR');
-          anime({ targets:'#authBox', translateX:[0,-8,8,-5,5,0], duration:500, easing:'linear' });
+          safeAnime({ targets:'#authBox', translateX:[0,-8,8,-5,5,0], duration:500, easing:'linear' });
         }
       } catch (err) {
         console.error('Error al identificar:', err);
@@ -3711,7 +3716,7 @@ if (recoveryForm) {
       if (respVal.length < 2) {
         const inp = setRecoveryError('respuesta', 'Ingresa tu respuesta de seguridad.');
         if (inp) inp.focus();
-        anime({ targets:'#authBox', translateX:[0,-8,8,-5,5,0], duration:500, easing:'linear' });
+        safeAnime({ targets:'#authBox', translateX:[0,-8,8,-5,5,0], duration:500, easing:'linear' });
         return;
       }
 
@@ -3737,7 +3742,7 @@ if (recoveryForm) {
 
           // Desplegar Paso 3 con doble campo de contraseña
           recPaso3.style.display = 'block';
-          anime({
+          safeAnime({
             targets: '#recPaso3',
             opacity: [0, 1],
             translateY: [12, 0],
@@ -3752,7 +3757,7 @@ if (recoveryForm) {
           const inp = setRecoveryError(data.campo || 'respuesta', data.msg || 'La respuesta de seguridad es incorrecta.');
           if (inp) inp.focus();
           setBtn(btnRecovery, false, 'VERIFICAR RESPUESTA');
-          anime({ targets:'#authBox', translateX:[0,-8,8,-5,5,0], duration:500, easing:'linear' });
+          safeAnime({ targets:'#authBox', translateX:[0,-8,8,-5,5,0], duration:500, easing:'linear' });
         }
       } catch (err) {
         console.error('Error al verificar respuesta:', err);
@@ -3779,7 +3784,7 @@ if (recoveryForm) {
       }
 
       if (hasErr) {
-        anime({ targets:'#authBox', translateX:[0,-8,8,-5,5,0], duration:500, easing:'linear' });
+        safeAnime({ targets:'#authBox', translateX:[0,-8,8,-5,5,0], duration:500, easing:'linear' });
         return;
       }
 
@@ -3811,7 +3816,7 @@ if (recoveryForm) {
           const inp = setRecoveryError(data.campo || 'confirmar_password', data.msg || 'Error al actualizar contraseña.');
           if (inp) inp.focus();
           setBtn(btnRecovery, false, 'CAMBIAR CONTRASEÑA');
-          anime({ targets:'#authBox', translateX:[0,-8,8,-5,5,0], duration:500, easing:'linear' });
+          safeAnime({ targets:'#authBox', translateX:[0,-8,8,-5,5,0], duration:500, easing:'linear' });
         }
       } catch (err) {
         console.error('Error al cambiar contraseña:', err);

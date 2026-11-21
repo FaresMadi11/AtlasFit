@@ -456,7 +456,7 @@ $apellidoAtleta = $partesNombre[1] ?? '';
           <?php if (!empty($metodosPago)): ?>
           <select class="receipt-select" id="metodoPagoSelect" onchange="actualizarDetallesRecibo(this)">
               <?php foreach ($metodosPago as $m): ?>
-                  <option value="<?= e($m['tipo']) ?>" data-banco="<?= e($m['banco']) ?>" data-titular="<?= e($m['titular']) ?>" data-cedula="<?= e($m['cedula']) ?>" data-telefono="<?= e($m['telefono']) ?>" data-cuenta="<?= e($m['numero_cuenta']) ?>"><?= e($m['tipo']) ?></option>
+                  <option value="<?= e($m['tipo']) ?>" data-banco="<?= e($m['banco']) ?>" data-titular="<?= e($m['titular']) ?>" data-cedula="<?= e($m['cedula']) ?>" data-telefono="<?= e($m['telefono']) ?>" data-cuenta="<?= e($m['numero_cuenta']) ?>" data-correo-binance="<?= e($m['correo_binance'] ?? '') ?>"><?= e($m['tipo']) ?></option>
               <?php endforeach; ?>
           </select>
           <?php endif; ?>
@@ -484,12 +484,14 @@ function actualizarDetallesRecibo(selectEl) {
     const opt = selectEl.options[selectEl.selectedIndex];
     const div = document.getElementById('receiptBankDetails');
     if (!opt || !div) return;
+    const escRec = (s) => String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
     let h = '';
-    if (opt.dataset.cedula)   h += `<div class="receipt-bank-row"><div class="receipt-bank-label"><i class="ti ti-id"></i> Cédula/ID</div><div class="receipt-bank-value">${opt.dataset.cedula}</div></div>`;
-    if (opt.dataset.banco)    h += `<div class="receipt-bank-row"><div class="receipt-bank-label"><i class="ti ti-building-bank"></i> Banco</div><div class="receipt-bank-value">${opt.dataset.banco}</div></div>`;
-    if (opt.dataset.telefono) h += `<div class="receipt-bank-row"><div class="receipt-bank-label"><i class="ti ti-device-mobile"></i> Teléfono</div><div class="receipt-bank-value">${opt.dataset.telefono}</div></div>`;
-    if (opt.dataset.titular)  h += `<div class="receipt-bank-row"><div class="receipt-bank-label"><i class="ti ti-user"></i> Titular</div><div class="receipt-bank-value">${opt.dataset.titular}</div></div>`;
-    if (opt.dataset.cuenta)   h += `<div class="receipt-bank-row"><div class="receipt-bank-label"><i class="ti ti-credit-card"></i> Cuenta</div><div class="receipt-bank-value">${opt.dataset.cuenta}</div></div>`;
+    if (opt.dataset.cedula)        h += `<div class="receipt-bank-row"><div class="receipt-bank-label"><i class="ti ti-id"></i> Cédula/ID</div><div class="receipt-bank-value">${escRec(opt.dataset.cedula)}</div></div>`;
+    if (opt.dataset.banco)         h += `<div class="receipt-bank-row"><div class="receipt-bank-label"><i class="ti ti-building-bank"></i> Banco</div><div class="receipt-bank-value">${escRec(opt.dataset.banco)}</div></div>`;
+    if (opt.dataset.telefono)      h += `<div class="receipt-bank-row"><div class="receipt-bank-label"><i class="ti ti-device-mobile"></i> Teléfono</div><div class="receipt-bank-value">${escRec(opt.dataset.telefono)}</div></div>`;
+    if (opt.dataset.titular)       h += `<div class="receipt-bank-row"><div class="receipt-bank-label"><i class="ti ti-user"></i> Titular</div><div class="receipt-bank-value">${escRec(opt.dataset.titular)}</div></div>`;
+    if (opt.dataset.cuenta)        h += `<div class="receipt-bank-row"><div class="receipt-bank-label"><i class="ti ti-credit-card"></i> ${opt.value === 'Binance' ? 'ID Binance' : 'Cuenta'}</div><div class="receipt-bank-value">${escRec(opt.dataset.cuenta)}</div></div>`;
+    if (opt.dataset.correoBinance) h += `<div class="receipt-bank-row"><div class="receipt-bank-label"><i class="ti ti-mail"></i> Correo Binance</div><div class="receipt-bank-value">${escRec(opt.dataset.correoBinance)}</div></div>`;
     div.innerHTML = h;
 }
 document.addEventListener('DOMContentLoaded', () => {
@@ -579,11 +581,14 @@ function copiarDatosPago(e) {
     if (!s || s.selectedIndex < 0) return;
     const o = s.options[s.selectedIndex];
     if (!o) return;
-    // Copiar únicamente los valores ingresados por el entrenador (Cédula, Banco, Teléfono) sin etiquetas
+    // Copiar todos los datos ingresados por el entrenador según el método elegido
     const datos = [];
-    if (o.dataset.cedula && o.dataset.cedula.trim())     datos.push(o.dataset.cedula.trim());
-    if (o.dataset.banco && o.dataset.banco.trim())       datos.push(o.dataset.banco.trim());
-    if (o.dataset.telefono && o.dataset.telefono.trim()) datos.push(o.dataset.telefono.trim());
+    if (o.dataset.cedula && o.dataset.cedula.trim())               datos.push(o.dataset.cedula.trim());
+    if (o.dataset.banco && o.dataset.banco.trim())                 datos.push(o.dataset.banco.trim());
+    if (o.dataset.telefono && o.dataset.telefono.trim())           datos.push(o.dataset.telefono.trim());
+    if (o.dataset.titular && o.dataset.titular.trim())             datos.push(o.dataset.titular.trim());
+    if (o.dataset.cuenta && o.dataset.cuenta.trim())               datos.push(o.dataset.cuenta.trim());
+    if (o.dataset.correoBinance && o.dataset.correoBinance.trim()) datos.push(o.dataset.correoBinance.trim());
     const t = datos.join('\n').trim();
     if (!t) return;
 
@@ -599,7 +604,7 @@ function copiarDatosPago(e) {
             }, 2000);
         }
         // Toast glassmorphism no intrusivo
-        mostrarToast('Datos de Pago Móvil copiados');
+        mostrarToast('Datos de ' + (o.value || 'pago') + ' copiados');
     };
 
     if (navigator.clipboard && window.isSecureContext) {
@@ -1236,11 +1241,11 @@ document.getElementById('btnEditarFoto').addEventListener('click', () => documen
   const btnPlus     = document.getElementById('btnRulerPlus');
 
   const curr = {
-    nombre:    <?= json_encode($nombreAtleta) ?>,
-    apellido:  <?= json_encode($apellidoAtleta) ?>,
-    fecha_nac: <?= json_encode($perfil['fecha_nac'] ?? '') ?>,
-    peso_kg:   <?= json_encode((string)($perfil['peso_kg'] ?? '')) ?>,
-    altura_cm: <?= json_encode((string)round((float)($perfil['altura_cm'] ?? 170))) ?>,
+    nombre:    <?= json_encode($nombreAtleta, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_UNESCAPED_UNICODE) ?>,
+    apellido:  <?= json_encode($apellidoAtleta, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_UNESCAPED_UNICODE) ?>,
+    fecha_nac: <?= json_encode($perfil['fecha_nac'] ?? '', JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>,
+    peso_kg:   <?= json_encode((string)($perfil['peso_kg'] ?? ''), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>,
+    altura_cm: <?= json_encode((string)round((float)($perfil['altura_cm'] ?? 170)), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>,
   };
 
   /* ── 1. Altura Ruler Slider Logic ── */

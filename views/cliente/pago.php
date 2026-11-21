@@ -393,10 +393,11 @@ require __DIR__ . '/../layout/header.php';
             <span class="cp-status-badge success">$<?= number_format($m['monto_dolares'],2) ?> USD / mes</span>
           <?php endif; ?>
         </div>
-        <?php if(!empty($m['banco'])): ?><div class="cp-metodo-detail"><i class="ti ti-building-bank"></i> <?= e($m['banco']) ?><?= !empty($m['titular']) ? ' · ' . e($m['titular']) : '' ?></div><?php endif; ?>
+        <?php if(!empty($m['banco'])): ?><div class="cp-metodo-detail"><i class="ti ti-building-bank"></i> <?= e($m['banco']) ?><?= !empty($m['titular']) ? ' · ' . e($m['titular']) : '' ?></div><?php elseif(!empty($m['titular'])): ?><div class="cp-metodo-detail"><i class="ti ti-user"></i> Titular: <?= e($m['titular']) ?></div><?php endif; ?>
         <?php if(!empty($m['cedula'])): ?><div class="cp-metodo-detail"><i class="ti ti-id-badge"></i> Cédula: <?= e($m['cedula']) ?></div><?php endif; ?>
         <?php if(!empty($m['telefono'])): ?><div class="cp-metodo-detail"><i class="ti ti-phone"></i> Tel: <?= e($m['telefono']) ?></div><?php endif; ?>
-        <?php if(!empty($m['numero_cuenta'])): ?><div class="cp-metodo-detail"><i class="ti ti-credit-card"></i> Cuenta/ID: <?= e($m['numero_cuenta']) ?></div><?php endif; ?>
+        <?php if(!empty($m['numero_cuenta'])): ?><div class="cp-metodo-detail"><i class="ti ti-credit-card"></i> <?= ($m['tipo'] ?? '') === 'Binance' ? 'ID Binance' : 'Cuenta/ID' ?>: <?= e($m['numero_cuenta']) ?></div><?php endif; ?>
+        <?php if(!empty($m['correo_binance'])): ?><div class="cp-metodo-detail"><i class="ti ti-mail"></i> Correo Binance: <?= e($m['correo_binance']) ?></div><?php endif; ?>
         <?php if(!empty($m['instrucciones'])): ?><div class="cp-metodo-note"><?= e($m['instrucciones']) ?></div><?php endif; ?>
       </div>
       <?php endforeach; ?>

@@ -1869,8 +1869,9 @@ async function verificarRapido(e, sesionId, btn) {
    INIT + AJAX DATE NAVIGATION + REAL-TIME POLLING
 ------------------------------------------------------------- */
 (function init() {
-  // 1. Restaurar pestaña según URL hash o default 'pendientes'
-  const h = location.hash.replace('#', '');
+  // 1. Restaurar pestaña según query (?tab=), URL hash o default 'pendientes'
+  const tabQs = (new URLSearchParams(window.location.search).get('tab') || '').trim();
+  const h = tabQs || location.hash.replace('#', '');
   if (['pendientes', 'completadas', 'alertas', 'verificar'].includes(h)) {
     setTab(h);
   }
@@ -2248,7 +2249,7 @@ function prefetchRutinasDelDia(data, fecha) {
 // Precalentar las rutinas de los atletas de hoy al iniciar la vista
 document.addEventListener('DOMContentLoaded', () => {
   const initialIds = Array.from(document.querySelectorAll('#panelPendientes .cd-item-wrapper, #panelCompletadas .cd-item-wrapper, #panelAlertas .cd-item-wrapper'))
-    .map(el => (el.id || '').replace(/^item-(pen|comp|ver|mod|al)-/, ''))
+    .map(el => (el.id || '').replace(/^item-(pen|comp|ver|mod|al|sol)-/, ''))
     .filter(Boolean);
   if (initialIds.length > 0 && navigator.onLine) {
     prefetchRutinasDelDia({ pendientes: initialIds.map(id => ({ cliente_id: id })) }, fechaGlobal);
@@ -2456,6 +2457,32 @@ function toggleEjercicioCard(cardEl) {
   cardEl.classList.toggle('is-collapsed');
 }
 
+/* Helper para actualizar caché en memoria + Cache Storage offline tras marcar/editar serie */
+function actualizarSerieCacheLocalEntrenador(clienteId, ejercicioId, numSerie, peso, reps, completado) {
+  const cacheKey = getRutinaCacheKey(clienteId, fechaGlobal, 0);
+  if (!rutinaAtletaCache.has(cacheKey)) return;
+  const cacheData = rutinaAtletaCache.get(cacheKey);
+  if (cacheData && Array.isArray(cacheData.ejercicios)) {
+    const targetEj = cacheData.ejercicios.find(e => parseInt(e.id || 0, 10) === parseInt(ejercicioId, 10));
+    if (targetEj && Array.isArray(targetEj.series_detalle)) {
+      const targetSerie = targetEj.series_detalle.find(s => parseInt(s.numero || 1, 10) === parseInt(numSerie, 10));
+      if (targetSerie) {
+        targetSerie.peso = peso;
+        targetSerie.reps = reps;
+        if (typeof completado === 'boolean') targetSerie.completado = completado;
+      }
+    }
+    if ('caches' in window) {
+      const cName = window.XP_USER_CACHE || ('atlas-fit-user-' + (window.XP_SW_VER || '5.0'));
+      const base = (window.APP || window.location.origin).replace(/\/+$/, '');
+      const apiUrl = `${base}/entrenador/api-dia-detalle?cliente_id=${clienteId}&fecha=${encodeURIComponent(fechaGlobal)}`;
+      caches.open(cName).then(c => c.put(apiUrl, new Response(JSON.stringify(cacheData), {
+        headers: { 'Content-Type': 'application/json; charset=utf-8' }
+      }))).catch(() => {});
+    }
+  }
+}
+
 /* Guardar o actualizar serie realizada por el atleta desde la vista del entrenador */
 async function guardarSerieEntrenador(clienteId, ejercicioId, numSerie, tipoImp, unidadCarga, tipoSerie, rowEl) {
   if (!rowEl) return;
@@ -2467,49 +2494,63 @@ async function guardarSerieEntrenador(clienteId, ejercicioId, numSerie, tipoImp,
   const reps = (repsInput && repsInput.value !== '') ? parseInt(repsInput.value, 10) : 10;
   const isCompletado = checkBtn ? checkBtn.classList.contains('is-checked') : false;
 
+  // Si la serie aún no está marcada como completada, conservar el borrador en caché local sin eliminarla del servidor
+  if (!isCompletado) {
+    actualizarSerieCacheLocalEntrenador(clienteId, ejercicioId, numSerie, peso, reps);
+    return;
+  }
+
+  const payload = {
+    accion: 'guardar',
+    cliente_id: clienteId,
+    ejercicio_id: ejercicioId,
+    numero_serie: numSerie,
+    peso: peso,
+    reps: reps,
+    tipo_implemento: tipoImp,
+    unidad_carga: unidadCarga,
+    tipo_serie: tipoSerie,
+    completado: 1,
+    fecha: fechaGlobal
+  };
+  const endpointUrl = '<?= APP_URL ?>/entrenador/api-guardar-serie-atleta';
+
+  const encolarOffline = () => {
+    actualizarSerieCacheLocalEntrenador(clienteId, ejercicioId, numSerie, peso, reps, true);
+    if (window.XpSync && typeof window.XpSync.enqueue === 'function') {
+      window.XpSync.enqueue({ url: endpointUrl, format: 'json', data: payload, label: `Serie ${numSerie} (Atleta #${clienteId})` });
+    }
+    if (typeof Swal !== 'undefined') {
+      Swal.fire({ toast: true, position: 'top-end', icon: 'info', title: `Serie ${numSerie} guardada offline`, showConfirmButton: false, timer: 1800, background: '#141724', color: '#fff' });
+    }
+  };
+
+  if (!navigator.onLine) {
+    encolarOffline();
+    return;
+  }
+
   try {
-    const res = await fetch('<?= APP_URL ?>/entrenador/api-guardar-serie-atleta', {
+    const res = await fetch(endpointUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'X-CSRF-TOKEN': window.CSRF || ''
       },
-      body: JSON.stringify({
-        cliente_id: clienteId,
-        ejercicio_id: ejercicioId,
-        numero_serie: numSerie,
-        peso: peso,
-        reps: reps,
-        tipo_implemento: tipoImp,
-        unidad_carga: unidadCarga,
-        tipo_serie: tipoSerie,
-        completado: isCompletado ? 1 : 0,
-        fecha: fechaGlobal
-      })
+      body: JSON.stringify(payload)
     });
     if (!res.ok) throw new Error('HTTP ' + res.status);
     const data = await res.json();
     if (!data.ok) {
+      if (data.offline) { encolarOffline(); return; }
       throw new Error(data.msg || 'No se pudo guardar la serie.');
     }
-
-    // Actualizar cache local
-    const cacheKey = getRutinaCacheKey(clienteId, fechaGlobal, 0);
-    if (rutinaAtletaCache.has(cacheKey)) {
-      const cacheData = rutinaAtletaCache.get(cacheKey);
-      if (cacheData && Array.isArray(cacheData.ejercicios)) {
-        const targetEj = cacheData.ejercicios.find(e => parseInt(e.id || 0) === ejercicioId);
-        if (targetEj && Array.isArray(targetEj.series_detalle)) {
-          const targetSerie = targetEj.series_detalle.find(s => parseInt(s.numero || 1) === numSerie);
-          if (targetSerie) {
-            targetSerie.peso = peso;
-            targetSerie.reps = reps;
-            targetSerie.completado = isCompletado;
-          }
-        }
-      }
-    }
+    actualizarSerieCacheLocalEntrenador(clienteId, ejercicioId, numSerie, peso, reps, true);
   } catch (err) {
+    if (!navigator.onLine || err instanceof TypeError || /failed to fetch|network/i.test(String(err && err.message || ''))) {
+      encolarOffline();
+      return;
+    }
     if (typeof Swal !== 'undefined') {
       Swal.fire({
         icon: 'error',
@@ -2539,48 +2580,62 @@ async function toggleSerieCheckEntrenador(clienteId, ejercicioId, numSerie, tipo
   const peso = (tipoImp === 'sin_peso') ? 0 : (pesoInput && pesoInput.value !== '' ? parseFloat(pesoInput.value) : null);
   const reps = (repsInput && repsInput.value !== '') ? parseInt(repsInput.value, 10) : 10;
 
+  const payload = {
+    accion: newChecked ? 'guardar' : 'desmarcar',
+    cliente_id: clienteId,
+    ejercicio_id: ejercicioId,
+    numero_serie: numSerie,
+    peso: peso,
+    reps: reps,
+    tipo_implemento: tipoImp,
+    unidad_carga: unidadCarga,
+    tipo_serie: tipoSerie,
+    completado: newChecked ? 1 : 0,
+    fecha: fechaGlobal
+  };
+  const endpointUrl = '<?= APP_URL ?>/entrenador/api-guardar-serie-atleta';
+
+  const encolarOffline = () => {
+    actualizarSerieCacheLocalEntrenador(clienteId, ejercicioId, numSerie, peso, reps, newChecked);
+    if (window.XpSync && typeof window.XpSync.enqueue === 'function') {
+      window.XpSync.enqueue({ url: endpointUrl, format: 'json', data: payload, label: `Serie ${numSerie} (${newChecked ? 'hecha' : 'desmarcada'})` });
+    }
+    if (typeof Swal !== 'undefined') {
+      Swal.fire({
+        toast: true,
+        position: 'top-end',
+        icon: 'info',
+        title: newChecked ? `Serie ${numSerie} guardada offline` : `Serie ${numSerie} desmarcada offline`,
+        showConfirmButton: false,
+        timer: 1800,
+        background: '#141724',
+        color: '#fff'
+      });
+    }
+  };
+
+  if (!navigator.onLine) {
+    encolarOffline();
+    return;
+  }
+
   try {
-    const res = await fetch('<?= APP_URL ?>/entrenador/api-guardar-serie-atleta', {
+    const res = await fetch(endpointUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'X-CSRF-TOKEN': window.CSRF || ''
       },
-      body: JSON.stringify({
-        cliente_id: clienteId,
-        ejercicio_id: ejercicioId,
-        numero_serie: numSerie,
-        peso: peso,
-        reps: reps,
-        tipo_implemento: tipoImp,
-        unidad_carga: unidadCarga,
-        tipo_serie: tipoSerie,
-        completado: newChecked ? 1 : 0,
-        fecha: fechaGlobal
-      })
+      body: JSON.stringify(payload)
     });
     if (!res.ok) throw new Error('HTTP ' + res.status);
     const data = await res.json();
     if (!data.ok) {
+      if (data.offline) { encolarOffline(); return; }
       throw new Error(data.msg || 'Error al guardar estado de la serie');
     }
 
-    // Actualizar cache local
-    const cacheKey = getRutinaCacheKey(clienteId, fechaGlobal, 0);
-    if (rutinaAtletaCache.has(cacheKey)) {
-      const cacheData = rutinaAtletaCache.get(cacheKey);
-      if (cacheData && Array.isArray(cacheData.ejercicios)) {
-        const targetEj = cacheData.ejercicios.find(e => parseInt(e.id || 0) === ejercicioId);
-        if (targetEj && Array.isArray(targetEj.series_detalle)) {
-          const targetSerie = targetEj.series_detalle.find(s => parseInt(s.numero || 1) === numSerie);
-          if (targetSerie) {
-            targetSerie.completado = newChecked;
-            targetSerie.peso = peso;
-            targetSerie.reps = reps;
-          }
-        }
-      }
-    }
+    actualizarSerieCacheLocalEntrenador(clienteId, ejercicioId, numSerie, peso, reps, newChecked);
 
     if (data.rutina_completada) {
       rutinaAtletaCache.delete(`${clienteId}_${fechaGlobal}_0`);
@@ -2611,7 +2666,11 @@ async function toggleSerieCheckEntrenador(clienteId, ejercicioId, numSerie, tipo
       });
     }
   } catch (err) {
-    // Revert optimistic
+    if (!navigator.onLine || err instanceof TypeError || /failed to fetch|network/i.test(String(err && err.message || ''))) {
+      encolarOffline();
+      return;
+    }
+    // Revert optimistic solo en error real del servidor
     btn.classList.toggle('is-checked', wasChecked);
     rowEl.classList.toggle('is-serie-completed', wasChecked);
     if (typeof Swal !== 'undefined') {
@@ -2804,13 +2863,15 @@ function abrirModalEjercicioAsistencias(ej) {
   } else {
     cfgPasos.forEach((p, i) => {
       let mediaStepHtml = '';
-      if (p.media_path) {
-        const fullMedia = p.media_path.startsWith('http') ? p.media_path : `${appBase}/${p.media_path}`;
-        const isVid = p.media_tipo === 'video' || /\.(mp4|webm|mov)$/i.test(p.media_path);
+      const mediaPath = p.media || p.media_path || '';
+      const tipoMedia = p.tipo_media || p.media_tipo || '';
+      if (mediaPath) {
+        const fullMedia = mediaPath.startsWith('http') ? mediaPath : `${appBase}/${mediaPath}`;
+        const isVid = tipoMedia === 'video' || /\.(mp4|webm|mov)(\?.*)?$/i.test(mediaPath);
         if (isVid) {
-          mediaStepHtml = `<video controls playsinline preload="metadata" class="cdd-step-media-video"><source src="${fullMedia}"></video>`;
+          mediaStepHtml = `<video controls playsinline preload="metadata" class="cdd-step-media-video"><source src="${esc(fullMedia)}"></video>`;
         } else {
-          mediaStepHtml = `<img src="${fullMedia}" alt="Ajuste paso ${i+1}" class="cdd-step-media-thumb" loading="lazy">`;
+          mediaStepHtml = `<img src="${esc(fullMedia)}" alt="Ajuste paso ${i+1}" class="cdd-step-media-thumb" loading="lazy">`;
         }
       }
 
@@ -2819,7 +2880,7 @@ function abrirModalEjercicioAsistencias(ej) {
           <div class="cdd-step-num">${i + 1}</div>
           <div class="cdd-step-body">
             <div class="cdd-step-title">${esc(p.titulo || `Ajuste ${i + 1}`)}</div>
-            <div class="cdd-step-desc">${esc(p.descripcion || '')}</div>
+            <div class="cdd-step-desc">${esc(p.texto || p.descripcion || '')}</div>
             ${mediaStepHtml}
           </div>
         </div>`;
@@ -3241,7 +3302,10 @@ function renderRutinaDrawer(drawer, data, modoTab) {
         const showDots = !isCompletado && ejId > 0;
         const dotsBtn = showDots ? `
           <button type="button" class="cdd-btn-dots"
-                  onclick="event.stopPropagation(); abrirOpcionesEjercicioDrawer(${ejId}, ${rutId}, '${safeNombre}', ${seriesCount}, '${safeReps}', ${rir}, '${safeImp}', ${cid})"
+                  data-ej-id="${ejId}" data-rut-id="${rutId}" data-ej-nombre="${esc(ej.nombre || '')}"
+                  data-series="${seriesCount}" data-reps="${esc(ej.repeticiones || '10-12')}" data-rir="${rir}"
+                  data-imp="${esc(safeImp)}" data-cid="${cid}"
+                  onclick="event.stopPropagation(); abrirOpcionesEjercicioDrawer(Number(this.dataset.ejId), Number(this.dataset.rutId), this.dataset.ejNombre || '', Number(this.dataset.series), this.dataset.reps || '', Number(this.dataset.rir), this.dataset.imp || 'barra', Number(this.dataset.cid))"
                   aria-label="Opciones de ${esc(ej.nombre)}" title="Opciones del ejercicio">
             <i class="ti ti-dots-vertical"></i>
           </button>` : '';

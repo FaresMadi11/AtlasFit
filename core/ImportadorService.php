@@ -203,7 +203,7 @@ class ImportadorService {
             if (!$rutinaContenedorId) {
                 $stInsRut = $db->prepare("
                     INSERT INTO rutinas (cliente_id, entrenador_id, titulo, descripcion, estado, dias_semana)
-                    VALUES (?, ?, 'Historial Importado', 'Contenedor de sesiones y cronología importada con IA', 'archivada', '[]')
+                    VALUES (?, ?, 'Historial Importado', 'Contenedor de sesiones y cronología importada con IA', 'archivada', '')
                 ");
                 $stInsRut->execute([$clienteId, $rutinaEntId]);
                 $rutinaContenedorId = (int)$db->lastInsertId();
@@ -395,6 +395,7 @@ class ImportadorService {
 
             $asistenciasBatch = [];
             $seriesBatch      = [];
+            $fechasAImportar  = [];
 
             foreach ($sesiones as $s) {
                 $fecha = trim((string)($s['fecha'] ?? ''));
@@ -404,6 +405,7 @@ class ImportadorService {
                 if (!empty($s['es_planificada_futura'])) {
                     continue;
                 }
+                $fechasAImportar[$fecha] = true;
 
                 $rutinaNombre = trim((string)($s['rutina_nombre'] ?? 'Rutina Importada'));
                 $rutinaAsocId = $mapRutinasCreadas[$fecha] ?? $mapRutinasPorNombre[$rutinaNombre] ?? $rutinaContenedorId;
@@ -493,8 +495,9 @@ class ImportadorService {
                 }
             }
 
-            if (!empty($fechasValidas)) {
-                foreach (array_chunk(array_unique($fechasValidas), 200) as $fChunk) {
+            $fechasEliminar = array_keys($fechasAImportar);
+            if (!empty($fechasEliminar)) {
+                foreach (array_chunk($fechasEliminar, 200) as $fChunk) {
                     $phDates = implode(',', array_fill(0, count($fChunk), '?'));
                     $params  = array_merge([$clienteId], $fChunk);
                     $db->prepare("DELETE FROM sesion_series WHERE cliente_id = ? AND fecha IN ($phDates)")

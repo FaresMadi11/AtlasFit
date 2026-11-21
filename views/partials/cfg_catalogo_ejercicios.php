@@ -617,6 +617,32 @@ $csrf              = (string)($csrf ?? ($_SESSION['csrf_token'] ?? ''));
             </div>
           </div>
 
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+            <div class="sys-input-group" style="margin-bottom:14px;">
+              <label for="ej_implemento">Implemento</label>
+              <select id="ej_implemento" name="tipo_implemento" class="sys-input">
+                <option value="barra">Barra / Libre</option>
+                <option value="mancuerna">Mancuerna</option>
+                <option value="polea_maquina">Polea / Máquina</option>
+                <option value="sin_peso">Sin peso</option>
+              </select>
+            </div>
+            <div class="sys-input-group" style="margin-bottom:14px;">
+              <label for="ej_unidad">Unidad de carga</label>
+              <select id="ej_unidad" name="unidad_carga" class="sys-input">
+                <option value="kg">KG</option>
+                <option value="lbs">LBS</option>
+                <option value="placas">Placas</option>
+                <option value="ninguna">Ninguna</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="sys-input-group">
+            <label for="ej_video_url">URL de video demostrativo <span style="color:var(--muted); font-weight:400;">(opcional)</span></label>
+            <input type="url" id="ej_video_url" name="video_url" class="sys-input" placeholder="https://youtube.com/... o enlace de video">
+          </div>
+
           <!-- Carga Doble de Imágenes (Portada y Demostración) -->
           <div class="sys-input-group">
             <label>Imágenes del Ejercicio (Portada y Demostración)</label>
@@ -1099,10 +1125,28 @@ window.reindexarPasosConfig = function() {
     item.dataset.index = index;
     const num = item.querySelector(".paso-num");
     if (num) num.textContent = index + 1;
+
     const fileInp = item.querySelector('input[type="file"]');
     if (fileInp) {
       fileInp.id = `cfg_file_${index}`;
       fileInp.name = `cfg_step_file_${index}`;
+      fileInp.setAttribute("onchange", `handleCfgStepMediaSelect(this, ${index})`);
+    }
+    const attachBtn = item.querySelector('button[onclick*="cfg_file_"]');
+    if (attachBtn) {
+      attachBtn.setAttribute("onclick", `document.getElementById('cfg_file_${index}').click()`);
+    }
+    const exMedia = item.querySelector('input[id^="cfg_existing_media_"]');
+    if (exMedia) exMedia.id = `cfg_existing_media_${index}`;
+    const delMedia = item.querySelector('input[id^="cfg_del_media_"]');
+    if (delMedia) delMedia.id = `cfg_del_media_${index}`;
+    const mediaCont = item.querySelector('div[id^="cfgMediaContainer_"]');
+    if (mediaCont) {
+      mediaCont.id = `cfgMediaContainer_${index}`;
+      const preview = mediaCont.querySelector('.paso-cfg-media-preview');
+      if (preview) preview.id = `cfgMediaPreview_${index}`;
+      const rmBtn = mediaCont.querySelector('button[onclick*="eliminarCfgStepMedia"]');
+      if (rmBtn) rmBtn.setAttribute("onclick", `eliminarCfgStepMedia(${index})`);
     }
   });
 };

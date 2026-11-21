@@ -4,8 +4,8 @@ require __DIR__ . '/../layout/header.php';
 
 $diasNombre = [1=>'Lun',2=>'Mar',3=>'Mié',4=>'Jue',5=>'Vie',6=>'Sáb',7=>'Dom'];
 $diaHoyNumRaw = (int)date('N');
-// Igual que el controller: si es fin de semana, tratar como viernes (día 5)
-$diaHoyNum = ($diaHoyNumRaw >= 1 && $diaHoyNumRaw <= 5) ? $diaHoyNumRaw : 5;
+// Permitir los 7 días de la semana (1=Lun .. 7=Dom) sin bloquear entrenamientos de sábado o domingo
+$diaHoyNum = ($diaHoyNumRaw >= 1 && $diaHoyNumRaw <= 7) ? $diaHoyNumRaw : 1;
 ?>
 
 <style>
@@ -1620,7 +1620,9 @@ $diaHoyNum = ($diaHoyNumRaw >= 1 && $diaHoyNumRaw <= 5) ? $diaHoyNumRaw : 5;
 
       <!-- Botón de opciones (3 puntos verticales) idéntico a vista del entrenador -->
       <button type="button" class="ex-btn-dots"
-              onclick="event.stopPropagation(); abrirOpcionesEjercicioAtleta(<?= $ej['id'] ?>, '<?= addslashes(e($ej['nombre'])) ?>')"
+              data-ej-id="<?= (int)$ej['id'] ?>"
+              data-ej-nombre="<?= e($ej['nombre']) ?>"
+              onclick="event.stopPropagation(); abrirOpcionesEjercicioAtleta(Number(this.dataset.ejId), this.dataset.ejNombre || '')"
               aria-label="Opciones de <?= e($ej['nombre']) ?>" title="Opciones del ejercicio">
         <i class="ti ti-dots-vertical bx bx-dots-vertical-rounded" aria-hidden="true"></i>
       </button>
@@ -2044,7 +2046,9 @@ $diaHoyNum = ($diaHoyNumRaw >= 1 && $diaHoyNumRaw <= 5) ? $diaHoyNumRaw : 5;
         $catIco = !empty($cat['icono']) ? $cat['icono'] : 'ti-barbell';
       ?>
       <div class="btn-categoria item-cat-card"
-           onclick="seleccionarCategoriaReemplazo(<?= (int)$cat['id'] ?>, '<?= addslashes(e($catNom)) ?>')"
+           data-cat-id="<?= (int)$cat['id'] ?>"
+           data-cat-nombre="<?= e($catNom) ?>"
+           onclick="seleccionarCategoriaReemplazo(Number(this.dataset.catId), this.dataset.catNombre || '')"
            data-nombre="<?= strtolower(e($catNom)) ?>">
         <i class="ti <?= e($catIco) ?>"></i>
         <span><?= e($catNom) ?></span>
@@ -2067,7 +2071,7 @@ $diaHoyNum = ($diaHoyNumRaw >= 1 && $diaHoyNumRaw <= 5) ? $diaHoyNumRaw : 5;
         Todas
       </button>
       <?php foreach (($categorias ?? []) as $cat): ?>
-      <button type="button" class="rc-chip" data-cat-id="<?= (int)$cat['id'] ?>" onclick="seleccionarCategoriaAgregar(<?= (int)$cat['id'] ?>, '<?= addslashes(e($cat['nombre'])) ?>')">
+      <button type="button" class="rc-chip" data-cat-id="<?= (int)$cat['id'] ?>" data-cat-nombre="<?= e($cat['nombre']) ?>" onclick="seleccionarCategoriaAgregar(Number(this.dataset.catId), this.dataset.catNombre || '')">
         <?= e($cat['nombre']) ?>
       </button>
       <?php endforeach; ?>
@@ -2171,7 +2175,7 @@ $diaHoyNum = ($diaHoyNumRaw >= 1 && $diaHoyNumRaw <= 5) ? $diaHoyNumRaw : 5;
 window.RUTINA_ID = <?= (int)($rutina['id'] ?? 0) ?>;
 window.TOTAL_EJ  = <?= (int)($totalEj ?? 0) ?>;
 window.FECHA_SESION_ACTUAL = '<?= date("Y-m-d") ?>';
-window.aplazamientoActivoFecha = <?= !empty($aplazamientoOrigenActivo) ? json_encode($aplazamientoOrigenActivo['fecha_destino']) : (!empty($aplazamientosActivos[0]) ? json_encode($aplazamientosActivos[0]['fecha_destino']) : 'null') ?>;
+window.aplazamientoActivoFecha = <?= !empty($aplazamientoOrigenActivo) ? json_encode($aplazamientoOrigenActivo['fecha_destino'], JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) : (!empty($aplazamientosActivos[0]) ? json_encode($aplazamientosActivos[0]['fecha_destino'], JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) : 'null') ?>;
 window.fechaPosponerSeleccionada = window.aplazamientoActivoFecha;
 window.sesionIniciada = <?= !empty($sesionIniciada) ? 'true' : 'false' ?>;
 window.sesionHoyCompletada = <?= !empty($sesionHoyCompletada) ? 'true' : 'false' ?>;
@@ -2470,6 +2474,12 @@ function actualizarMancuernaAtleta(ejId, numSerie, input) {
 
 /* ── Guardar o Desmarcar serie individual (Punto 4 + PWA Offline Mode) ── */
 async function guardarSerie(ejId, numSerie, btn) {
+  if (String(ejId).startsWith('new_')) {
+    if (typeof Xp !== 'undefined' && Xp.toast) {
+      Xp.toast('info', 'Primero pulsa "Guardar / Solicitar Modificación" para activar este ejercicio nuevo.');
+    }
+    return;
+  }
   const card = document.getElementById('exCard' + ejId);
   const tipoImp = card ? (card.dataset.implemento || 'barra') : 'barra';
   const unidadCarga = card ? (card.dataset.unidad || (tipoImp === 'sin_peso' ? 'ninguna' : 'kg')) : 'kg';
@@ -2935,10 +2945,7 @@ function confirmarAgregarEjercicio(catEj) {
       <table class="wd-series-table">
         <thead>
           <tr>
-            <th>Serie</th><th>Reps</th><th style="text-align:center">${imp === 'mancuerna' ? 'Mancuerna' : (imp === 'sin_peso' ? 'Corporal' : 'Barra')}</th><?php $isRirDisabled = ($ej['rir'] === null || $ej['rir'] === '' || !empty($ej['rir_desmarcado'])); ?>
-          <?php if (!$isRirDisabled): ?>
-          <th style="text-align:center;">RIR</th>
-          <?php endif; ?><th style="text-align:right">✓</th>
+            <th>Serie</th><th>Reps</th><th style="text-align:center">${imp === 'mancuerna' ? 'Mancuerna' : (imp === 'sin_peso' ? 'Corporal' : 'Barra')}</th><th style="text-align:center;">RIR</th><th style="text-align:right">✓</th>
           </tr>
         </thead>
         <tbody>
@@ -2946,7 +2953,7 @@ function confirmarAgregarEjercicio(catEj) {
             <tr class="wd-serie-row" id="serieRow${newId}_${s}">
               <td class="wd-serie-num"><span class="set-badge badge-normal" data-type="normal">${s}</span></td>
               <td style="text-align:center">
-                <input type="number" min="0" max="200" class="wd-input-reps ${isLocked ? 'locked-pre-session' : ''}" id="reps_${newId}_${s}" value="10-12" placeholder="Reps" ${isLocked ? 'disabled' : ''}>
+                <input type="text" inputmode="numeric" maxlength="10" class="wd-input-reps ${isLocked ? 'locked-pre-session' : ''}" id="reps_${newId}_${s}" value="10-12" placeholder="Reps" ${isLocked ? 'disabled' : ''}>
               </td>
               <td style="text-align:center">
                 <input type="number" min="0" max="900" step="0.5" class="wd-input-kg ${isLocked ? 'locked-pre-session' : ''}" id="peso_${newId}_${s}" placeholder="Kg" ${isLocked ? 'disabled' : ''}>

@@ -23,6 +23,10 @@ RewriteRule (^|/)\.(?!well-known/) - [F,L]
 # Bloquear acceso a directorios de código fuente, almacenamiento y utilidades
 RewriteRule ^(config|core|models|database|controllers|scratch|storage|libs)/(.*)$ - [F,L]
 
+# Proteger comprobantes de pago privados: forzar paso por router PHP con validación de sesión y propiedad
+RewriteRule ^uploads/comprobantes/(.*)$ index.php?route=uploads/comprobantes/$1 [QSA,L]
+RewriteRule ^public/uploads/comprobantes/(.*)$ index.php?route=public/uploads/comprobantes/$1 [QSA,L]
+
 # Bloquear archivos PHP de utilidades y pruebas
 RewriteRule ^(fix_|check|test_|kogane_).*\.php$ - [F,L]
 

@@ -860,10 +860,15 @@ function saActivarModoEdicion() {
   const dtObj = new Date(saCurrentFecha + 'T12:00:00');
   const currentDow = dtObj.getDay() === 0 ? 7 : dtObj.getDay();
 
+  const diasParsed = String(r.dias_semana || '')
+    .split(',')
+    .map(v => parseInt(v.trim(), 10))
+    .filter(n => n >= 1 && n <= 7);
+
   saDraftData = {
     rutina_id: Number(r.id),
     titulo: r.nombre || 'Mi Rutina',
-    dias_semana: [currentDow],
+    dias_semana: diasParsed.length > 0 ? Array.from(new Set(diasParsed)) : [currentDow],
     cardio_activo: Number(r.cardio_activo || 0) === 1,
     cardio_tiempo: Number(r.cardio_tiempo || 10),
     cardio_indicaciones: String(r.cardio_indicaciones || ''),

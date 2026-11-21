@@ -98,9 +98,14 @@ function authApiValidarCodigo(): void {
         jsonOut(false, 'Código no encontrado');
     }
     $_SESSION['ref_codigo'] = $info['codigo_referido'];
+    $isHttpsCookie = (
+        (!empty($_SERVER['HTTPS']) && strtolower((string)$_SERVER['HTTPS']) !== 'off') ||
+        (!empty($_SERVER['HTTP_X_FORWARDED_PROTO']) && strtolower((string)$_SERVER['HTTP_X_FORWARDED_PROTO']) === 'https')
+    );
     @setcookie('xp_ref_code', $info['codigo_referido'], [
         'expires'  => time() + (14 * 86400),
         'path'     => '/',
+        'secure'   => $isHttpsCookie,
         'httponly' => true,
         'samesite' => 'Lax',
     ]);
@@ -912,33 +917,22 @@ function authDoRecuperarVerificarRespuesta(): void {
     csrfCheck();
 
     try {
-        $identificador = trim((string)($_POST['identificador'] ?? ''));
-        $respuesta     = trim((string)($_POST['respuesta'] ?? ''));
-
-        if ($identificador === '') {
-            jsonOut(false, 'Falta el identificador de cuenta.', ['campo' => 'identificador']);
+        // Exigir sesión válida iniciada en Paso 1 (previene salto de paso y enumeración)
+        $expectedUserId = (int)($_SESSION['recovery_user_id'] ?? 0);
+        $expiresAt      = (int)($_SESSION['recovery_expires'] ?? 0);
+        if ($expectedUserId <= 0 || $expiresAt < time()) {
+            unset($_SESSION['recovery_user_id'], $_SESSION['recovery_identificador'], $_SESSION['recovery_expires'], $_SESSION['recovery_verified'], $_SESSION['recovery_verified_time']);
+            jsonOut(false, 'Tu sesión de recuperación expiró. Vuelve a ingresar tu correo o cédula.', ['campo' => 'identificador']);
         }
+
+        $respuesta = trim((string)($_POST['respuesta'] ?? ''));
         if (mb_strlen($respuesta) < 2) {
             jsonOut(false, 'Ingresa tu respuesta de seguridad.', ['campo' => 'respuesta']);
         }
 
         $db = getDB();
-        $cedulaNorm = UsuarioModel::normalizarCedula($identificador);
-
-        $sql = "SELECT u.id, u.nombre, u.email, u.respuesta_seguridad, u.activo
-                FROM usuarios u
-                LEFT JOIN clientes c ON c.usuario_id = u.id
-                WHERE (LOWER(TRIM(u.email)) = LOWER(?) " . ($cedulaNorm ? "OR c.cedula = ? OR c.cedula = ?" : "") . ")
-                LIMIT 1";
-
-        $params = [strtolower($identificador)];
-        if ($cedulaNorm) {
-            $params[] = $cedulaNorm;
-            $params[] = strtoupper($identificador);
-        }
-
-        $stmt = $db->prepare($sql);
-        $stmt->execute($params);
+        $stmt = $db->prepare("SELECT id, nombre, email, respuesta_seguridad, activo FROM usuarios WHERE id = ? LIMIT 1");
+        $stmt->execute([$expectedUserId]);
         $user = $stmt->fetch(\PDO::FETCH_ASSOC);
 
         if (!$user || empty($user['activo'])) {
@@ -1015,7 +1009,7 @@ function authDoRecuperarCambiar(): void {
 
         // Actualizar contraseña con bcrypt seguro (cost 12)
         $hashPass = password_hash($nuevaPass, PASSWORD_BCRYPT, ['cost' => 12]);
-        $upd = $db->prepare("UPDATE usuarios SET password_hash = ?, token_recuperacion = NULL, expiracion_token = NULL WHERE id = ?");
+        $upd = $db->prepare("UPDATE usuarios SET password_hash = ? WHERE id = ?");
         $upd->execute([$hashPass, $userId]);
 
         $userEmail = $user['email'];

@@ -105,35 +105,27 @@ function rateLimitReset(string $endpoint, ?string $ip = null): void {
  * validar que HTTP_X_FORWARDED_FOR venga de un proxy legítimo.
  */
 function getClientIp(): string {
-    // Lista de headers de proxy, en orden de confianza
-    $headers = [
-        'HTTP_CF_CONNECTING_IP',    // Cloudflare
-        'HTTP_X_REAL_IP',           // Nginx proxy
-        'HTTP_X_FORWARDED_FOR',     // Proxy genérico (puede ser spoofeado)
-        'REMOTE_ADDR',              // IP directa (más confiable)
-    ];
+    $remoteAddr = trim((string)($_SERVER['REMOTE_ADDR'] ?? ''));
+    $isValidRemote = ($remoteAddr !== '' && filter_var($remoteAddr, FILTER_VALIDATE_IP));
 
-    foreach ($headers as $header) {
-        $ip = $_SERVER[$header] ?? '';
-        if (empty($ip)) continue;
+    // Solo confiar en headers de proxy cuando la conexión entrante proviene de un proxy privado/loopback (Render, Nginx, Cloudflare tunnel)
+    $isTrustedProxy = $isValidRemote
+        && !filter_var($remoteAddr, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE);
 
-        // X-Forwarded-For puede tener múltiples IPs: "client, proxy1, proxy2"
-        if (str_contains($ip, ',')) {
-            $ip = trim(explode(',', $ip)[0]);
-        }
-
-        // Validar que sea una IP válida
-        if (filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE)) {
-            return $ip;
-        }
-
-        // Aceptar IPs privadas en entorno de desarrollo
-        if (filter_var($ip, FILTER_VALIDATE_IP)) {
-            return $ip;
+    if ($isTrustedProxy) {
+        foreach (['HTTP_CF_CONNECTING_IP', 'HTTP_X_REAL_IP', 'HTTP_X_FORWARDED_FOR'] as $header) {
+            $ip = trim((string)($_SERVER[$header] ?? ''));
+            if ($ip === '') continue;
+            if (str_contains($ip, ',')) {
+                $ip = trim(explode(',', $ip)[0]);
+            }
+            if (filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE)) {
+                return $ip;
+            }
         }
     }
 
-    return $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0';
+    return $isValidRemote ? $remoteAddr : '0.0.0.0';
 }
 
 /**

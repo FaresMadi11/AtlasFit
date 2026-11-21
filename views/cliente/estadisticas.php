@@ -292,7 +292,7 @@ $grupoIconos = [
 }
 .cal-head-cells {
   display: grid !important;
-  grid-template-columns: repeat(5, 1fr) !important;
+  grid-template-columns: repeat(7, 1fr) !important;
   gap: 4px !important;
   flex: 1 1 auto !important;
   min-width: 0 !important;
@@ -314,7 +314,7 @@ $grupoIconos = [
   writing-mode: vertical-lr; transform: rotate(180deg);
 }
 .cal-week-cells {
-  display: grid !important; grid-template-columns: repeat(5, 1fr) !important; gap: 4px !important; flex: 1 1 auto !important;
+  display: grid !important; grid-template-columns: repeat(7, 1fr) !important; gap: 4px !important; flex: 1 1 auto !important;
   min-width: 0 !important;
 }
 
@@ -754,17 +754,16 @@ $grupoIconos = [
     $dowFirst = (int)$primerDia->format('N'); // 1=Lun...7=Dom
     if ($dowFirst > 1) $startCalendar->modify('-' . ($dowFirst - 1) . ' days');
 
-    // Construir semanas (sólo L-V, máx 5 semanas visibles)
+    // Construir semanas completas (Lun-Dom, máx 6 semanas)
     $semanas = [];
     $cursor = clone $startCalendar;
     $totalDias = 0;
-    while ($totalDias <= 35) {
+    while ($totalDias < 42) {
         $semana = [];
-        for ($d = 1; $d <= 5; $d++) { // Solo Lun a Vie
+        for ($d = 1; $d <= 7; $d++) {
             $semana[] = clone $cursor;
             $cursor->modify('+1 day');
         }
-        $cursor->modify('+2 days'); // Saltar Sáb y Dom
         // Verificar si esta semana tiene días del mes actual
         $tieneDiaMes = false;
         foreach ($semana as $dia) {
@@ -776,10 +775,8 @@ $grupoIconos = [
             $semanas[] = $semana;
         }
         $totalDias += 7;
-        if ($totalDias > 35) break;
     }
-    // Limitar a 5 semanas
-    $semanas = array_slice($semanas, 0, 5);
+    $semanas = array_slice($semanas, 0, 6);
 
     // Fechas entrenadas y días programados provistos por el controlador
   ?>
@@ -803,7 +800,7 @@ $grupoIconos = [
     <div class="cal-head-row">
       <div class="cal-head-spacer"></div>
       <div class="cal-head-cells">
-        <?php foreach(['L','M','X','J','V'] as $h): ?>
+        <?php foreach(['L','M','X','J','V','S','D'] as $h): ?>
         <div class="cal-head-cell"><?= $h ?></div>
         <?php endforeach; ?>
       </div>
@@ -1060,20 +1057,18 @@ $grupoIconos = [
 
     const semanas = [];
     let totalDias = 0;
-    while (totalDias <= 35) {
+    while (totalDias < 42) {
       const semana = [];
-      for (let d = 1; d <= 5; d++) {
+      for (let d = 1; d <= 7; d++) {
         semana.push(new Date(cursor.getFullYear(), cursor.getMonth(), cursor.getDate()));
         cursor.setDate(cursor.getDate() + 1);
       }
-      cursor.setDate(cursor.getDate() + 2); // Saltar Sáb y Dom
       const tieneDiaMes = semana.some(dia => (dia.getMonth() + 1) === mes && dia.getFullYear() === ano);
       if (tieneDiaMes) semanas.push(semana);
       totalDias += 7;
-      if (totalDias > 35) break;
     }
 
-    const semanasVisibles = semanas.slice(0, 5);
+    const semanasVisibles = semanas.slice(0, 6);
     let html = '';
     semanasVisibles.forEach((semana, sIdx) => {
       html += `<div class="cal-week"><div class="cal-week-label">Sem ${sIdx + 1}</div><div class="cal-week-cells">`;
@@ -1922,7 +1917,7 @@ $grupoIconos = [
 
 <script>
 // ── Datos peso para la gráfica ────────────────────────────
-const PESO_HISTORIAL = <?= json_encode($pesoHistorial, JSON_UNESCAPED_UNICODE) ?>;
+const PESO_HISTORIAL = <?= json_encode($pesoHistorial, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
 let pesoChartInstance = null;
 
 // ── Gráfica de peso corporal (con soporte offline y reintento resiliente) ──
@@ -2275,9 +2270,6 @@ function cerrarHistorialPeso(event, force) {
 }
 .pm-version-card,
 .pm-serie-card {
-  background: rgba(255, 255, 255, 0.03);
-.pm-version-card,
-.pm-serie-card {
   background: rgba(255, 255, 255, 0.035);
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 14px;
@@ -2470,8 +2462,8 @@ function cerrarHistorialPeso(event, force) {
 
 <script>
 // ── Configuración inicial ─────────────────────────────────
-const TREN_SUPERIOR = <?= json_encode($trenoSuperior, JSON_UNESCAPED_UNICODE) ?>;
-const TREN_INFERIOR = <?= json_encode($trenoInferior, JSON_UNESCAPED_UNICODE) ?>;
+const TREN_SUPERIOR = <?= json_encode($trenoSuperior, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
+const TREN_INFERIOR = <?= json_encode($trenoInferior, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
 
 // ── Estado de navegación y datos ──────────────────────────
 let currentTren           = 'superior';
@@ -2925,6 +2917,17 @@ function renderChartEjercicio(versionIdx = null) {
   });
 }
 
+function fmtCargaUnidad(peso, unidad) {
+  const num = parseFloat(peso) || 0;
+  const u = String(unidad || 'kg').toLowerCase().trim();
+  if (num <= 0) return u === 'ninguna' ? 'Sin peso' : 'Corporal';
+  const valTxt = Number.isInteger(num) ? String(num) : num.toFixed(1).replace(/\.0$/, '');
+  if (u === 'lbs' || u === 'lb') return `${valTxt} lbs`;
+  if (u === 'placas' || u === 'placa') return `${valTxt} ${num === 1 ? 'placa' : 'placas'}`;
+  if (u === 'ninguna') return 'Sin peso';
+  return `${valTxt} kg`;
+}
+
 // ── Renderizar tarjeta de resumen de récords ──────────────────────────
 function renderSummary() {
   const card = document.getElementById('pmSummaryCard');
@@ -2940,12 +2943,12 @@ function renderSummary() {
   const rReps = currentResumenRecords.mayor_reps;
 
   if (rMax) {
-    document.getElementById('pmStatMax').textContent = rMax.peso > 0 ? `${parseFloat(rMax.peso).toFixed(1)} kg` : 'Corporal';
+    document.getElementById('pmStatMax').textContent = fmtCargaUnidad(rMax.peso, rMax.unidad);
     document.getElementById('pmStatMaxSub').textContent = `${rMax.reps} reps · ${rMax.fecha_fmt}`;
   }
   if (rReps) {
     document.getElementById('pmStatReps').textContent = `${rReps.reps} reps`;
-    document.getElementById('pmStatRepsSub').textContent = (rReps.peso > 0 ? `${parseFloat(rReps.peso).toFixed(1)} kg` : 'Corporal') + ` · ${rReps.fecha_fmt}`;
+    document.getElementById('pmStatRepsSub').textContent = fmtCargaUnidad(rReps.peso, rReps.unidad) + ` · ${rReps.fecha_fmt}`;
   }
 }
 
@@ -2968,7 +2971,9 @@ function toggleGraficaSesion(idx) {
     if (!ej || !ej.series || !ej.series.length) return;
 
     const labels = ej.series.map((s, i) => {
-      const p = (s.peso !== null && s.peso !== undefined && parseFloat(s.peso) > 0) ? `${parseFloat(s.peso).toFixed(1)}kg` : 'Corp';
+      const p = (s.peso !== null && s.peso !== undefined && parseFloat(s.peso) > 0)
+        ? fmtCargaUnidad(s.peso, s.unidad || ej.unidad_carga)
+        : 'Corp';
       return [`S${s.numero || (i + 1)}`, p];
     });
     const dataReps = ej.series.map(s => parseInt(s.reps || 0));
@@ -3000,7 +3005,7 @@ function toggleGraficaSesion(idx) {
             callbacks: {
               title: c => {
                 const s = ej.series[c[0].dataIndex];
-                return s ? `Serie ${s.numero || (c[0].dataIndex + 1)} (${s.peso ? parseFloat(s.peso).toFixed(1) + ' kg' : 'Peso corporal'})` : '';
+                return s ? `Serie ${s.numero || (c[0].dataIndex + 1)} (${s.peso ? fmtCargaUnidad(s.peso, s.unidad || ej.unidad_carga) : 'Peso corporal'})` : '';
               },
               label: c => ` ${c.parsed.y} repeticiones logradas`
             }
@@ -3041,7 +3046,7 @@ function renderPodioTop3() {
     const isActive = (i === currentVersionIndex);
 
     if (ses) {
-      const peso = (parseFloat(ses.peso_max) || 0) > 0 ? (parseFloat(ses.peso_max).toFixed(1) + ' kg') : 'Corporal';
+      const peso = fmtCargaUnidad(ses.peso_max, ses.unidad_carga);
       const reps = (parseInt(ses.reps_en_max) || 0) + ' reps';
 
       html += `

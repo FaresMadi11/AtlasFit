@@ -161,6 +161,9 @@ function obtenerProgresoHistorial(PDO $db, int $clienteId, string $nombreEj, int
         $reps   = (int)($s['reps_realizadas'] ?? 0);
 
         $uSerie = trim((string)($s['unidad_carga'] ?? 'kg')) ?: 'kg';
+        $kgComp = (isset($s['kg_real']) && $s['kg_real'] !== null && (float)$s['kg_real'] > 0)
+            ? (float)$s['kg_real']
+            : (strtolower($uSerie) === 'lbs' ? round($pFloat / 2.20462, 2) : $pFloat);
 
         if (!isset($porSesion[$f])) {
             $porSesion[$f] = [
@@ -168,6 +171,7 @@ function obtenerProgresoHistorial(PDO $db, int $clienteId, string $nombreEj, int
                 'fecha_formateada' => $s['fecha_formateada'],
                 'fecha_completa'   => $s['fecha_completa'],
                 'peso_max'         => $pFloat,
+                'kg_real_max'      => $kgComp,
                 'reps_en_max'      => $reps,
                 'unidad_carga'     => $uSerie,
                 'series_count'     => 1,
@@ -176,20 +180,22 @@ function obtenerProgresoHistorial(PDO $db, int $clienteId, string $nombreEj, int
         } else {
             $porSesion[$f]['series_count']++;
             $porSesion[$f]['series'][] = $s;
-            if ($pFloat > $porSesion[$f]['peso_max']) {
-                $porSesion[$f]['peso_max']    = $pFloat;
-                $porSesion[$f]['reps_en_max'] = $reps;
+            if ($kgComp > $porSesion[$f]['kg_real_max']) {
+                $porSesion[$f]['peso_max']     = $pFloat;
+                $porSesion[$f]['kg_real_max']  = $kgComp;
+                $porSesion[$f]['reps_en_max']  = $reps;
                 $porSesion[$f]['unidad_carga'] = $uSerie;
-            } elseif ($pFloat === $porSesion[$f]['peso_max'] && $reps > $porSesion[$f]['reps_en_max']) {
-                $porSesion[$f]['reps_en_max'] = $reps;
+            } elseif ($kgComp === $porSesion[$f]['kg_real_max'] && $reps > $porSesion[$f]['reps_en_max']) {
+                $porSesion[$f]['reps_en_max']  = $reps;
                 $porSesion[$f]['unidad_carga'] = $uSerie;
             }
         }
 
-        // Récord de peso máximo absoluto de todos los tiempos
-        if ($recordMaxPeso === null || $pFloat > (float)$recordMaxPeso['peso'] || ($pFloat === (float)$recordMaxPeso['peso'] && $reps > (int)$recordMaxPeso['reps'])) {
+        // Récord de peso máximo absoluto de todos los tiempos (comparación normalizada a kg_real)
+        if ($recordMaxPeso === null || $kgComp > (float)$recordMaxPeso['kg_real'] || ($kgComp === (float)$recordMaxPeso['kg_real'] && $reps > (int)$recordMaxPeso['reps'])) {
             $recordMaxPeso = [
                 'peso'      => $pFloat,
+                'kg_real'   => $kgComp,
                 'reps'      => $reps,
                 'unidad'    => $uSerie,
                 'fecha'     => $s['fecha'],
@@ -198,9 +204,10 @@ function obtenerProgresoHistorial(PDO $db, int $clienteId, string $nombreEj, int
         }
 
         // Récord de mayor repeticiones en cualquier serie
-        if ($recordMayorReps === null || $reps > (int)$recordMayorReps['reps'] || ($reps === (int)$recordMayorReps['reps'] && $pFloat > (float)$recordMayorReps['peso'])) {
+        if ($recordMayorReps === null || $reps > (int)$recordMayorReps['reps'] || ($reps === (int)$recordMayorReps['reps'] && $kgComp > (float)$recordMayorReps['kg_real'])) {
             $recordMayorReps = [
                 'peso'      => $pFloat,
+                'kg_real'   => $kgComp,
                 'reps'      => $reps,
                 'unidad'    => $uSerie,
                 'fecha'     => $s['fecha'],
@@ -250,11 +257,13 @@ function obtenerProgresoHistorial(PDO $db, int $clienteId, string $nombreEj, int
     ksort($barrasPorPeso, SORT_NUMERIC);
     $barrasPesos = array_values($barrasPorPeso);
 
-    // 3. Top 3 mejores sesiones históricas (Orden: mayor peso, mayores reps, fecha más reciente)
+    // 3. Top 3 mejores sesiones históricas (Orden: mayor carga real, mayores reps, fecha más reciente)
     $sesionesArray = array_values($porSesion);
     usort($sesionesArray, function($a, $b) {
-        if ($b['peso_max'] != $a['peso_max']) {
-            return ($b['peso_max'] > $a['peso_max']) ? 1 : -1;
+        $ka = (float)($a['kg_real_max'] ?? $a['peso_max']);
+        $kb = (float)($b['kg_real_max'] ?? $b['peso_max']);
+        if ($kb != $ka) {
+            return ($kb > $ka) ? 1 : -1;
         }
         if ($b['reps_en_max'] != $a['reps_en_max']) {
             return ($b['reps_en_max'] > $a['reps_en_max']) ? 1 : -1;
@@ -726,7 +735,37 @@ function obtenerHistorialDia(PDO $db, int $clienteId, string $fecha): array {
                              AND (c.entrenador_id = r.entrenador_id OR c.entrenador_id IS NULL)
                              AND c.equipamiento IS NOT NULL
                            ORDER BY (c.entrenador_id = r.entrenador_id) DESC, c.id DESC
-                           LIMIT 1)) AS equipamiento
+                           LIMIT 1)) AS equipamiento,
+                COALESCE(e.imagen_path,
+                         (SELECT c.imagen_path FROM catalogo_ejercicios c
+                           WHERE LOWER(TRIM(c.nombre)) = LOWER(TRIM(COALESCE(ss.ejercicio_nombre, e.nombre)))
+                             AND COALESCE(c.oculto, 0) = 0
+                             AND (c.entrenador_id = r.entrenador_id OR c.entrenador_id IS NULL)
+                           ORDER BY (c.entrenador_id = r.entrenador_id) DESC, c.id DESC LIMIT 1)) AS imagen_path,
+                COALESCE(e.imagen_demo_path,
+                         (SELECT c.imagen_demo_path FROM catalogo_ejercicios c
+                           WHERE LOWER(TRIM(c.nombre)) = LOWER(TRIM(COALESCE(ss.ejercicio_nombre, e.nombre)))
+                             AND COALESCE(c.oculto, 0) = 0
+                             AND (c.entrenador_id = r.entrenador_id OR c.entrenador_id IS NULL)
+                           ORDER BY (c.entrenador_id = r.entrenador_id) DESC, c.id DESC LIMIT 1)) AS imagen_demo_path,
+                COALESCE(e.video_url,
+                         (SELECT c.video_url FROM catalogo_ejercicios c
+                           WHERE LOWER(TRIM(c.nombre)) = LOWER(TRIM(COALESCE(ss.ejercicio_nombre, e.nombre)))
+                             AND COALESCE(c.oculto, 0) = 0
+                             AND (c.entrenador_id = r.entrenador_id OR c.entrenador_id IS NULL)
+                           ORDER BY (c.entrenador_id = r.entrenador_id) DESC, c.id DESC LIMIT 1)) AS video_url,
+                COALESCE(e.nota_biomecanica,
+                         (SELECT c.indicaciones FROM catalogo_ejercicios c
+                           WHERE LOWER(TRIM(c.nombre)) = LOWER(TRIM(COALESCE(ss.ejercicio_nombre, e.nombre)))
+                             AND COALESCE(c.oculto, 0) = 0
+                             AND (c.entrenador_id = r.entrenador_id OR c.entrenador_id IS NULL)
+                           ORDER BY (c.entrenador_id = r.entrenador_id) DESC, c.id DESC LIMIT 1)) AS indicaciones,
+                COALESCE(e.configuracion_maquina,
+                         (SELECT c.configuracion_maquina FROM catalogo_ejercicios c
+                           WHERE LOWER(TRIM(c.nombre)) = LOWER(TRIM(COALESCE(ss.ejercicio_nombre, e.nombre)))
+                             AND COALESCE(c.oculto, 0) = 0
+                             AND (c.entrenador_id = r.entrenador_id OR c.entrenador_id IS NULL)
+                           ORDER BY (c.entrenador_id = r.entrenador_id) DESC, c.id DESC LIMIT 1)) AS configuracion_maquina
            FROM sesion_series ss
            LEFT JOIN ejercicios e ON e.id = ss.ejercicio_id
            LEFT JOIN rutinas    r ON r.id = COALESCE(ss.rutina_id, e.rutina_id)
@@ -808,17 +847,24 @@ function obtenerEjerciciosProgramados(PDO $db, int $rutinaId, ?int $clienteId = 
     $plantillaId = $stRut->fetchColumn();
 
     $seriesPorOrden = [];
+    $descansoPorOrden = [];
     if (!empty($plantillaId)) {
         $stPl = $db->prepare(
-            "SELECT pe.orden, ps.numero_serie, ps.tipo_serie, ps.kg_objetivo, ps.reps_objetivo, ps.rir
+            "SELECT pe.orden, pe.descanso_segundos, ps.numero_serie, ps.tipo_serie, ps.kg_objetivo, ps.reps_objetivo, ps.rir
                FROM plantilla_ejercicios pe
-               JOIN plantilla_series ps ON ps.plantilla_ej_id = pe.id
+               LEFT JOIN plantilla_series ps ON ps.plantilla_ej_id = pe.id
               WHERE pe.plantilla_id = ?
               ORDER BY pe.orden, ps.numero_serie"
         );
         $stPl->execute([(int)$plantillaId]);
         foreach ($stPl->fetchAll(PDO::FETCH_ASSOC) as $ps) {
-            $seriesPorOrden[(int)$ps['orden']][] = $ps;
+            $ord = (int)$ps['orden'];
+            if (!array_key_exists($ord, $descansoPorOrden) && $ps['descanso_segundos'] !== null) {
+                $descansoPorOrden[$ord] = (int)$ps['descanso_segundos'];
+            }
+            if ($ps['numero_serie'] !== null) {
+                $seriesPorOrden[$ord][] = $ps;
+            }
         }
     }
 
@@ -851,8 +897,28 @@ function obtenerEjerciciosProgramados(PDO $db, int $rutinaId, ?int $clienteId = 
     );
     $st->execute([$rutinaId]);
 
+    $ejerciciosRows = $st->fetchAll(PDO::FETCH_ASSOC);
+
+    // Pre-cargar todas las series completadas hoy en 1 sola consulta (Zero N+1)
+    $completadasPorEj = [];
+    if ($clienteId !== null && $fecha !== null && !empty($ejerciciosRows)) {
+        $ejIds = array_values(array_unique(array_filter(array_map(static fn($r) => (int)$r['id'], $ejerciciosRows))));
+        if (!empty($ejIds)) {
+            $phEj = implode(',', array_fill(0, count($ejIds), '?'));
+            $stSeriesHoy = $db->prepare(
+                "SELECT ejercicio_id, numero_serie, reps_realizadas, peso_usado, completado, tipo_serie, unidad_carga
+                 FROM sesion_series
+                 WHERE cliente_id = ? AND fecha = ? AND completado = 1 AND ejercicio_id IN ($phEj)"
+            );
+            $stSeriesHoy->execute(array_merge([$clienteId, $fecha], $ejIds));
+            foreach ($stSeriesHoy->fetchAll(PDO::FETCH_ASSOC) as $sHoy) {
+                $completadasPorEj[(int)$sHoy['ejercicio_id']][(int)$sHoy['numero_serie']] = $sHoy;
+            }
+        }
+    }
+
     $ejercicios = [];
-    foreach ($st->fetchAll(PDO::FETCH_ASSOC) as $e) {
+    foreach ($ejerciciosRows as $e) {
         $orden     = (int)($e['orden'] ?? 1);
         $numSeries = max(1, (int)$e['series']);
         $repsBase  = !empty($e['repeticiones']) ? (string)$e['repeticiones'] : '10';
@@ -894,18 +960,9 @@ function obtenerEjerciciosProgramados(PDO $db, int $rutinaId, ?int $clienteId = 
             }
         }
 
-        // Si tenemos clienteId y fecha, mapear si alguna serie ya fue completada hoy
+        // Mapear desde el lote precargado si alguna serie ya fue completada hoy
         if ($clienteId !== null && $fecha !== null) {
-            $stSeriesHoy = $db->prepare(
-                "SELECT numero_serie, reps_realizadas, peso_usado, completado, tipo_serie, unidad_carga
-                 FROM sesion_series 
-                 WHERE cliente_id = ? AND ejercicio_id = ? AND fecha = ? AND completado = 1"
-            );
-            $stSeriesHoy->execute([$clienteId, (int)$e['id'], $fecha]);
-            $completadasHoy = [];
-            foreach ($stSeriesHoy->fetchAll(PDO::FETCH_ASSOC) as $sHoy) {
-                $completadasHoy[(int)$sHoy['numero_serie']] = $sHoy;
-            }
+            $completadasHoy = $completadasPorEj[(int)$e['id']] ?? [];
 
             foreach ($seriesDetalle as &$sRow) {
                 $sNum = (int)$sRow['numero'];
@@ -939,6 +996,7 @@ function obtenerEjerciciosProgramados(PDO $db, int $rutinaId, ?int $clienteId = 
             'repeticiones'          => $repsBase,
             'rir'                   => $rirBase,
             'rir_desmarcado'        => ($e['rir'] === null),
+            'descanso_segundos'     => $descansoPorOrden[$orden] ?? null,
             'imagen_path'           => $e['imagen_path'] ?? null,
             'imagen_demo_path'      => $e['imagen_demo_path'] ?? null,
             'video_url'             => $e['video_url'] ?? null,
@@ -955,18 +1013,19 @@ function obtenerEjerciciosProgramados(PDO $db, int $rutinaId, ?int $clienteId = 
  * Genera la respuesta completa estructurada para el detalle de un día específico.
  */
 function obtenerInfoCardioRutina(PDO $db, ?int $rutinaId): array {
-    if (!$rutinaId) return ['cardio_activo' => 0, 'cardio_tiempo' => null, 'cardio_indicaciones' => ''];
-    $st = $db->prepare("SELECT cardio_activo, cardio_tiempo, cardio_indicaciones FROM rutinas WHERE id = ?");
+    if (!$rutinaId) return ['cardio_activo' => 0, 'cardio_tiempo' => null, 'cardio_indicaciones' => '', 'dias_semana' => ''];
+    $st = $db->prepare("SELECT cardio_activo, cardio_tiempo, cardio_indicaciones, dias_semana FROM rutinas WHERE id = ?");
     $st->execute([$rutinaId]);
     $row = $st->fetch(PDO::FETCH_ASSOC);
     return [
         'cardio_activo'       => (int)($row['cardio_activo'] ?? 0),
         'cardio_tiempo'       => $row['cardio_tiempo'] !== null ? (int)$row['cardio_tiempo'] : null,
-        'cardio_indicaciones' => (string)($row['cardio_indicaciones'] ?? '')
+        'cardio_indicaciones' => (string)($row['cardio_indicaciones'] ?? ''),
+        'dias_semana'         => (string)($row['dias_semana'] ?? ''),
     ];
 }
 
-function obtenerDetalleDia(PDO $db, int $clienteId, string $fecha, string $role = 'cliente'): array {
+function obtenerDetalleDia(PDO $db, int $clienteId, string $fecha, string $role = 'cliente', bool $soloProgramada = false, int $rutinaIdForzada = 0): array {
     // 1. Validación estricta de fecha
     $dt   = DateTimeImmutable::createFromFormat('!Y-m-d', $fecha);
     $errs = DateTimeImmutable::getLastErrors();
@@ -1000,8 +1059,8 @@ function obtenerDetalleDia(PDO $db, int $clienteId, string $fecha, string $role 
         'notas'      => $notasSesion,
     ];
 
-    // 2. Historial y Hoy: datos reales registrados
-    if ($modo !== 'planificacion') {
+    // 2. Historial y Hoy: datos reales registrados (se omite si se pide explícitamente la rutina programada completa para editar)
+    if ($modo !== 'planificacion' && !$soloProgramada) {
         $hist = obtenerHistorialDia($db, $clienteId, $fecha);
 
         if ($hist['series'] > 0) {
@@ -1052,25 +1111,48 @@ function obtenerDetalleDia(PDO $db, int $clienteId, string $fecha, string $role 
                 }
             }
 
-            $rId = !empty($rutinasIds) ? (int)reset($rutinasIds) : null;
+            $rId = !empty($rutinasIds) ? (int)reset($rutinasIds) : (($modo === 'hoy' && !empty($prog['id'])) ? (int)$prog['id'] : null);
             $cardioInfo = obtenerInfoCardioRutina($db, $rId);
+
+            // En modo HOY mantener siempre la rutina programada completa con las series ya marcadas superpuestas,
+            // evitando que al marcar la 1.a serie desaparezcan los demás ejercicios/series en otros dispositivos.
+            $ejerciciosOut = $hist['ejercicios'];
+            if ($modo === 'hoy' && $rId) {
+                $ejsProg = obtenerEjerciciosProgramados($db, $rId, $clienteId, $fecha);
+                if (!empty($ejsProg)) {
+                    $idsProg = [];
+                    foreach ($ejsProg as $ep) {
+                        if (!empty($ep['id'])) $idsProg[(int)$ep['id']] = true;
+                    }
+                    foreach ($hist['ejercicios'] as $he) {
+                        $heId = (int)($he['id'] ?? 0);
+                        if ($heId <= 0 || !isset($idsProg[$heId])) {
+                            $ejsProg[] = $he;
+                        }
+                    }
+                    $ejerciciosOut = $ejsProg;
+                    $planificadas = array_sum(array_map(static fn($e) => (int)($e['series_total'] ?? count($e['series_detalle'] ?? [])), $ejsProg));
+                }
+            }
+
             return array_merge($base, [
                 'accion'  => $accion,
                 'estado'  => $estado,
                 'rutina'  => [
                     'id'                  => $rId,
                     'nombre'              => implode(' · ', array_column($hist['rutinas'], 'nombre')),
+                    'dias_semana'         => $cardioInfo['dias_semana'],
                     'cardio_activo'       => $cardioInfo['cardio_activo'],
                     'cardio_tiempo'       => $cardioInfo['cardio_tiempo'],
                     'cardio_indicaciones' => $cardioInfo['cardio_indicaciones'],
                 ],
                 'resumen' => [
-                    'ejercicios'          => count($hist['ejercicios']),
+                    'ejercicios'          => count($ejerciciosOut),
                     'series'              => $hist['series'],
                     'series_planificadas' => $planificadas,
                     'volumen_kg'          => $hist['volumen'],
                 ],
-                'ejercicios' => $hist['ejercicios'],
+                'ejercicios' => $ejerciciosOut,
             ]);
         }
 
@@ -1096,6 +1178,7 @@ function obtenerDetalleDia(PDO $db, int $clienteId, string $fecha, string $role 
                         'rutina'     => [
                             'id'                  => (int)$asistRow['rutina_id'], 
                             'nombre'              => $asistRow['descripcion'] ?: 'Rutina',
+                            'dias_semana'         => $cardioInfo['dias_semana'],
                             'cardio_activo'       => $cardioInfo['cardio_activo'],
                             'cardio_tiempo'       => $cardioInfo['cardio_tiempo'],
                             'cardio_indicaciones' => $cardioInfo['cardio_indicaciones'],
@@ -1119,6 +1202,7 @@ function obtenerDetalleDia(PDO $db, int $clienteId, string $fecha, string $role 
                     'rutina'     => [
                         'id'                  => (int)$progHist['id'],
                         'nombre'              => $progHist['nombre'],
+                        'dias_semana'         => $cardioInfo['dias_semana'],
                         'cardio_activo'       => $cardioInfo['cardio_activo'],
                         'cardio_tiempo'       => $cardioInfo['cardio_tiempo'],
                         'cardio_indicaciones' => $cardioInfo['cardio_indicaciones'],
@@ -1133,8 +1217,19 @@ function obtenerDetalleDia(PDO $db, int $clienteId, string $fecha, string $role 
         }
     }
 
-    // 3. Hoy pendiente y Planificación futura
-    $prog = obtenerRutinasProgramadasPorDia($db, $clienteId)[$dow] ?? null;
+    // 3. Hoy pendiente y Planificación futura (o modo edición de rutina programada completa)
+    $prog = null;
+    if ($soloProgramada && $rutinaIdForzada > 0) {
+        $stForz = $db->prepare("SELECT id, COALESCE(NULLIF(TRIM(titulo), ''), NULLIF(TRIM(zona_muscular), ''), NULLIF(LEFT(TRIM(descripcion), 60), ''), CONCAT('Rutina #', id)) AS nombre FROM rutinas WHERE id = ? AND cliente_id = ? LIMIT 1");
+        $stForz->execute([$rutinaIdForzada, $clienteId]);
+        $forzRow = $stForz->fetch(PDO::FETCH_ASSOC);
+        if ($forzRow) {
+            $prog = ['id' => (int)$forzRow['id'], 'nombre' => (string)$forzRow['nombre']];
+        }
+    }
+    if (!$prog) {
+        $prog = obtenerRutinasProgramadasPorDia($db, $clienteId)[$dow] ?? null;
+    }
     if (!$prog) {
         // Fallback: verificar si hay sesión registrada para esta fecha en sesiones_asistencia
         $stHoyAsist = $db->prepare(
@@ -1155,13 +1250,14 @@ function obtenerDetalleDia(PDO $db, int $clienteId, string $fecha, string $role 
         return array_merge($base, ['estado' => 'sin_rutina', 'rutina' => null, 'resumen' => null, 'ejercicios' => []]);
     }
 
-    $ejs = obtenerEjerciciosProgramados($db, $prog['id'], $clienteId, $fecha);
+    $ejs = obtenerEjerciciosProgramados($db, $prog['id'], $soloProgramada ? null : $clienteId, $soloProgramada ? null : $fecha);
     $cardioInfo = obtenerInfoCardioRutina($db, (int)$prog['id']);
     return array_merge($base, [
         'estado'  => $modo === 'hoy' ? 'pendiente' : 'programado',
         'rutina'  => [
             'id'                  => $prog['id'], 
             'nombre'              => $prog['nombre'],
+            'dias_semana'         => $cardioInfo['dias_semana'],
             'cardio_activo'       => $cardioInfo['cardio_activo'],
             'cardio_tiempo'       => $cardioInfo['cardio_tiempo'],
             'cardio_indicaciones' => $cardioInfo['cardio_indicaciones'],
@@ -1548,6 +1644,9 @@ function construirSnapshotEstadisticasOffline(PDO $db, int $clienteId, string $r
             $reps   = (int)($s['reps_realizadas'] ?? 0);
 
             $uSerie = trim((string)($s['unidad_carga'] ?? 'kg')) ?: 'kg';
+            $kgComp = (isset($s['kg_real']) && $s['kg_real'] !== null && (float)$s['kg_real'] > 0)
+                ? (float)$s['kg_real']
+                : (strtolower($uSerie) === 'lbs' ? round($pFloat / 2.20462, 2) : $pFloat);
 
             if (!isset($porSesion[$f])) {
                 $porSesion[$f] = [
@@ -1555,6 +1654,7 @@ function construirSnapshotEstadisticasOffline(PDO $db, int $clienteId, string $r
                     'fecha_formateada' => $s['fecha_formateada'],
                     'fecha_completa'   => $s['fecha_completa'],
                     'peso_max'         => $pFloat,
+                    'kg_real_max'      => $kgComp,
                     'reps_en_max'      => $reps,
                     'unidad_carga'     => $uSerie,
                     'series_count'     => 1,
@@ -1563,19 +1663,21 @@ function construirSnapshotEstadisticasOffline(PDO $db, int $clienteId, string $r
             } else {
                 $porSesion[$f]['series_count']++;
                 $porSesion[$f]['series'][] = $s;
-                if ($pFloat > $porSesion[$f]['peso_max']) {
-                    $porSesion[$f]['peso_max']    = $pFloat;
-                    $porSesion[$f]['reps_en_max'] = $reps;
+                if ($kgComp > $porSesion[$f]['kg_real_max']) {
+                    $porSesion[$f]['peso_max']     = $pFloat;
+                    $porSesion[$f]['kg_real_max']  = $kgComp;
+                    $porSesion[$f]['reps_en_max']  = $reps;
                     $porSesion[$f]['unidad_carga'] = $uSerie;
-                } elseif ($pFloat === $porSesion[$f]['peso_max'] && $reps > $porSesion[$f]['reps_en_max']) {
-                    $porSesion[$f]['reps_en_max'] = $reps;
+                } elseif ($kgComp === $porSesion[$f]['kg_real_max'] && $reps > $porSesion[$f]['reps_en_max']) {
+                    $porSesion[$f]['reps_en_max']  = $reps;
                     $porSesion[$f]['unidad_carga'] = $uSerie;
                 }
             }
 
-            if ($recordMaxPeso === null || $pFloat > (float)$recordMaxPeso['peso'] || ($pFloat === (float)$recordMaxPeso['peso'] && $reps > (int)$recordMaxPeso['reps'])) {
+            if ($recordMaxPeso === null || $kgComp > (float)$recordMaxPeso['kg_real'] || ($kgComp === (float)$recordMaxPeso['kg_real'] && $reps > (int)$recordMaxPeso['reps'])) {
                 $recordMaxPeso = [
                     'peso'      => $pFloat,
+                    'kg_real'   => $kgComp,
                     'reps'      => $reps,
                     'unidad'    => $uSerie,
                     'fecha'     => $s['fecha'],
@@ -1583,9 +1685,10 @@ function construirSnapshotEstadisticasOffline(PDO $db, int $clienteId, string $r
                 ];
             }
 
-            if ($recordMayorReps === null || $reps > (int)$recordMayorReps['reps'] || ($reps === (int)$recordMayorReps['reps'] && $pFloat > (float)$recordMayorReps['peso'])) {
+            if ($recordMayorReps === null || $reps > (int)$recordMayorReps['reps'] || ($reps === (int)$recordMayorReps['reps'] && $kgComp > (float)$recordMayorReps['kg_real'])) {
                 $recordMayorReps = [
                     'peso'      => $pFloat,
+                    'kg_real'   => $kgComp,
                     'reps'      => $reps,
                     'unidad'    => $uSerie,
                     'fecha'     => $s['fecha'],
@@ -1631,7 +1734,9 @@ function construirSnapshotEstadisticasOffline(PDO $db, int $clienteId, string $r
 
         $sesionesArray = array_values($porSesion);
         usort($sesionesArray, static function(array $a, array $b): int {
-            if ($b['peso_max'] != $a['peso_max']) return ($b['peso_max'] > $a['peso_max']) ? 1 : -1;
+            $ka = (float)($a['kg_real_max'] ?? $a['peso_max']);
+            $kb = (float)($b['kg_real_max'] ?? $b['peso_max']);
+            if ($kb != $ka) return ($kb > $ka) ? 1 : -1;
             if ($b['reps_en_max'] != $a['reps_en_max']) return ($b['reps_en_max'] > $a['reps_en_max']) ? 1 : -1;
             return strcmp($b['fecha'], $a['fecha']);
         });

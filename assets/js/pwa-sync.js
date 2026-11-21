@@ -66,6 +66,10 @@
             localStorage.removeItem('xp_auth_uid');
             localStorage.removeItem('xp_auth_home');
             localStorage.removeItem('xp_offline_ready_sig');
+            localStorage.removeItem(STORAGE_KEY);
+            Object.keys(localStorage).forEach(k => {
+              if (k && k.startsWith('xprod_')) localStorage.removeItem(k);
+            });
             sessionStorage.removeItem('xp_prewarm_ts');
           } catch (_) { }
           if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
@@ -190,34 +194,7 @@
           })
         ).catch(() => {});
 
-        // Verificar qué módulos realmente faltan en Cache Storage (0 descargas si ya está todo guardado)
-        const missing = [];
-        for (const item of bundle) {
-          const fullUrl = base + item.path;
-          const matchOpts = item.type === 'html' ? { ignoreSearch: true } : undefined;
-          const existing = await cache.match(fullUrl, matchOpts);
-          const needStats = Boolean(item.extractStats && !localStorage.getItem('xprod_stats_snapshot_v1'));
-          if (!existing || needStats) {
-            missing.push(item);
-          }
-        }
-        const rootCached = await cache.match(base + '/', { ignoreSearch: true });
-        const hasReadySig = (localStorage.getItem('xp_offline_ready_sig') === readySig);
-        const lastPrewarm = parseInt(sessionStorage.getItem('xp_prewarm_ts') || '0', 10);
-        const isStale = forceRefresh || ((Date.now() - lastPrewarm) > 900000); // 15 min
-
-        // Si ya tenemos el 100% de los módulos + raíz + firma vigente -> entrar directo a Online sin mostrar %
-        const showProgressUI = (missing.length > 0 || !rootCached || !hasReadySig);
-        const targets = showProgressUI
-          ? (missing.length > 0 ? missing : bundle.filter(b => b.path === homePath))
-          : (isStale ? bundle : []);
-
-        if (targets.length === 0) {
-          this._isPrewarming = false;
-          return;
-        }
-
-        // Rutas dinámicas descubiertas (rutinas de atletas de hoy en Asistencias, días de la semana en Cliente, perfiles recientes)
+        // Rutas dinámicas descubiertas (rutinas de atletas de hoy en Asistencias, perfiles hasta 8 atletas, pagos, días de la semana)
         const dynamicPrimaryQueue = [];
         const dynamicBgQueue = [];
         const seenDyn = new Set();
@@ -227,7 +204,107 @@
           arr.push(item);
         };
 
-        let totalItems = showProgressUI ? bundle.length : targets.length;
+        const extractAsistenciasFromJson = (json) => {
+          if (!json || typeof json !== 'object') return;
+          const lists = [
+            ...(json.pendientes || []),
+            ...(json.verificar || []),
+            ...(json.completadas || []),
+            ...(json.modificaciones || []),
+            ...(json.sinAsignar || []),
+            ...(json.sin_asignar || [])
+          ];
+          const ids = [];
+          lists.forEach(row => {
+            const cid = parseInt(row && (row.cliente_id || row.id) || 0, 10);
+            if (cid > 0 && !ids.includes(cid)) ids.push(cid);
+          });
+          ids.forEach(cid => {
+            pushDyn(dynamicPrimaryQueue, {
+              path: `/entrenador/api-dia-detalle?cliente_id=${cid}&fecha=${encodeURIComponent(todayIso)}`,
+              type: 'api'
+            });
+          });
+          (json.modificaciones || []).forEach(mRow => {
+            const cid = parseInt(mRow && mRow.cliente_id || 0, 10);
+            const sid = parseInt(mRow && mRow.rutina_id || 0, 10);
+            if (cid > 0 && sid > 0) {
+              pushDyn(dynamicPrimaryQueue, {
+                path: `/entrenador/api-dia-detalle?cliente_id=${cid}&fecha=${encodeURIComponent(todayIso)}&solicitud_id=${sid}`,
+                type: 'api'
+              });
+            }
+          });
+          // Hasta 8 perfiles completos + sus pagos dentro del progreso real 0% -> 100%
+          ids.slice(0, 8).forEach(cid => {
+            pushDyn(dynamicPrimaryQueue, { path: `/entrenador/perfil-cliente?id=${cid}`, type: 'html' });
+            pushDyn(dynamicPrimaryQueue, { path: `/entrenador/api-pagos-cliente?cliente_id=${cid}`, type: 'api' });
+          });
+        };
+
+        const extractProfilesFromHtml = (html) => {
+          if (!html) return;
+          const re = /entrenador\/perfil-cliente\?id=(\d+)/g;
+          let m;
+          let count = 0;
+          const foundIds = new Set();
+          while ((m = re.exec(html)) !== null && count < 8) {
+            const cid = parseInt(m[1], 10);
+            if (cid > 0 && !foundIds.has(cid)) {
+              foundIds.add(cid);
+              pushDyn(dynamicPrimaryQueue, { path: `/entrenador/perfil-cliente?id=${cid}`, type: 'html' });
+              pushDyn(dynamicPrimaryQueue, { path: `/entrenador/api-dia-detalle?cliente_id=${cid}&fecha=${encodeURIComponent(todayIso)}`, type: 'api' });
+              pushDyn(dynamicPrimaryQueue, { path: `/entrenador/api-pagos-cliente?cliente_id=${cid}`, type: 'api' });
+              count++;
+            }
+          }
+        };
+
+        // Verificar qué módulos realmente faltan en Cache Storage
+        const missing = [];
+        for (const item of bundle) {
+          const fullUrl = base + item.path;
+          const matchOpts = item.type === 'html' ? { ignoreSearch: true } : undefined;
+          const existing = await cache.match(fullUrl, matchOpts);
+          const needStats = Boolean(item.extractStats && !localStorage.getItem('xprod_stats_snapshot_v1'));
+          if (!existing || needStats) {
+            missing.push(item);
+          } else if (isEntrenador) {
+            // Aunque asistencias-data o /entrenador/clientes ya estén cacheados, re-inspeccionarlos para asegurar que TODOS los api-dia-detalle y perfiles (<=8) estén en caché
+            if (item.extractAsistenciasAthletes) {
+              const cachedJson = await existing.clone().json().catch(() => null);
+              extractAsistenciasFromJson(cachedJson);
+            } else if (item.extractAthleteProfiles) {
+              const cachedHtml = await existing.clone().text().catch(() => '');
+              extractProfilesFromHtml(cachedHtml);
+            }
+          }
+        }
+
+        // Comprobar si algún recurso dinámico descubierto ya falta en caché (p. ej. un atleta nuevo o corte previo al llegar a 100%)
+        const missingDynamic = [];
+        for (const dyn of dynamicPrimaryQueue) {
+          const exDyn = await cache.match(base + dyn.path).catch(() => null);
+          if (!exDyn) missingDynamic.push(dyn);
+        }
+
+        const rootCached = await cache.match(base + '/', { ignoreSearch: true });
+        const hasReadySig = (localStorage.getItem('xp_offline_ready_sig') === readySig);
+        const lastPrewarm = parseInt(sessionStorage.getItem('xp_prewarm_ts') || '0', 10);
+        const isStale = forceRefresh || ((Date.now() - lastPrewarm) > 900000); // 15 min
+
+        // Si ya tenemos el 100% de módulos + recursos dinámicos críticos + raíz + firma vigente -> entrar directo a Online sin mostrar %
+        const showProgressUI = (missing.length > 0 || missingDynamic.length > 0 || !rootCached || !hasReadySig);
+        const targets = showProgressUI
+          ? (missing.length > 0 ? missing : (missingDynamic.length > 0 ? [] : bundle.filter(b => b.path === homePath)))
+          : (isStale ? bundle : []);
+
+        if (targets.length === 0 && missingDynamic.length === 0) {
+          this._isPrewarming = false;
+          return;
+        }
+
+        let totalItems = showProgressUI ? (bundle.length + missingDynamic.length) : targets.length;
         let completedItems = showProgressUI ? Math.max(0, bundle.length - targets.length) : 0;
 
         if (showProgressUI) {
@@ -260,65 +337,19 @@
             await cache.put(base + '/', res.clone()).catch(() => {});
           }
 
-          // Extraer atletas del día desde asistencias-data para precargar sus rutinas (api-dia-detalle) y evitar "Sin conexión" en Asistencias
+          // Extraer atletas del día desde asistencias-data para precargar sus rutinas (api-dia-detalle) y perfiles (<=8)
           if (item.extractAsistenciasAthletes) {
             try {
               const json = await res.clone().json().catch(() => null);
-              if (json) {
-                const lists = [
-                  ...(json.pendientes || []),
-                  ...(json.verificar || []),
-                  ...(json.completadas || []),
-                  ...(json.modificaciones || []),
-                  ...(json.sinAsignar || []),
-                  ...(json.sin_asignar || [])
-                ];
-                const ids = [];
-                lists.forEach(row => {
-                  const cid = parseInt(row && (row.cliente_id || row.id) || 0, 10);
-                  if (cid > 0 && !ids.includes(cid)) ids.push(cid);
-                });
-                ids.forEach(cid => {
-                  pushDyn(dynamicPrimaryQueue, {
-                    path: `/entrenador/api-dia-detalle?cliente_id=${cid}&fecha=${encodeURIComponent(todayIso)}`,
-                    type: 'api'
-                  });
-                });
-                // Si hay solicitudes de modificación pendientes, precargar también su variante con solicitud_id
-                (json.modificaciones || []).forEach(mRow => {
-                  const cid = parseInt(mRow && mRow.cliente_id || 0, 10);
-                  const sid = parseInt(mRow && mRow.rutina_id || 0, 10);
-                  if (cid > 0 && sid > 0) {
-                    pushDyn(dynamicPrimaryQueue, {
-                      path: `/entrenador/api-dia-detalle?cliente_id=${cid}&fecha=${encodeURIComponent(todayIso)}&solicitud_id=${sid}`,
-                      type: 'api'
-                    });
-                  }
-                });
-                ids.slice(0, 8).forEach(cid => {
-                  pushDyn(dynamicBgQueue, { path: `/entrenador/perfil-cliente?id=${cid}`, type: 'html' });
-                  pushDyn(dynamicBgQueue, { path: `/entrenador/api-pagos-cliente?cliente_id=${cid}`, type: 'api' });
-                });
-              }
+              extractAsistenciasFromJson(json);
             } catch (_) {}
           }
 
-          // Extraer enlaces de perfiles de atletas visibles en /entrenador/clientes para precarga silenciosa en segundo plano
+          // Extraer enlaces de perfiles de atletas visibles en /entrenador/clientes (hasta 8) dentro del paquete real 0->100%
           if (item.extractAthleteProfiles) {
             try {
               const html = await res.clone().text().catch(() => '');
-              const re = /entrenador\/perfil-cliente\?id=(\d+)/g;
-              let m;
-              let count = 0;
-              while ((m = re.exec(html)) !== null && count < 8) {
-                const cid = parseInt(m[1], 10);
-                if (cid > 0) {
-                  pushDyn(dynamicBgQueue, { path: `/entrenador/perfil-cliente?id=${cid}`, type: 'html' });
-                  pushDyn(dynamicBgQueue, { path: `/entrenador/api-dia-detalle?cliente_id=${cid}&fecha=${encodeURIComponent(todayIso)}`, type: 'api' });
-                  pushDyn(dynamicBgQueue, { path: `/entrenador/api-pagos-cliente?cliente_id=${cid}`, type: 'api' });
-                  count++;
-                }
-              }
+              extractProfilesFromHtml(html);
             } catch (_) {}
           }
 
@@ -396,10 +427,22 @@
 
         await runBatchList(targets, 3, true);
 
-        // Fase 2 dentro del 100%: rutinas de hoy de todos los atletas en Asistencias (rápido, JSONs ligeros)
+        // Fase 2 dentro del 100%: rutinas de hoy de todos los atletas + hasta 8 perfiles completos y pagos (solo los que falten o en refresh)
         if (dynamicPrimaryQueue.length > 0 && navigator.onLine) {
-          totalItems += dynamicPrimaryQueue.length;
-          await runBatchList(dynamicPrimaryQueue, 4, true);
+          const dynToFetch = [];
+          for (const dyn of dynamicPrimaryQueue) {
+            if (isStale) {
+              dynToFetch.push(dyn);
+            } else {
+              const exDyn = await cache.match(base + dyn.path).catch(() => null);
+              if (!exDyn) dynToFetch.push(dyn);
+            }
+          }
+          if (dynToFetch.length > 0) {
+            const extraBeyondInit = Math.max(0, dynToFetch.length - missingDynamic.length);
+            totalItems += extraBeyondInit;
+            await runBatchList(dynToFetch, 3, true);
+          }
         }
 
         // Asegurar que '/' quede siempre respaldado con el home del rol
@@ -490,34 +533,71 @@
 
       for (const item of queue) {
         try {
-          const fd = new FormData();
-          if (item.data) {
-            for (const [k, v] of Object.entries(item.data)) {
-              fd.append(k, v);
+          let fetchOpts;
+          if (item.format === 'json') {
+            const payload = Object.assign({}, item.data || {});
+            if (window.CSRF) payload.csrf_token = window.CSRF;
+            fetchOpts = {
+              method: 'POST',
+              credentials: 'same-origin',
+              redirect: 'manual',
+              headers: {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json',
+                'X-Requested-With': 'XMLHttpRequest',
+                'X-CSRF-TOKEN': window.CSRF || ''
+              },
+              body: JSON.stringify(payload)
+            };
+          } else {
+            const fd = new FormData();
+            if (item.data) {
+              for (const [k, v] of Object.entries(item.data)) {
+                fd.append(k, v);
+              }
             }
-          }
-          // Siempre enviar token CSRF actualizado si existe
-          if (window.CSRF) {
-            fd.set('csrf_token', window.CSRF);
+            if (window.CSRF) {
+              fd.set('csrf_token', window.CSRF);
+            }
+            fetchOpts = {
+              method: 'POST',
+              credentials: 'same-origin',
+              redirect: 'manual',
+              headers: {
+                'Accept': 'application/json',
+                'X-Requested-With': 'XMLHttpRequest',
+                'X-CSRF-TOKEN': window.CSRF || ''
+              },
+              body: fd
+            };
           }
 
-          const res = await fetch(item.url, {
-            method: 'POST',
-            body: fd
-          });
+          const res = await fetch(item.url, fetchOpts);
+
+          // Redirección opaca (302 a /auth/login) o 401/403 -> sesión caducada, NO borrar cola!
+          if (res.type === 'opaqueredirect' || (res.status >= 300 && res.status < 400) || res.status === 401 || res.status === 403) {
+            break;
+          }
+
+          // Errores definitivos de recurso/validación (404/422) -> desencolar para no bloquear el resto
+          if (res.status === 404 || res.status === 422) {
+            this.dequeue(item.id);
+            continue;
+          }
 
           if (res.ok) {
-            const json = await res.json().catch(() => ({ ok: true }));
-            if (json.ok) {
+            const ct = (res.headers.get('content-type') || '').toLowerCase();
+            if (!ct.includes('application/json')) {
+              // Respuesta HTML inesperada (ej. login/error): preservar cola
+              break;
+            }
+            const json = await res.json().catch(() => null);
+            if (json && json.ok) {
               this.dequeue(item.id);
               successCount++;
-            } else if (res.status === 422 || (json.msg && json.msg.includes('inválido'))) {
-              // Si fue error de validación definitiva, remover para no bloquear la cola
+            } else if (json && json.msg && /inválido|no encontrado|no pertenece/i.test(String(json.msg))) {
               this.dequeue(item.id);
             }
-          } else if (res.status === 403 || res.status === 401) {
-            // Sesión caducada; preservar cola hasta que el usuario revalide
-            break;
           }
         } catch (err) {
           // Si falló por corte de red intermitente, detener reintento temporalmente

@@ -732,9 +732,10 @@ body.xp-modal-active, html.xp-modal-active { overflow: hidden !important; height
           </div>
         </div>
         <div class="xp-backup-metric">
+        <div class="xp-backup-metric">
           <div class="xp-backup-metric-icon"><i class="ti ti-barbell"></i></div>
           <div class="xp-backup-metric-data">
-            <span class="xp-backup-metric-label">Series y Registros</span>
+            <span class="xp-backup-metric-label"><?= $xpHerramientasEsAdmin ? 'Series y Registros' : 'Series de tus Atletas' ?></span>
             <strong class="xp-backup-metric-val"><?= number_format($totalSeries) ?> series</strong>
           </div>
         </div>
@@ -747,10 +748,35 @@ body.xp-modal-active, html.xp-modal-active { overflow: hidden !important; height
         </div>
       </div>
 
+      <?php if ($xpHerramientasEsAdmin): ?>
+      <div style="margin-top:16px; padding:14px; background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.09); border-radius:14px;">
+        <label for="xpBackupAlcanceAdmin" style="display:block; font-size:0.78rem; font-weight:700; color:#cbd5e1; margin-bottom:8px;">
+          <i class="ti ti-shield-check" style="color:#34d399;"></i> Alcance de la Copia de Seguridad
+        </label>
+        <div style="display:grid; grid-template-columns:1fr; gap:10px;">
+          <select id="xpBackupAlcanceAdmin" class="sys-input" onchange="document.getElementById('xpBackupEntrenadorWrap').style.display = this.value === 'entrenador' ? 'block' : 'none';">
+            <option value="global">Global (Toda la plataforma y todos los entrenadores)</option>
+            <option value="entrenador">Por Entrenador específico (solo sus atletas y datos)</option>
+          </select>
+          <div id="xpBackupEntrenadorWrap" style="display:none;">
+            <label for="xpBackupEntrenadorSelect" style="display:block; font-size:0.75rem; color:#94a3b8; margin-bottom:5px;">Selecciona el entrenador:</label>
+            <select id="xpBackupEntrenadorSelect" class="sys-input">
+              <option value="">-- Elegir entrenador --</option>
+              <?php foreach (($entrenadores ?? []) as $entOpt): ?>
+                <option value="<?= (int)$entOpt['id'] ?>"><?= e($entOpt['nombre']) ?> (<?= e($entOpt['email']) ?>)</option>
+              <?php endforeach; ?>
+            </select>
+          </div>
+        </div>
+      </div>
+      <?php endif; ?>
+
       <div class="xp-backup-actions" style="margin-top: 20px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; border-top: 1px solid rgba(255,255,255,0.08); padding-top: 16px;">
         <div style="font-size: 0.78rem; color: #94a3b8; display: flex; align-items: center; gap: 6px;">
           <i class="ti ti-info-circle" style="color: #60a5fa; font-size: 1rem;"></i>
-          <span>El archivo incluye sentencias completas listas para restaurar vía phpMyAdmin o consola MySQL.</span>
+          <span><?= $xpHerramientasEsAdmin
+            ? 'Puedes respaldar toda la base de datos o exportar solo los datos de un entrenador específico.'
+            : 'Incluye exclusivamente a todos tus atletas, sus rutinas, historial de series, pesos, medidas y pagos.' ?></span>
         </div>
         <button type="button" id="btnDescargarBackupDb" class="xp-backup-btn" onclick="descargarCopiaSeguridadDb()">
           <i class="ti ti-download"></i> <span>Descargar Copia de Seguridad</span>
@@ -1366,13 +1392,27 @@ async function descargarCopiaSeguridadDb() {
       || document.querySelector('input[name="csrf_token"]')?.value
       || <?= json_encode($csrf, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
 
+    const params = new URLSearchParams();
+    params.set('csrf_token', csrfToken);
+    const alcanceEl = document.getElementById('xpBackupAlcanceAdmin');
+    const entSelEl  = document.getElementById('xpBackupEntrenadorSelect');
+    if (alcanceEl) {
+      params.set('alcance', alcanceEl.value);
+      if (alcanceEl.value === 'entrenador') {
+        if (!entSelEl || !entSelEl.value) {
+          throw new Error('Selecciona el entrenador del cual deseas descargar la copia de seguridad.');
+        }
+        params.set('entrenador_id', entSelEl.value);
+      }
+    }
+
     const res = await fetch(`${window.APP || ''}/${window.XP_TOOLS_API_BASE}/descargar-respaldo-db`, {
       method: 'POST',
       headers: {
         'X-CSRF-Token': csrfToken,
         'Content-Type': 'application/x-www-form-urlencoded'
       },
-      body: 'csrf_token=' + encodeURIComponent(csrfToken)
+      body: params.toString()
     });
 
     if (!res.ok) {

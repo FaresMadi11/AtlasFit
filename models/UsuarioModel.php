@@ -36,6 +36,9 @@ class UsuarioModel {
      */
     public static function mensajeBloqueo(array $user): ?string {
         $rol = (string)($user['rol'] ?? 'cliente');
+        if (array_key_exists('activo', $user) && empty($user['activo'])) {
+            return 'Tu cuenta ha sido desactivada. Contacta al administrador.';
+        }
         if ($rol === 'admin') return null;
 
         $estado = (string)($user['estado_cuenta'] ?? 'pendiente');
@@ -66,7 +69,7 @@ class UsuarioModel {
         if ($clean === '') return null;
 
         $s = $this->db->prepare(
-            "SELECT id, nombre, email, password_hash, rol, estado_cuenta, google_id, auth_provider, avatar_url
+            "SELECT id, nombre, email, password_hash, rol, activo, estado_cuenta, google_id, auth_provider, avatar_url
              FROM usuarios
              WHERE LOWER(TRIM(email)) = ?
              LIMIT 1"
@@ -89,7 +92,7 @@ class UsuarioModel {
 
         // Luego por nombre exacto (case-insensitive)
         $s = $this->db->prepare(
-            "SELECT id, nombre, email, password_hash, rol, estado_cuenta, google_id, auth_provider, avatar_url
+            "SELECT id, nombre, email, password_hash, rol, activo, estado_cuenta, google_id, auth_provider, avatar_url
              FROM usuarios
              WHERE LOWER(TRIM(nombre)) = LOWER(?)
              LIMIT 1"

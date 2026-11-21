@@ -290,7 +290,7 @@ class CatalogoService {
     public static function apiList(PDO $db, ?int $entId = null): void {
         $rows = self::obtenerEjerciciosVisibles($db, $entId);
         usort($rows, static fn(array $a, array $b): int => strcasecmp((string)$a['nombre'], (string)$b['nombre']));
-        jsonOut(true, 'ok', $rows);
+        jsonOut(true, 'ok', ['data' => $rows, 'ejercicios' => $rows]);
     }
 
     /**
@@ -371,11 +371,9 @@ class CatalogoService {
         $grupo        = trim((string)($_POST['grupo_muscular'] ?? 'Otro')) ?: 'Otro';
         $desc         = trim((string)($_POST['descripcion'] ?? ''));
         $indicaciones = trim((string)($_POST['indicaciones'] ?? $desc));
-        $videoUrl     = trim((string)($_POST['video_url'] ?? ''));
-        $tipoImp      = in_array($_POST['tipo_implemento'] ?? '', ['mancuerna', 'barra', 'polea_maquina', 'sin_peso'], true)
-                        ? $_POST['tipo_implemento'] : 'barra';
-        $unidadCarga  = in_array($_POST['unidad_carga'] ?? '', ['kg', 'lbs', 'placas', 'ninguna'], true)
-                        ? $_POST['unidad_carga'] : 'kg';
+        $hasVideoPost = array_key_exists('video_url', $_POST);
+        $hasImpPost   = array_key_exists('tipo_implemento', $_POST) && $_POST['tipo_implemento'] !== '';
+        $hasUniPost   = array_key_exists('unidad_carga', $_POST) && $_POST['unidad_carga'] !== '';
 
         if (!$id || $nombre === '') {
             jsonOut(false, 'Faltan datos obligatorios.');
@@ -387,6 +385,18 @@ class CatalogoService {
             $ej = $chk->fetch(PDO::FETCH_ASSOC);
             if (!$ej) {
                 jsonOut(false, 'El ejercicio no existe.');
+            }
+
+            // Preservar tipo_implemento, unidad_carga y video_url existentes si el formulario no los envió
+            $videoUrl    = $hasVideoPost ? trim((string)$_POST['video_url']) : (string)($ej['video_url'] ?? '');
+            $tipoImp     = ($hasImpPost && in_array($_POST['tipo_implemento'], ['mancuerna', 'barra', 'polea_maquina', 'sin_peso'], true))
+                           ? $_POST['tipo_implemento']
+                           : (in_array($ej['tipo_implemento'] ?? '', ['mancuerna', 'barra', 'polea_maquina', 'sin_peso'], true) ? $ej['tipo_implemento'] : 'barra');
+            $unidadCarga = ($hasUniPost && in_array($_POST['unidad_carga'], ['kg', 'lbs', 'placas', 'ninguna'], true))
+                           ? $_POST['unidad_carga']
+                           : (in_array($ej['unidad_carga'] ?? '', ['kg', 'lbs', 'placas', 'ninguna'], true) ? $ej['unidad_carga'] : ($tipoImp === 'sin_peso' ? 'ninguna' : 'kg'));
+            if ($tipoImp === 'sin_peso') {
+                $unidadCarga = 'ninguna';
             }
 
             $ejEnt = ($ej['entrenador_id'] !== null && (int)$ej['entrenador_id'] > 0) ? (int)$ej['entrenador_id'] : null;

@@ -493,19 +493,23 @@ $temaGlobalVer     = (int)($temaInfoUser['global_ver'] ?? 1);
         String(n.mensaje || '').toLowerCase().includes('rutina')
       );
 
+      const safeIcon = /^[a-z0-9\-]+$/i.test(String(icon)) ? String(icon) : 'ti-bell';
+      const safeEnlace = (enlace && !/^\s*javascript:/i.test(enlace)) ? enlace : '';
+      const nid = parseInt(n.id, 10) || 0;
+
       html += `
         <div class="notif-item ${isUnread ? 'unread' : ''}" 
-             data-id="${n.id}" 
-             data-enlace="${enlace}" 
-             onclick="xpClickNotifItem(${n.id}, '${enlace.replace(/'/g, "\\'")}', event)">
+             data-id="${nid}" 
+             data-enlace="${xpEscapeHtml(safeEnlace)}" 
+             onclick="xpClickNotifItem(Number(this.dataset.id), this.dataset.enlace || '', event)">
           <div class="n-icon">
-            <i class="ti ${icon}"></i>
+            <i class="ti ${safeIcon}"></i>
           </div>
           <div class="n-content">
             <p class="n-msg">${xpEscapeHtml(n.mensaje)}</p>
             <div class="n-time">
               <i class="ti ti-clock" style="font-size:0.75rem;"></i>
-              <span>${time}${fechaHora}</span>
+              <span>${xpEscapeHtml(time)}${xpEscapeHtml(fechaHora)}</span>
             </div>
             ${isSolicitudEnt && targetEntUid > 0 ? `
               <div class="notif-actions" style="margin-top:8px; display:flex; gap:6px; flex-wrap:wrap;" onclick="event.stopPropagation()">

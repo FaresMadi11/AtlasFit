@@ -419,7 +419,9 @@ self.addEventListener('fetch', event => {
       });
       if (cached) {
         try {
-          return await fetchWithTimeout(netPromise, 600);
+          const netRes = await fetchWithTimeout(netPromise, 600);
+          if (netRes && (netRes.status === 401 || netRes.status === 403)) return netRes;
+          return netRes;
         } catch (_) {
           netPromise.catch(() => {});
           return cached;

@@ -845,51 +845,62 @@ document.querySelectorAll('.atleta-row').forEach(function(row) {
   });
 });
 
+function escCfgHtml(str) {
+  return String(str == null ? '' : str)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
 function openPanel(d) {
   const panel = document.getElementById('atletaPanel');
-  const initials = d.nombre.substring(0, 2).toUpperCase();
+  const initials = escCfgHtml((d.nombre || '').substring(0, 2).toUpperCase());
   const badgeClass = d.estado === 'activo' ? 'gu-badge-on' : 'gu-badge-off';
   const badgeTxt   = d.estado === 'activo' ? 'Activo' : (d.estado === 'rechazado' ? 'Rechazado' : 'Pendiente');
+  const uidNum = parseInt(d.id, 10) || 0;
+  const cidNum = parseInt(d.cliente, 10) || 0;
 
-  const btnDesactivar = d.estado === 'activo' 
-    ? `<button class="btn-xp" style="font-size:.8rem;padding:7px 14px;background:rgba(239,68,68,0.15);color:#ef4444;border:1px solid rgba(239,68,68,0.3);" onclick="toggleEstadoAtleta('${d.id}', 'rechazar')">
+  const btnDesactivar = d.estado === 'activo'
+    ? `<button type="button" class="btn-xp" data-cfg-action="estado" data-accion="rechazar" style="font-size:.8rem;padding:7px 14px;background:rgba(239,68,68,0.15);color:#ef4444;border:1px solid rgba(239,68,68,0.3);">
          <i class="ti ti-user-off"></i> Desactivar
        </button>`
-    : `<button class="btn-xp" style="font-size:.8rem;padding:7px 14px;background:rgba(16,185,129,0.15);color:#10b981;border:1px solid rgba(16,185,129,0.3);" onclick="toggleEstadoAtleta('${d.id}', 'aprobar')">
+    : `<button type="button" class="btn-xp" data-cfg-action="estado" data-accion="aprobar" style="font-size:.8rem;padding:7px 14px;background:rgba(16,185,129,0.15);color:#10b981;border:1px solid rgba(16,185,129,0.3);">
          <i class="ti ti-user-check"></i> Activar
        </button>`;
 
   panel.innerHTML = `
-    <button class="panel-close" onclick="closePanel()"><i class="ti ti-x"></i></button>
+    <button type="button" class="panel-close" onclick="closePanel()"><i class="ti ti-x"></i></button>
     <div class="panel-top">
       <div class="panel-avatar">${initials}</div>
       <div>
-        <div class="panel-name">${d.nombre}</div>
+        <div class="panel-name">${escCfgHtml(d.nombre)}</div>
         <div class="panel-role">Atleta &bull; <span class="gu-badge ${badgeClass}">${badgeTxt}</span></div>
       </div>
     </div>
     <div class="panel-stats">
-      <div class="panel-stat"><div class="panel-stat-lbl">Email</div><div class="panel-stat-val" style="font-size:.78rem;word-break:break-all">${d.email}</div></div>
-      <div class="panel-stat"><div class="panel-stat-lbl">Peso Actual</div><div class="panel-stat-val">${d.peso}</div></div>
-      <div class="panel-stat"><div class="panel-stat-lbl">Objetivo</div><div class="panel-stat-val" style="font-size:.78rem">${d.objetivo}</div></div>
-      <div class="panel-stat"><div class="panel-stat-lbl">Desde</div><div class="panel-stat-val">${d.desde}</div></div>
+      <div class="panel-stat"><div class="panel-stat-lbl">Email</div><div class="panel-stat-val" style="font-size:.78rem;word-break:break-all">${escCfgHtml(d.email)}</div></div>
+      <div class="panel-stat"><div class="panel-stat-lbl">Peso Actual</div><div class="panel-stat-val">${escCfgHtml(d.peso)}</div></div>
+      <div class="panel-stat"><div class="panel-stat-lbl">Objetivo</div><div class="panel-stat-val" style="font-size:.78rem">${escCfgHtml(d.objetivo)}</div></div>
+      <div class="panel-stat"><div class="panel-stat-lbl">Desde</div><div class="panel-stat-val">${escCfgHtml(d.desde)}</div></div>
     </div>
     <div class="panel-actions" style="display:flex; flex-wrap:wrap; gap:8px;">
       ${btnDesactivar}
-      <button class="btn-xp btn-warn" style="font-size:.8rem;padding:7px 14px" onclick="openPwdModal('${d.id}','${d.nombre}')">
+      <button type="button" class="btn-xp btn-warn" data-cfg-action="pwd" style="font-size:.8rem;padding:7px 14px">
         <i class="ti ti-lock"></i> Contraseña
       </button>
-      <button class="btn-xp" style="font-size:.8rem;padding:7px 14px;background:linear-gradient(135deg, #10b981, #059669);color:#fff;border:none;" onclick="cambiarRol('${d.id}','${d.nombre}')">
-        <i class="ti ti-star"></i> Cambiar Rol
-      </button>
-      <a href="<?= APP_URL ?>/entrenador/perfil-cliente?id=${d.cliente}" class="btn-xp btn-primary" style="font-size:.8rem;padding:7px 14px">
+      <a href="<?= APP_URL ?>/entrenador/perfil-cliente?id=${cidNum}" class="btn-xp btn-primary" style="font-size:.8rem;padding:7px 14px">
         <i class="ti ti-user"></i> Ver Perfil
       </a>
-      <button class="btn-xp" style="font-size:.8rem;padding:7px 14px;background:rgba(239,68,68,0.18);color:#ef4444;border:1px solid rgba(239,68,68,0.4);transition:all .2s;" onclick="eliminarAtleta('${d.id}','${d.nombre}')" onmouseover="this.style.background='rgba(239,68,68,0.3)'" onmouseout="this.style.background='rgba(239,68,68,0.18)'">
+      <button type="button" class="btn-xp" data-cfg-action="eliminar" style="font-size:.8rem;padding:7px 14px;background:rgba(239,68,68,0.18);color:#ef4444;border:1px solid rgba(239,68,68,0.4);transition:all .2s;" onmouseover="this.style.background='rgba(239,68,68,0.3)'" onmouseout="this.style.background='rgba(239,68,68,0.18)'">
         <i class="ti ti-trash"></i> Eliminar
       </button>
     </div>
   `;
+  const btnEstado = panel.querySelector('[data-cfg-action="estado"]');
+  if (btnEstado) btnEstado.addEventListener('click', () => toggleEstadoAtleta(uidNum, btnEstado.dataset.accion));
+  const btnPwd = panel.querySelector('[data-cfg-action="pwd"]');
+  if (btnPwd) btnPwd.addEventListener('click', () => openPwdModal(uidNum, d.nombre || ''));
+  const btnDel = panel.querySelector('[data-cfg-action="eliminar"]');
+  if (btnDel) btnDel.addEventListener('click', () => eliminarAtleta(uidNum, d.nombre || ''));
   panel.style.display = 'block';
 }
 
@@ -965,35 +976,6 @@ async function submitPwd() {
 document.getElementById('pwdModal').addEventListener('click', function(e) {
   if (e.target === this) closePwdModal();
 });
-
-/* ── Modal de Rol ── */
-function cambiarRol(uid, nombre) {
-  Swal.fire({
-    title: 'Cambiar Rol',
-    html: `¿Qué rol deseas asignarle a <b>${nombre}</b>?`,
-    icon: 'question',
-    showDenyButton: true,
-    showCancelButton: true,
-    confirmButtonText: 'Entrenador',
-    denyButtonText: 'Atleta',
-    cancelButtonText: 'Cancelar'
-  }).then(async (result) => {
-    let rol = '';
-    if (result.isConfirmed) rol = 'entrenador';
-    else if (result.isDenied) rol = 'cliente';
-    else return;
-
-    const r = await Xp.post('entrenador/cambiar-rol-atleta', { usuario_id: uid, rol })
-      .catch(() => ({ok:false, msg:'Error en la petición.'}));
-    
-    if (r.ok) {
-      Xp.toast('success', r.msg);
-      setTimeout(() => location.reload(), 1200);
-    } else {
-      Xp.toast('error', r.msg);
-    }
-  });
-}
 
 /* ── Eliminar Atleta ── */
 function eliminarAtleta(uid, nombre) {

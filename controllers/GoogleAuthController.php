@@ -155,9 +155,6 @@ function googleCallback(): void {
             $stateValid = true;
         } elseif ($cookieState !== '' && hash_equals($cookieState, $state) && googleVerifySignedState($state, 600)) {
             $stateValid = true;
-        } elseif ($expectedState === '' && $cookieState === '' && googleVerifySignedState($state, 600)) {
-            // Handoff PWA standalone -> navegador del sistema donde el contenedor de cookies está aislado
-            $stateValid = true;
         }
     }
 
@@ -267,6 +264,15 @@ function googleCallback(): void {
         $user = $um->findById((int)$existingUser['id']);
         if (!$user) throw new \RuntimeException('Usuario no encontrado tras OAuth.');
 
+        // Bloquear cuentas desactivadas (incluyendo admin)
+        if (empty($user['activo'])) {
+            unset($_SESSION['user_id'], $_SESSION['nombre'], $_SESSION['email'], $_SESSION['rol'], $_SESSION['_login_at'], $_SESSION['_via']);
+            setFlash('error', 'Tu cuenta ha sido desactivada. Contacta al administrador.');
+            if (session_status() === PHP_SESSION_ACTIVE) session_write_close();
+            redirect('auth/login');
+            return;
+        }
+
         // Si el estado de cuenta sigue en 'pendiente' o 'rechazado', bloquear y mostrar vista Stand-by (solo admin exento)
         if (($user['rol'] ?? '') !== 'admin') {
             $esEnt = (($user['rol'] ?? '') === 'entrenador');
@@ -332,18 +338,23 @@ function googleCallback(): void {
  */
 function googleHttpPost(string $url, array $params): array {
     $postData = http_build_query($params, '', '&', PHP_QUERY_RFC3986);
+    $caBundle = function_exists('xpResolveCaBundle') ? xpResolveCaBundle() : null;
 
     if (function_exists('curl_init')) {
         $ch = curl_init($url);
-        curl_setopt_array($ch, [
+        $curlOpts = [
             CURLOPT_POST           => true,
             CURLOPT_POSTFIELDS     => $postData,
             CURLOPT_RETURNTRANSFER => true,
             CURLOPT_TIMEOUT        => 15,
-            CURLOPT_SSL_VERIFYPEER => false,
-            CURLOPT_SSL_VERIFYHOST => false,
+            CURLOPT_SSL_VERIFYPEER => true,
+            CURLOPT_SSL_VERIFYHOST => 2,
             CURLOPT_HTTPHEADER     => ['Content-Type: application/x-www-form-urlencoded'],
-        ]);
+        ];
+        if ($caBundle !== null) {
+            $curlOpts[CURLOPT_CAINFO] = $caBundle;
+        }
+        curl_setopt_array($ch, $curlOpts);
 
         $response  = curl_exec($ch);
         $httpCode  = curl_getinfo($ch, CURLINFO_HTTP_CODE);
@@ -354,7 +365,14 @@ function googleHttpPost(string $url, array $params): array {
             throw new \RuntimeException("Error cURL: {$curlError}");
         }
     } else {
-        // Fallback nativo 100% PHP con stream_context
+        // Fallback nativo 100% PHP con stream_context (TLS estricto)
+        $sslOpts = [
+            'verify_peer'      => true,
+            'verify_peer_name' => true,
+        ];
+        if ($caBundle !== null) {
+            $sslOpts['cafile'] = $caBundle;
+        }
         $context = stream_context_create([
             'http' => [
                 'method'        => 'POST',
@@ -363,10 +381,7 @@ function googleHttpPost(string $url, array $params): array {
                 'timeout'       => 15,
                 'ignore_errors' => true,
             ],
-            'ssl' => [
-                'verify_peer'      => false,
-                'verify_peer_name' => false,
-            ],
+            'ssl' => $sslOpts,
         ]);
 
         $response = @file_get_contents($url, false, $context);
@@ -401,19 +416,31 @@ function googleHttpPost(string $url, array $params): array {
  * Realiza una petición HTTP GET segura compatible con cURL y con fallback nativo file_get_contents.
  */
 function googleHttpGet(string $url): array {
+    $caBundle = function_exists('xpResolveCaBundle') ? xpResolveCaBundle() : null;
     if (function_exists('curl_init')) {
         $ch = curl_init($url);
-        curl_setopt_array($ch, [
+        $curlOpts = [
             CURLOPT_RETURNTRANSFER => true,
             CURLOPT_TIMEOUT        => 10,
-            CURLOPT_SSL_VERIFYPEER => false,
-            CURLOPT_SSL_VERIFYHOST => false,
-        ]);
+            CURLOPT_SSL_VERIFYPEER => true,
+            CURLOPT_SSL_VERIFYHOST => 2,
+        ];
+        if ($caBundle !== null) {
+            $curlOpts[CURLOPT_CAINFO] = $caBundle;
+        }
+        curl_setopt_array($ch, $curlOpts);
 
         $response = curl_exec($ch);
         $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
         curl_close($ch);
     } else {
+        $sslOpts = [
+            'verify_peer'      => true,
+            'verify_peer_name' => true,
+        ];
+        if ($caBundle !== null) {
+            $sslOpts['cafile'] = $caBundle;
+        }
         $context = stream_context_create([
             'http' => [
                 'method'        => 'GET',
@@ -421,10 +448,7 @@ function googleHttpGet(string $url): array {
                 'timeout'       => 10,
                 'ignore_errors' => true,
             ],
-            'ssl' => [
-                'verify_peer'      => false,
-                'verify_peer_name' => false,
-            ],
+            'ssl' => $sslOpts,
         ]);
 
         $response = @file_get_contents($url, false, $context);
@@ -493,12 +517,12 @@ function googleDecodeIdToken(string $idToken): array {
 
     // Verificar emisor (iss)
     $iss = (string)($payload['iss'] ?? '');
-    if ($iss !== '' && !in_array($iss, ['https://accounts.google.com', 'accounts.google.com'], true)) {
+    if (!in_array($iss, ['https://accounts.google.com', 'accounts.google.com'], true)) {
         throw new \RuntimeException('Emisor de token de Google no válido.');
     }
 
     // Verificar expiración (exp) con 60s de tolerancia de reloj
-    if (!empty($payload['exp']) && (int)$payload['exp'] < (time() - 60)) {
+    if (empty($payload['exp']) || (int)$payload['exp'] < (time() - 60)) {
         throw new \RuntimeException('El token de Google ha expirado.');
     }
 

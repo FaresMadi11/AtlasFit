@@ -1937,10 +1937,11 @@
    ════════════════════════════════════════════════════ */
 (function modalPortal() {
   const IDS = [
-    'overlayExOpts',    'sheetExOpts',
-    'overlaySetType',   'sheetSetType',
-    'overlayCats',      'sheetCats',
-    'overlayPlantillas','sheetPlantillas',
+    'overlayExOpts',      'sheetExOpts',
+    'overlaySetType',     'sheetSetType',
+    'overlayWheelPicker', 'sheetWheelPicker',
+    'overlayCats',        'sheetCats',
+    'overlayPlantillas',  'sheetPlantillas',
     'vista-reordenar-wrap',
   ];
   /* Ejecutar en DOMContentLoaded si el DOM aún no está listo,
@@ -1987,10 +1988,11 @@ let dragSrc            = null;
    SHEETS: open / close / escape
 ═══════════════════════════════════════════════════ */
 const SHEET_OVERLAY_MAP = {
-  sheetExOpts     : 'overlayExOpts',
-  sheetSetType    : 'overlaySetType',
-  sheetCats       : 'overlayCats',
-  sheetPlantillas : 'overlayPlantillas',
+  sheetExOpts      : 'overlayExOpts',
+  sheetSetType     : 'overlaySetType',
+  sheetWheelPicker : 'overlayWheelPicker',
+  sheetCats        : 'overlayCats',
+  sheetPlantillas  : 'overlayPlantillas',
 };
 
 function openSheet(sheetId, overlayId) {
@@ -2343,12 +2345,14 @@ let _catsFilterRaf = null;
 function catsFilterExercises(value) {
   if (_catsFilterRaf) cancelAnimationFrame(_catsFilterRaf);
   _catsFilterRaf = requestAnimationFrame(() => {
-    renderExerciseList(_currentCategory, value, false);
+    renderExerciseList(_currentCategory, value, Boolean(_replaceModeActive));
     /* Restaurar estado de selección visualmente */
-    document.querySelectorAll('.ex-list-item').forEach(item => {
-      const id = item.dataset.exId;
-      if (selectedExercises.has(id)) item.classList.add('selected');
-    });
+    if (!_replaceModeActive) {
+      document.querySelectorAll('.ex-list-item').forEach(item => {
+        const id = item.dataset.exId;
+        if (selectedExercises.has(id)) item.classList.add('selected');
+      });
+    }
   });
 }
 
@@ -2572,7 +2576,6 @@ function addExercise(exOrName) {
           wInput.value = pesoVal;
           actualizarHintMancuerna(wInput);
         }
-        syncRowDisplay(lastRow);
         const rInput = lastRow.querySelector('.set-input-reps');
         const repsVal = (s.reps_objetivo !== null && s.reps_objetivo !== undefined && s.reps_objetivo !== '') ? s.reps_objetivo : (s.reps ?? s.repeticiones ?? null);
         if (rInput && repsVal !== null && repsVal !== undefined && repsVal !== '') {
@@ -2583,6 +2586,7 @@ function addExercise(exOrName) {
         if (rirInput && rirVal !== null) {
           rirInput.value = rirVal;
         }
+        syncRowDisplay(lastRow);
       }
     });
   } else {
@@ -3106,7 +3110,7 @@ function cambiarUnidad(exIdx, nuevaUnidad) {
 
 function actualizarHintMancuerna(input) {
   const block = input.closest('.ex-block');
-  const hint  = input.nextElementSibling;
+  const hint  = input.closest('.set-weight-cell')?.querySelector('.dumbbell-hint') || input.nextElementSibling;
   if (!block || !hint) return;
   const isMancuerna = (block.dataset.implemento === 'mancuerna');
   const unit = block.dataset.unidad || 'kg';
@@ -3966,11 +3970,17 @@ document.getElementById('btnGuardar').addEventListener('click', async () => {
   btn.innerHTML = '<i class="ti ti-loader-2 cr-spin" aria-hidden="true"></i>';
 
   try {
+    const rutinaEditarId = (typeof RUTINA_EDITAR !== 'undefined' && RUTINA_EDITAR && RUTINA_EDITAR.id) ? parseInt(RUTINA_EDITAR.id, 10) : 0;
+    const formaEdicionEl = document.querySelector('input[name="forma_edicion"]:checked');
+    const formaEdicion   = formaEdicionEl ? formaEdicionEl.value : 'permanente';
+
     const res = await fetch(`${APP}/entrenador/guardar-plantilla-rutina`, {
       method  : 'POST',
       headers : { 'Content-Type': 'application/json' },
       body    : JSON.stringify({
-        titulo     : 'Entrenamiento',
+        rutina_editar_id : rutinaEditarId,
+        forma_edicion    : formaEdicion,
+        titulo     : (document.getElementById('rutinaTitulo')?.value.trim()) || (RUTINA_EDITAR?.titulo) || 'Entrenamiento',
         cliente_id : clienteId,
         descripcion,
         dias,
@@ -4094,8 +4104,8 @@ function resetearDiasSelector() {
 }
 
 // Inicializar días si ya hay un atleta seleccionado
-const RUTINA_EDITAR = <?= json_encode($rutinaEditar ?? null) ?>;
-const EJERCICIOS_EDITAR = <?= json_encode($ejerciciosEditar ?? []) ?>;
+const RUTINA_EDITAR = <?= json_encode($rutinaEditar ?? null, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_UNESCAPED_UNICODE) ?>;
+const EJERCICIOS_EDITAR = <?= json_encode($ejerciciosEditar ?? [], JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_UNESCAPED_UNICODE) ?>;
 
 function toggleRirExercise(idx) {
   const block = document.querySelector(`.ex-block[data-idx="${idx}"]`);
@@ -4130,13 +4140,17 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     const titleInp = document.getElementById('rutinaTitulo');
-    if (titleInp && RUTINA_EDITAR.descripcion) {
-      titleInp.value = RUTINA_EDITAR.descripcion;
+    if (titleInp && (RUTINA_EDITAR.titulo || RUTINA_EDITAR.descripcion)) {
+      titleInp.value = RUTINA_EDITAR.titulo || RUTINA_EDITAR.descripcion;
+    }
+    const descInp = document.getElementById('rutinaDesc');
+    if (descInp && RUTINA_EDITAR.descripcion) {
+      descInp.value = RUTINA_EDITAR.descripcion;
     }
     if (RUTINA_EDITAR.dias_semana) {
-      const diasArr = RUTINA_EDITAR.dias_semana.split(',').map(s => parseInt(s.trim()));
+      const diasArr = String(RUTINA_EDITAR.dias_semana).split(',').map(s => parseInt(s.trim(), 10)).filter(n => n >= 1 && n <= 7);
       diasArr.forEach(d => {
-        const chk = document.getElementById(`dia_${d}`);
+        const chk = document.getElementById(`dia_${d - 1}`);
         if (chk) chk.checked = true;
       });
     }
@@ -4149,9 +4163,10 @@ document.addEventListener('DOMContentLoaded', () => {
             nota_default: ej.nota_biomecanica || '',
             tipo_implemento: ej.tipo_implemento || 'barra',
             unidad_carga: ej.unidad_carga || 'kg',
-            series: Array.isArray(ej.series) ? ej.series : parseInt(ej.series || 3),
+            descanso_segundos: ej.descanso_segundos || null,
+            series: Array.isArray(ej.series) ? ej.series : parseInt(ej.series || 3, 10),
             repeticiones: ej.repeticiones || '10-12',
-            rir: ej.rir || '',
+            rir: ej.rir !== null && ej.rir !== undefined ? ej.rir : '',
           });
         }, i * 60);
       });
