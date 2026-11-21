@@ -730,19 +730,31 @@ function saRender() {
       const impRaw = String(ej.tipo_implemento || 'barra').toLowerCase();
       const esSinPeso = impRaw === 'sin_peso';
       const uniRaw = String(ej.unidad_carga || 'kg').toLowerCase();
-      const uniLabel = esSinPeso ? 'CORP' : (uniRaw === 'placas' ? 'PLACAS' : (uniRaw === 'lbs' ? 'LBS' : 'KG'));
+      const uniLabel = esSinPeso ? 'CORP' : (uniRaw === 'placas' ? 'PLACAS' : (uniRaw === 'lbs' ? (impRaw === 'mancuerna' ? 'LBS c/u ×2' : 'LBS') : (impRaw === 'mancuerna' ? 'KG c/u ×2' : 'KG')));
+      const descansoSeg = Number(ej.descanso_segundos || 0);
 
       let seriesRowsHtml = '';
+      let workIdx = 0;
       for (let i = 0; i < totalS; i++) {
-        const sObj = seriesArr[i] || { numero: i + 1, reps: ej.repeticiones || 10, peso: '', completado: false };
+        const sObj = seriesArr[i] || { numero: i + 1, reps: ej.repeticiones || 10, peso: '', completado: false, tipo: 'normal' };
         const sNum = Number(sObj.numero || (i + 1));
+        const sTipo = String(sObj.tipo || sObj.tipo_serie || 'normal').toLowerCase();
+        if (sTipo !== 'calentamiento') workIdx++;
+        const sBadgeTxt = sTipo === 'calentamiento' ? 'W' : (sTipo === 'fallo' ? 'F' : (sTipo === 'drop' ? 'D' : String(workIdx || sNum)));
+        const sBadgeStyle = sTipo === 'calentamiento'
+          ? 'background:rgba(251,191,36,0.18);color:#fbbf24;border:1px solid rgba(251,191,36,0.35);'
+          : (sTipo === 'fallo'
+              ? 'background:rgba(248,113,113,0.18);color:#f87171;border:1px solid rgba(248,113,113,0.35);'
+              : (sTipo === 'drop'
+                  ? 'background:rgba(96,165,250,0.18);color:#60a5fa;border:1px solid rgba(96,165,250,0.35);'
+                  : ''));
         const isComp = !!sObj.completado;
         const pVal = (sObj.peso !== null && sObj.peso !== undefined && Number(sObj.peso) > 0) ? sObj.peso : '';
-        const rVal = (sObj.reps !== null && sObj.reps !== undefined && Number(sObj.reps) > 0) ? sObj.reps : (parseInt(ej.repeticiones, 10) || 10);
+        const rVal = (sObj.reps !== null && sObj.reps !== undefined && String(sObj.reps).trim() !== '') ? sObj.reps : (ej.repeticiones || 10);
 
         seriesRowsHtml += `
           <div class="sa-serie-row ${isComp ? 'is-completed' : ''}" id="saSerieRow_${ejId}_${sNum}">
-            <div class="sa-serie-num">${sNum}</div>
+            <div class="sa-serie-num" style="${sBadgeStyle}" title="Tipo: ${saEsc(sTipo)}">${sBadgeTxt}</div>
             ${esSinPeso ? `
               <div class="sa-serie-field" style="justify-content:center;color:#94a3b8;font-size:0.78rem;font-weight:700;">
                 Peso Corporal
@@ -781,7 +793,7 @@ function saRender() {
           </button>
           <div class="cri-ej-details">
             <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-top:6px;margin-bottom:8px;font-size:0.76rem;color:#94a3b8;">
-              <span><i class="ti ti-barbell" style="color:#a855f7;"></i> Meta: <strong>${totalS} series × ${saEsc(ej.repeticiones || '10')} reps</strong> ${ej.rir !== null && ej.rir !== undefined && ej.rir !== '' ? `· RIR ${saEsc(ej.rir)}` : ''}</span>
+              <span><i class="ti ti-barbell" style="color:#a855f7;"></i> Meta: <strong>${totalS} series × ${saEsc(ej.repeticiones || '10')} reps</strong> ${!ej.rir_desmarcado && ej.rir !== null && ej.rir !== undefined && ej.rir !== '' ? `· RIR ${saEsc(ej.rir)}` : ''}${descansoSeg > 0 ? ` · <i class="ti ti-clock"></i> ${descansoSeg}s` : ''}</span>
               <span>Unidad: <strong style="color:#e2e8f0;">${uniLabel}</strong></span>
             </div>
             <div class="sa-series-grid">
@@ -855,87 +867,18 @@ async function saToggleSerie(ejercicioId, numSerie, imp, unidad, estabaCompletad
   }
 }
 
-async function saActivarModoEdicion() {
+function saActivarModoEdicion() {
   if (!saCurrentData || !saCurrentData.rutina) return;
-  let sourceData = saCurrentData;
   const rId = Number(saCurrentData.rutina.id || 0);
-  if (saCurrentData.modo === 'historial' && rId > 0) {
-    try {
-      const resProg = await fetch(`${APP}/admin/api-dia-detalle?fecha=${encodeURIComponent(saCurrentFecha)}&programada=1&rutina_id=${rId}`);
-      if (resProg.ok) {
-        const dProg = await resProg.json();
-        if (dProg && dProg.ok && Array.isArray(dProg.ejercicios) && dProg.ejercicios.length > 0) {
-          sourceData = dProg;
-        }
-      }
-    } catch (_) {}
+  if (rId > 0) {
+    window.location.href = `${APP}/admin/crear-rutina?editar=${rId}`;
+    return;
   }
-  saEditMode = true;
-  saCreateMode = false;
-  const r = sourceData.rutina || saCurrentData.rutina;
-  const dtObj = new Date(saCurrentFecha + 'T12:00:00');
-  const currentDow = dtObj.getDay() === 0 ? 7 : dtObj.getDay();
-
-  const diasParsed = String(r.dias_semana || '')
-    .split(',')
-    .map(v => parseInt(v.trim(), 10))
-    .filter(n => n >= 1 && n <= 7);
-
-  saDraftData = {
-    rutina_id: Number(r.id),
-    titulo: r.nombre || 'Mi Rutina',
-    dias_semana: diasParsed.length > 0 ? Array.from(new Set(diasParsed)) : [currentDow],
-    cardio_activo: Number(r.cardio_activo || 0) === 1,
-    cardio_tiempo: Number(r.cardio_tiempo || 10),
-    cardio_indicaciones: String(r.cardio_indicaciones || ''),
-    ejercicios: (sourceData.ejercicios || []).map(ej => {
-      const rawS = Array.isArray(ej.series_detalle) && ej.series_detalle.length > 0
-        ? ej.series_detalle
-        : (Array.isArray(ej.series) && ej.series.length > 0 ? ej.series : null);
-      const sArr = rawS || [{ numero: 1, peso: '', reps: 10 }, { numero: 2, peso: '', reps: 10 }, { numero: 3, peso: '', reps: 10 }];
-      return {
-        id: Number(ej.id || 0),
-        nombre: ej.nombre || '',
-        tipo_implemento: ej.tipo_implemento || 'barra',
-        unidad_carga: ej.unidad_carga || 'kg',
-        rir: ej.rir !== null && ej.rir !== undefined ? ej.rir : 2,
-        series_detalle: sArr.map((s, idx) => ({
-          numero_serie: idx + 1,
-          peso: (s.peso !== null && s.peso !== undefined && Number(s.peso) > 0) ? s.peso : '',
-          reps: (s.reps !== null && s.reps !== undefined && Number(s.reps) > 0) ? s.reps : (parseInt(ej.repeticiones, 10) || 10)
-        }))
-      };
-    })
-  };
-  saRender();
 }
 
 function saAbrirCrearRutina(defaultDow) {
-  saCreateMode = true;
-  saEditMode = false;
-  saDraftData = {
-    rutina_id: 0,
-    titulo: 'Rutina Personal',
-    dias_semana: [defaultDow || 1],
-    cardio_activo: false,
-    cardio_tiempo: 10,
-    cardio_indicaciones: '',
-    ejercicios: [
-      {
-        id: 0,
-        nombre: '',
-        tipo_implemento: 'barra',
-        unidad_carga: 'kg',
-        rir: 2,
-        series_detalle: [
-          { numero_serie: 1, peso: '', reps: 10 },
-          { numero_serie: 2, peso: '', reps: 10 },
-          { numero_serie: 3, peso: '', reps: 10 }
-        ]
-      }
-    ]
-  };
-  saRender();
+  const dow = Number(defaultDow || 0);
+  window.location.href = `${APP}/admin/crear-rutina` + (dow >= 1 && dow <= 7 ? `?dia=${dow}` : '');
 }
 
 function saCargarPlantillaEnBorrador(plId) {

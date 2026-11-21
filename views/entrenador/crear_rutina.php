@@ -1,4 +1,10 @@
-<?php $pageTitle = "Crear Rutina"; require __DIR__ . "/../layout/header.php"; ?>
+<?php
+$esModoAdminPropio = (($_SESSION['rol'] ?? '') === 'admin');
+$crApiPrefix       = $esModoAdminPropio ? 'admin' : 'entrenador';
+$crBackUrl         = $esModoAdminPropio ? (APP_URL . '/admin/rutina') : '';
+$pageTitle         = $pageTitle ?? ($esModoAdminPropio ? 'Crear Mi Rutina' : 'Crear Rutina');
+require __DIR__ . "/../layout/header.php";
+?>
 
 <style>
 /* ════════════════════════════════════════════════════
@@ -1579,7 +1585,7 @@
 
   <!-- Top bar -->
   <div class="cr-topbar">
-    <button type="button" class="cr-btn-back" onclick="history.back()" aria-label="Cancelar y volver">
+    <button type="button" class="cr-btn-back" onclick="<?= $esModoAdminPropio ? "window.location.href='" . e($crBackUrl) . "'" : 'history.back()' ?>" aria-label="Cancelar y volver">
       <i class="ti ti-arrow-left"></i> Cancelar
     </button>
     <span class="cr-topbar-title" role="heading" aria-level="1"><?= $pageTitle ?></span>
@@ -1588,26 +1594,43 @@
 
   <!-- Formulario Superior (Glassmorphism) -->
   <div class="cr-form-glass">
-    <!-- Custom Select Atleta -->
-    <div class="cr-custom-select" id="customAtletaSelect">
-      <div class="cr-select-trigger" onclick="toggleAtletaDropdown()">
-        <i class="ti ti-user"></i>
-        <span id="atletaSelectedText"><?= $atleta_id ? e($atleta_nombre) : '— Seleccionar Atleta —' ?></span>
-        <i class="ti ti-chevron-down" style="margin-left:auto"></i>
-      </div>
-      <div class="cr-select-dropdown" id="atletaDropdown">
-        <div class="cr-select-search">
-          <input type="text" id="atletaSearch" placeholder="Buscar atleta..." onkeyup="filterAtletas()" autocomplete="off">
+    <?php if ($esModoAdminPropio): ?>
+      <div class="cr-custom-select" id="customAtletaSelect" style="margin-bottom:18px;">
+        <div class="cr-select-trigger" style="cursor:default; border-color:rgba(139,92,246,0.35); background:rgba(139,92,246,0.1);">
+          <i class="ti ti-shield-check" style="color:#c084fc; font-size:1.15rem;"></i>
+          <span id="atletaSelectedText"><?= e($atleta_nombre ?? 'Mi Rutina Personal') ?></span>
         </div>
-        <div class="cr-select-options">
-          <?php foreach($clientes as $c): ?>
-          <div class="cr-select-option <?= (isset($atleta_id) && $atleta_id == $c['id']) ? 'selected' : '' ?>" data-value="<?= $c['id'] ?>" onclick="selectAtleta(<?= $c['id'] ?>, '<?= e(addslashes($c['nombre'])) ?>')">
-            <?= e($c['nombre']) ?>
+        <input type="hidden" id="selectAtleta" name="cliente_id" value="<?= (int)($atleta_id ?? 0) ?>">
+      </div>
+    <?php else: ?>
+      <!-- Custom Select Atleta -->
+      <div class="cr-custom-select" id="customAtletaSelect">
+        <div class="cr-select-trigger" onclick="toggleAtletaDropdown()">
+          <i class="ti ti-user"></i>
+          <span id="atletaSelectedText"><?= $atleta_id ? e($atleta_nombre) : '— Seleccionar Atleta —' ?></span>
+          <i class="ti ti-chevron-down" style="margin-left:auto"></i>
+        </div>
+        <div class="cr-select-dropdown" id="atletaDropdown">
+          <div class="cr-select-search">
+            <input type="text" id="atletaSearch" placeholder="Buscar atleta..." onkeyup="filterAtletas()" autocomplete="off">
           </div>
-          <?php endforeach; ?>
+          <div class="cr-select-options">
+            <?php foreach($clientes as $c): ?>
+            <div class="cr-select-option <?= (isset($atleta_id) && $atleta_id == $c['id']) ? 'selected' : '' ?>" data-value="<?= $c['id'] ?>" onclick="selectAtleta(<?= $c['id'] ?>, '<?= e(addslashes($c['nombre'])) ?>')">
+              <?= e($c['nombre']) ?>
+            </div>
+            <?php endforeach; ?>
+          </div>
         </div>
+        <input type="hidden" id="selectAtleta" name="cliente_id" value="<?= $atleta_id ?? '' ?>">
       </div>
-      <input type="hidden" id="selectAtleta" name="cliente_id" value="<?= $atleta_id ?? '' ?>">
+    <?php endif; ?>
+
+    <div>
+      <label class="cr-label-text">Nombre / Enfoque de la rutina</label>
+      <input type="text" id="rutinaTitulo" class="cr-title-input" style="font-size:1.05rem; margin-bottom:18px; padding:8px 0;"
+             placeholder="Ej: Día A — Pecho, Hombro y Tríceps"
+             value="<?= e($rutinaEditar['titulo'] ?? ($rutinaEditar['descripcion'] ?? '')) ?>">
     </div>
 
     <?php if (!empty($rutinaEditar)): ?>
@@ -1974,6 +1997,9 @@
 
 /* ── Datos PHP → JS ─────────────────────────────── */
 /* APP y CSRF ya declarados en header.php como window.APP y window.CSRF */
+const CR_API_PREFIX      = <?= json_encode($crApiPrefix, JSON_HEX_TAG | JSON_HEX_APOS) ?>;
+const CR_BACK_URL        = <?= json_encode($crBackUrl, JSON_HEX_TAG | JSON_HEX_APOS) ?>;
+const DIA_PRESELECCIONADO = <?= json_encode($diaPreseleccionado ?? (isset($_GET['dia']) ? max(1, min(7, (int)$_GET['dia'])) : null)) ?>;
 const catalogoEjercicios = <?= json_encode($catalogo   ?? [], JSON_HEX_TAG | JSON_HEX_APOS) ?>;
 const categoriasDB       = <?= json_encode($categorias ?? [], JSON_HEX_TAG | JSON_HEX_APOS) ?>;
 
@@ -3621,7 +3647,7 @@ async function abrirSheetPlantillas() {
   `;
 
   try {
-    const res = await fetch(`${APP}/entrenador/api-listar-plantillas-catalogo`);
+    const res = await fetch(`${APP}/${CR_API_PREFIX}/api-listar-plantillas-catalogo`);
     if (!res.ok) throw new Error('HTTP ' + res.status);
     const data = await res.json();
     if (!data.ok) throw new Error(data.msg || 'Error al obtener plantillas');
@@ -3785,7 +3811,7 @@ async function eliminarPlantillaGuardada(id, titulo) {
   if (!result.isConfirmed) return;
 
   try {
-    const res = await fetch(`${APP}/entrenador/api-eliminar-plantilla-catalogo`, {
+    const res = await fetch(`${APP}/${CR_API_PREFIX}/api-eliminar-plantilla-catalogo`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ plantilla_id: id, csrf_token: window.CSRF }),
@@ -3853,7 +3879,7 @@ async function guardarComoPlantilla() {
   }
 
   try {
-    const res = await fetch(`${APP}/entrenador/api-guardar-plantilla-catalogo`, {
+    const res = await fetch(`${APP}/${CR_API_PREFIX}/api-guardar-plantilla-catalogo`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -3974,7 +4000,7 @@ document.getElementById('btnGuardar').addEventListener('click', async () => {
     const formaEdicionEl = document.querySelector('input[name="forma_edicion"]:checked');
     const formaEdicion   = formaEdicionEl ? formaEdicionEl.value : 'permanente';
 
-    const res = await fetch(`${APP}/entrenador/guardar-plantilla-rutina`, {
+    const res = await fetch(`${APP}/${CR_API_PREFIX}/guardar-plantilla-rutina`, {
       method  : 'POST',
       headers : { 'Content-Type': 'application/json' },
       body    : JSON.stringify({
@@ -3997,7 +4023,10 @@ document.getElementById('btnGuardar').addEventListener('click', async () => {
 
     if (r.ok) {
       if (typeof Xp !== 'undefined') Xp.toast('success', r.msg || '¡Rutina guardada!');
-      setTimeout(() => history.back(), 1300);
+      setTimeout(() => {
+        if (CR_BACK_URL) window.location.href = CR_BACK_URL;
+        else history.back();
+      }, 1100);
     } else {
       if (typeof Xp !== 'undefined') Xp.toast('error', r.msg || 'No se pudo guardar la rutina.');
     }
@@ -4040,9 +4069,15 @@ async function cargarDiasAtleta(clienteId) {
     return;
   }
   try {
-    const res = await fetch(`<?= APP_URL ?>/entrenador/api-dias-atleta?id=${clienteId}`);
+    const res = await fetch(`<?= APP_URL ?>/${CR_API_PREFIX}/api-dias-atleta?id=${clienteId}`);
     const data = await res.json();
     if (!data.ok || !data.dias) return;
+
+    const diasPropiosEdit = new Set(
+      (typeof RUTINA_EDITAR !== 'undefined' && RUTINA_EDITAR && RUTINA_EDITAR.dias_semana)
+        ? String(RUTINA_EDITAR.dias_semana).split(',').map(s => parseInt(s.trim(), 10)).filter(n => n >= 1 && n <= 7)
+        : []
+    );
 
     for (let d = 1; d <= 7; d++) {
       const info = data.dias[d];
@@ -4052,7 +4087,12 @@ async function cargarDiasAtleta(clienteId) {
 
       lbl.classList.remove('is-assigned', 'is-rest', 'is-missing');
 
-      if (info && info.color === 'verde') {
+      if (diasPropiosEdit.has(d)) {
+        chk.disabled = false;
+        chk.checked = true;
+        lbl.onclick = null;
+        lbl.title = `${info?.nombre || 'Día'}: Asignado actualmente a esta rutina`;
+      } else if (info && info.color === 'verde') {
         chk.checked = false;
         chk.disabled = true;
         lbl.classList.add('is-assigned');
@@ -4065,7 +4105,7 @@ async function cargarDiasAtleta(clienteId) {
               position: 'top-end',
               icon: 'info',
               title: `${info.nombre} ya tiene rutina`,
-              text: `El atleta ya entrena "${info.rutina_nombre || 'otra rutina'}" este día.`,
+              text: `Ya existe la rutina "${info.rutina_nombre || 'otra rutina'}" asignada para este día.`,
               showConfirmButton: false,
               timer: 3000,
               background: '#141724',
@@ -4076,6 +4116,9 @@ async function cargarDiasAtleta(clienteId) {
       } else {
         chk.disabled = false;
         lbl.onclick = null;
+        if (!RUTINA_EDITAR && DIA_PRESELECCIONADO && Number(DIA_PRESELECCIONADO) === d) {
+          chk.checked = true;
+        }
         if (info && info.color === 'azul') {
           lbl.classList.add('is-rest');
           lbl.title = `${info.nombre}: Día de descanso (puedes seleccionarlo si deseas asignarle rutina)`;

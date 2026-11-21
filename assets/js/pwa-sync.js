@@ -172,11 +172,13 @@
             ]
           : [
               { path: '/admin/rutina', type: 'html' },
+              { path: '/admin/crear-rutina', type: 'html' },
               { path: '/admin/gestion', type: 'html' },
               { path: '/admin/configuracion', type: 'html' },
               { path: '/admin/notificaciones', type: 'html' },
               { path: '/admin/api-catalogo-list', type: 'api' },
               { path: '/admin/api-listar-plantillas-catalogo', type: 'api' },
+              { path: '/admin/api-dias-atleta', type: 'api' },
               { path: '/admin/api-notificaciones', type: 'api' },
               { path: '/admin/api-dia-detalle?fecha=' + encodeURIComponent(todayIso), type: 'api' }
             ];

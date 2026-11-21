@@ -11,6 +11,9 @@ $action = $segment[1] ?? 'rutina';
 
 match ($action) {
     'dashboard', 'rutina'                => adminRutina(),
+    'crear-rutina'                       => adminCrearRutina(),
+    'guardar-plantilla-rutina'           => adminGuardarPlantillaRutina(),
+    'api-dias-atleta'                    => adminApiDiasAtleta(),
     'gestion'                            => adminGestion(),
     'configuracion'                      => adminConfiguracion(),
     'api-dia-detalle'                    => adminApiDiaDetalle(),
@@ -20,6 +23,8 @@ match ($action) {
     'api-guardar-serie'                  => adminApiGuardarSerie(),
     'api-guardar-rutina-como-plantilla'  => adminApiGuardarRutinaComoPlantilla(),
     'api-listar-plantillas-catalogo'     => adminApiListarPlantillasCatalogo(),
+    'api-guardar-plantilla-catalogo'     => adminApiGuardarPlantillaCatalogo(),
+    'api-eliminar-plantilla-catalogo'    => adminApiEliminarPlantillaCatalogo(),
     'api-crear-entrenador'               => adminApiCrearEntrenador(),
     'api-aprobar-entrenador'             => adminApiAprobarEntrenador(),
     'api-actualizar-membresia'           => adminApiActualizarMembresia(),
@@ -136,6 +141,383 @@ function adminRutina(): void {
 
     $pageTitle = 'Mi Rutina — Superadmin';
     require BASE_DIR . '/views/admin/rutina.php';
+}
+
+/**
+ * Renderiza el Creador de Rutinas Pro (misma vista, catálogo visual, plantillas y rosca 3D del entrenador)
+ * adaptado automáticamente al perfil personal del Super Admin.
+ */
+function adminCrearRutina(): void {
+    $db = getDB();
+    $adminUserId    = (int)($_SESSION['user_id'] ?? 0);
+    $adminClienteId = adminObtenerClienteIdPropio($db);
+    $adminNombre    = trim((string)($_SESSION['nombre'] ?? 'Super Admin')) ?: 'Super Admin';
+
+    $clientes = [
+        [
+            'id'     => $adminClienteId,
+            'nombre' => $adminNombre . ' (Mi Rutina Personal)',
+        ]
+    ];
+
+    $catalogo = CatalogoService::obtenerEjerciciosVisibles($db, null);
+    usort($catalogo, static fn(array $a, array $b): int => strcasecmp((string)$a['nombre'], (string)$b['nombre']));
+
+    $categorias = $db->query(
+        "SELECT id, grupo, nombre, icono FROM categorias_musculares ORDER BY orden, id"
+    )->fetchAll(PDO::FETCH_ASSOC);
+
+    $rutina_id = isset($_GET['editar']) ? (int)$_GET['editar'] : (isset($_GET['rutina_id']) ? (int)$_GET['rutina_id'] : null);
+    $rutinaEditar = null;
+    $ejerciciosEditar = [];
+
+    if ($rutina_id) {
+        $stR = $db->prepare("SELECT * FROM rutinas WHERE id = ? AND cliente_id = ? LIMIT 1");
+        $stR->execute([$rutina_id, $adminClienteId]);
+        $rutinaEditar = $stR->fetch(PDO::FETCH_ASSOC) ?: null;
+
+        if ($rutinaEditar) {
+            $stEj = $db->prepare("SELECT * FROM ejercicios WHERE rutina_id = ? ORDER BY orden ASC, id ASC");
+            $stEj->execute([$rutina_id]);
+            $ejerciciosEditar = $stEj->fetchAll(PDO::FETCH_ASSOC);
+
+            $plantillaId = (int)($rutinaEditar['plantilla_id'] ?? 0);
+            foreach ($ejerciciosEditar as &$ej) {
+                $seriesList = [];
+                $descansoEj = null;
+                if ($plantillaId > 0) {
+                    $stS = $db->prepare("
+                        SELECT pe.descanso_segundos, ps.numero_serie, ps.tipo_serie, ps.kg_objetivo, ps.reps_objetivo, ps.rir
+                        FROM plantilla_ejercicios pe
+                        LEFT JOIN plantilla_series ps ON ps.plantilla_ej_id = pe.id
+                        WHERE pe.plantilla_id = ? AND (pe.orden = ? OR LOWER(TRIM(pe.nombre_override)) = LOWER(TRIM(?)))
+                        ORDER BY ps.numero_serie ASC
+                    ");
+                    $stS->execute([$plantillaId, (int)$ej['orden'], $ej['nombre']]);
+                    foreach ($stS->fetchAll(PDO::FETCH_ASSOC) as $rowS) {
+                        if ($descansoEj === null && $rowS['descanso_segundos'] !== null) {
+                            $descansoEj = (int)$rowS['descanso_segundos'];
+                        }
+                        if ($rowS['numero_serie'] !== null) {
+                            $seriesList[] = [
+                                'numero_serie'  => (int)$rowS['numero_serie'],
+                                'tipo_serie'    => (string)($rowS['tipo_serie'] ?: 'normal'),
+                                'kg_objetivo'   => $rowS['kg_objetivo'] !== null ? (float)$rowS['kg_objetivo'] : null,
+                                'reps_objetivo' => $rowS['reps_objetivo'] !== null ? (int)$rowS['reps_objetivo'] : null,
+                                'rir'           => $rowS['rir'] !== null ? (int)$rowS['rir'] : null,
+                            ];
+                        }
+                    }
+                }
+                $ej['descanso_segundos'] = $descansoEj;
+
+                if (empty($seriesList)) {
+                    $numS    = max(1, (int)($ej['series'] ?? 3));
+                    $repsNum = is_numeric($ej['repeticiones'] ?? null) ? (int)$ej['repeticiones'] : 10;
+                    $rirNum  = $ej['rir'] !== null ? (int)$ej['rir'] : 2;
+                    for ($s = 1; $s <= $numS; $s++) {
+                        $seriesList[] = [
+                            'numero_serie'  => $s,
+                            'tipo_serie'    => 'normal',
+                            'kg_objetivo'   => null,
+                            'reps_objetivo' => $repsNum,
+                            'rir'           => $rirNum,
+                        ];
+                    }
+                }
+                $ej['series'] = $seriesList;
+            }
+            unset($ej);
+        }
+    }
+
+    $atleta_id     = $adminClienteId;
+    $atleta_nombre = $clientes[0]['nombre'];
+    $diaPreseleccionado = isset($_GET['dia']) ? max(1, min(7, (int)$_GET['dia'])) : null;
+
+    $pageTitle = $rutinaEditar ? 'Editar Mi Rutina' : 'Crear Mi Rutina';
+    require BASE_DIR . '/views/entrenador/crear_rutina.php';
+}
+
+function adminApiDiasAtleta(): void {
+    $db = getDB();
+    $adminClienteId = adminObtenerClienteIdPropio($db);
+    $dias = obtenerEstadoDiasSemanaAtleta($db, $adminClienteId);
+    jsonOut(true, 'OK', ['dias' => $dias]);
+}
+
+function adminGuardarPlantillaRutina(): void {
+    csrfCheck();
+    header('Content-Type: application/json; charset=utf-8');
+
+    $db = getDB();
+    $adminUserId    = (int)($_SESSION['user_id'] ?? 0);
+    $adminClienteId = adminObtenerClienteIdPropio($db);
+
+    $raw  = file_get_contents('php://input');
+    $data = json_decode($raw, true) ?: $_POST;
+
+    $titulo = trim((string)($data['titulo'] ?? ''));
+    if ($titulo === '') {
+        $titulo = 'Entrenamiento';
+    }
+    $rutinaEditarId     = (int)($data['rutina_editar_id'] ?? 0);
+    $ejercicios         = is_array($data['ejercicios'] ?? null) ? $data['ejercicios'] : [];
+    $descripcion        = trim((string)($data['descripcion'] ?? ''));
+    if ($descripcion === '') {
+        $descripcion = $titulo;
+    }
+    $dias               = is_array($data['dias'] ?? null) ? $data['dias'] : [];
+    $cardioActivo       = !empty($data['cardio_activo']) ? 1 : 0;
+    $cardioTiempo       = (!empty($data['cardio_tiempo']) && is_numeric($data['cardio_tiempo'])) ? (int)$data['cardio_tiempo'] : null;
+    $cardioIndicaciones = isset($data['cardio_indicaciones']) ? trim((string)$data['cardio_indicaciones']) : null;
+
+    if (empty($ejercicios)) {
+        echo json_encode(['ok' => false, 'msg' => 'Agrega al menos un ejercicio a la rutina.']);
+        return;
+    }
+
+    if ($rutinaEditarId > 0) {
+        $chkEdit = $db->prepare("SELECT id FROM rutinas WHERE id = ? AND cliente_id = ? LIMIT 1");
+        $chkEdit->execute([$rutinaEditarId, $adminClienteId]);
+        if (!$chkEdit->fetchColumn()) {
+            $rutinaEditarId = 0;
+        }
+    }
+
+    $diasNums = array_values(array_unique(array_filter(array_map('intval', $dias), static fn($d) => $d >= 1 && $d <= 7)));
+    if (empty($diasNums)) {
+        $diasNums = [(int)date('N')];
+    }
+
+    $stCol = $db->prepare(
+        "SELECT r.id, r.dias_semana,
+                COALESCE(NULLIF(TRIM(r.titulo), ''), NULLIF(TRIM(r.zona_muscular), ''),
+                         NULLIF(LEFT(TRIM(r.descripcion), 60), ''), CONCAT('Rutina #', r.id)) AS nombre
+         FROM rutinas r
+         WHERE r.cliente_id = ?
+           AND r.id != ?
+           AND r.estado IN ('en_progreso', 'pendiente')
+           AND (r.es_modificacion IS NULL OR r.es_modificacion = 0 OR r.estado_modificacion = 'aprobada')"
+    );
+    $stCol->execute([$adminClienteId, $rutinaEditarId]);
+    $activas = $stCol->fetchAll(PDO::FETCH_ASSOC);
+
+    $diasMetaNombres = [1 => 'Lunes', 2 => 'Martes', 3 => 'Miércoles', 4 => 'Jueves', 5 => 'Viernes', 6 => 'Sábado', 7 => 'Domingo'];
+    $colisiones = [];
+    foreach ($activas as $act) {
+        $actDias = array_filter(array_map('intval', explode(',', (string)$act['dias_semana'])));
+        foreach ($diasNums as $dReq) {
+            if (in_array($dReq, $actDias, true)) {
+                $colisiones[] = ($diasMetaNombres[$dReq] ?? "Día $dReq") . " (ocupado por \"{$act['nombre']}\")";
+            }
+        }
+    }
+    if (!empty($colisiones)) {
+        echo json_encode([
+            'ok'  => false,
+            'msg' => 'Conflicto de días: Ya tienes rutina asignada para ' . implode(', ', array_unique($colisiones)) . '. No se permite asignar más de una rutina por día.'
+        ]);
+        return;
+    }
+
+    foreach ($ejercicios as $ex) {
+        $nomEx = trim((string)($ex['nombre'] ?? 'Ejercicio'));
+        $sList = is_array($ex['series'] ?? null) ? $ex['series'] : [];
+        if (count($sList) > 12) {
+            echo json_encode(['ok' => false, 'msg' => "El ejercicio '{$nomEx}' supera el límite máximo de 12 series."]);
+            return;
+        }
+        if (isset($ex['descanso_segundos']) && is_numeric($ex['descanso_segundos']) && (int)$ex['descanso_segundos'] > 600) {
+            echo json_encode(['ok' => false, 'msg' => "El tiempo de descanso en '{$nomEx}' supera el límite de 10 minutos (600 seg)."]);
+            return;
+        }
+        $imp = $ex['tipo_implemento'] ?? 'barra';
+        $uni = $ex['unidad_carga'] ?? 'kg';
+        foreach ($sList as $si => $sRow) {
+            $sNum = $si + 1;
+            if (isset($sRow['reps_objetivo']) && is_numeric($sRow['reps_objetivo']) && (int)$sRow['reps_objetivo'] > 100) {
+                echo json_encode(['ok' => false, 'msg' => "Las repeticiones de '{$nomEx}' (serie {$sNum}) no pueden superar 100 reps."]);
+                return;
+            }
+            if (isset($sRow['rir']) && is_numeric($sRow['rir']) && (int)$sRow['rir'] > 5) {
+                echo json_encode(['ok' => false, 'msg' => "El RIR de '{$nomEx}' (serie {$sNum}) no puede superar 5."]);
+                return;
+            }
+            if (isset($sRow['kg_objetivo']) && is_numeric($sRow['kg_objetivo'])) {
+                $pesoKg = (float)$sRow['kg_objetivo'];
+                if ($imp === 'barra' && $pesoKg > 500) {
+                    echo json_encode(['ok' => false, 'msg' => "El peso en barra de '{$nomEx}' (serie {$sNum}) no puede superar 500 kg."]);
+                    return;
+                }
+                if ($imp === 'mancuerna' && $pesoKg > 200) {
+                    echo json_encode(['ok' => false, 'msg' => "El peso en mancuernas de '{$nomEx}' (serie {$sNum}) no puede superar 200 kg por lado."]);
+                    return;
+                }
+                if ($imp === 'polea_maquina' && $uni === 'placas' && $pesoKg > 40) {
+                    echo json_encode(['ok' => false, 'msg' => "Las placas en polea de '{$nomEx}' (serie {$sNum}) no pueden superar 40 placas."]);
+                    return;
+                }
+                if ($pesoKg > 500) {
+                    echo json_encode(['ok' => false, 'msg' => "El peso de '{$nomEx}' (serie {$sNum}) no puede superar los 500 kg."]);
+                    return;
+                }
+            }
+        }
+    }
+
+    CatalogoService::asegurarColumnasScope($db);
+    try {
+        $db->beginTransaction();
+
+        $stPl = $db->prepare(
+            "INSERT INTO plantillas_rutinas (entrenador_id, titulo, cardio_activo, cardio_tiempo, cardio_indicaciones) VALUES (?,?,?,?,?)"
+        );
+        $stPl->execute([$adminUserId, $titulo, $cardioActivo, $cardioTiempo, $cardioIndicaciones]);
+        $plantillaId = (int)$db->lastInsertId();
+
+        $stEx = $db->prepare(
+            "INSERT INTO plantilla_ejercicios (plantilla_id, nombre_override, orden, descanso_segundos, tipo_implemento, unidad_carga)
+             VALUES (?,?,?,?,?,?)"
+        );
+        $stSerie = $db->prepare(
+            "INSERT INTO plantilla_series (plantilla_ej_id, numero_serie, tipo_serie, kg_objetivo, reps_objetivo, rir)
+             VALUES (?,?,?,?,?,?)"
+        );
+
+        foreach ($ejercicios as $ex) {
+            $nombre = trim((string)($ex['nombre'] ?? ''));
+            if ($nombre === '') continue;
+            $descanso = isset($ex['descanso_segundos']) && is_numeric($ex['descanso_segundos'])
+                ? (int)$ex['descanso_segundos'] : null;
+
+            $tipoImplemento = in_array($ex['tipo_implemento'] ?? '', ['mancuerna', 'barra', 'polea_maquina', 'sin_peso'], true)
+                ? $ex['tipo_implemento'] : 'barra';
+            $unidadCarga = in_array($ex['unidad_carga'] ?? '', ['kg', 'lbs', 'placas', 'ninguna'], true)
+                ? $ex['unidad_carga'] : 'kg';
+            if ($tipoImplemento === 'sin_peso') {
+                $unidadCarga = 'ninguna';
+            }
+
+            $stEx->execute([$plantillaId, $nombre, (int)($ex['orden'] ?? 1), $descanso, $tipoImplemento, $unidadCarga]);
+            $ejId = (int)$db->lastInsertId();
+
+            foreach (($ex['series'] ?? []) as $s) {
+                $tipo = in_array($s['tipo_serie'] ?? '', ['normal', 'calentamiento', 'fallo', 'drop'], true)
+                    ? $s['tipo_serie'] : 'normal';
+                $kg   = ($tipoImplemento !== 'sin_peso' && is_numeric($s['kg_objetivo'] ?? null) && (float)$s['kg_objetivo'] > 0)
+                    ? max(0.0, min(9999.0, (float)$s['kg_objetivo'])) : null;
+                $reps = is_numeric($s['reps_objetivo'] ?? null) ? max(1, min(250, (int)$s['reps_objetivo'])) : null;
+                $rir  = (isset($s['rir']) && is_numeric($s['rir'])) ? max(0, min(5, (int)$s['rir'])) : null;
+                $stSerie->execute([$ejId, (int)($s['numero_serie'] ?? 1), $tipo, $kg, $reps, $rir]);
+            }
+        }
+
+        $diasStr = implode(',', $diasNums);
+        if ($rutinaEditarId > 0) {
+            $db->prepare(
+                "UPDATE rutinas
+                 SET titulo = ?, descripcion = ?, plantilla_id = ?, dias_semana = ?,
+                     cardio_activo = ?, cardio_tiempo = ?, cardio_indicaciones = ?
+                 WHERE id = ? AND cliente_id = ?"
+            )->execute([$titulo, $descripcion, $plantillaId, $diasStr, $cardioActivo, $cardioTiempo, $cardioIndicaciones, $rutinaEditarId, $adminClienteId]);
+            $rutinaAsignadaId = $rutinaEditarId;
+            $db->prepare("DELETE FROM ejercicios WHERE rutina_id = ?")->execute([$rutinaAsignadaId]);
+            $db->prepare("DELETE FROM rutina_dias WHERE rutina_id = ?")->execute([$rutinaAsignadaId]);
+        } else {
+            $stRut = $db->prepare(
+                "INSERT INTO rutinas (cliente_id, entrenador_id, titulo, descripcion, plantilla_id, dias_semana, estado, cardio_activo, cardio_tiempo, cardio_indicaciones)
+                 VALUES (?, ?, ?, ?, ?, ?, 'en_progreso', ?, ?, ?)"
+            );
+            $stRut->execute([$adminClienteId, $adminUserId, $titulo, $descripcion, $plantillaId, $diasStr, $cardioActivo, $cardioTiempo, $cardioIndicaciones]);
+            $rutinaAsignadaId = (int)$db->lastInsertId();
+        }
+
+        $stInsCliEj = $db->prepare(
+            "INSERT INTO ejercicios (rutina_id, nombre, series, repeticiones, orden, rir, tipo_implemento, unidad_carga, descripcion, grupo_muscular, imagen_path, imagen_demo_path)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+        );
+
+        foreach ($ejercicios as $ex) {
+            $nombre = trim((string)($ex['nombre'] ?? ''));
+            if ($nombre === '') continue;
+            $numSeries = max(1, count($ex['series'] ?? []));
+            $primerReps = !empty($ex['series'][0]['reps_objetivo']) ? (int)$ex['series'][0]['reps_objetivo'] : 10;
+            $primerRir = !empty($ex['rir_desmarcado']) ? null : 2;
+            if ($primerRir !== null) {
+                foreach (($ex['series'] ?? []) as $sRow) {
+                    if (isset($sRow['rir']) && is_numeric($sRow['rir']) && $sRow['rir'] !== '') {
+                        $primerRir = max(0, min(5, (int)$sRow['rir']));
+                        break;
+                    }
+                }
+            }
+
+            $tipoImplemento = in_array($ex['tipo_implemento'] ?? '', ['mancuerna', 'barra', 'polea_maquina', 'sin_peso'], true)
+                ? $ex['tipo_implemento'] : 'barra';
+            $unidadCarga = in_array($ex['unidad_carga'] ?? '', ['kg', 'lbs', 'placas', 'ninguna'], true)
+                ? $ex['unidad_carga'] : 'kg';
+            if ($tipoImplemento === 'sin_peso') {
+                $unidadCarga = 'ninguna';
+            }
+
+            $pesosValores = [];
+            foreach (($ex['series'] ?? []) as $sRow) {
+                if ($tipoImplemento !== 'sin_peso' && is_numeric($sRow['kg_objetivo'] ?? null) && (float)$sRow['kg_objetivo'] > 0) {
+                    $pesosValores[] = (float)$sRow['kg_objetivo'];
+                }
+            }
+            if ($tipoImplemento === 'sin_peso' || $unidadCarga === 'ninguna') {
+                $descEj = 'Sin peso';
+            } elseif (!empty($pesosValores)) {
+                $unicos = array_unique($pesosValores);
+                $uniSuffix = ($unidadCarga === 'placas') ? 'placas' : ($unidadCarga === 'lbs' ? 'lbs' : 'kg');
+                $descEj = count($unicos) === 1 ? "{$pesosValores[0]} {$uniSuffix}" : (implode('-', $pesosValores) . " {$uniSuffix}");
+            } else {
+                $descEj = '';
+            }
+
+            $cat = CatalogoService::obtenerMetaPorNombre($db, $nombre, null);
+            $grupoMuscular = $cat['grupo_muscular'] ?? inferirGrupoMuscularProgreso($nombre);
+            $imgPath       = $cat['imagen_path'] ?? null;
+            $imgDemoPath   = $cat['imagen_demo_path'] ?? null;
+
+            $stInsCliEj->execute([
+                $rutinaAsignadaId,
+                $nombre,
+                $numSeries,
+                (string)$primerReps,
+                (int)($ex['orden'] ?? 1),
+                $primerRir,
+                $tipoImplemento,
+                $unidadCarga,
+                $descEj,
+                $grupoMuscular,
+                $imgPath,
+                $imgDemoPath,
+            ]);
+        }
+
+        if (!empty($diasNums)) {
+            $stDias = $db->prepare("INSERT INTO rutina_dias (rutina_id, dia_semana) VALUES (?,?)");
+            foreach ($diasNums as $d) {
+                $stDias->execute([$rutinaAsignadaId, (int)$d]);
+            }
+        }
+
+        $db->commit();
+        echo json_encode([
+            'ok'          => true,
+            'msg'         => $rutinaEditarId > 0 ? '¡Rutina actualizada correctamente!' : '¡Rutina creada y asignada!',
+            'plantilla_id'=> $plantillaId,
+            'rutina_id'   => $rutinaAsignadaId,
+        ]);
+    } catch (\Throwable $e) {
+        if ($db->inTransaction()) $db->rollBack();
+        error_log('[adminGuardarPlantillaRutina] ' . $e->getMessage());
+        http_response_code(500);
+        echo json_encode(['ok' => false, 'msg' => 'Error interno al guardar la rutina.']);
+    }
 }
 
 function adminApiDiaDetalle(): void {
@@ -1008,10 +1390,13 @@ function adminApiListarPlantillasCatalogo(): void {
             }
         }
 
+        $catMapaPl = CatalogoService::obtenerMapaPorNombre($db, null);
         foreach ($todosEjs as $ex) {
             $pid = (int)$ex['plantilla_id'];
             $exId = (int)$ex['id'];
             unset($ex['plantilla_id']);
+            $metaPl = $catMapaPl[mb_strtolower(trim((string)($ex['nombre'] ?? '')), 'UTF-8')] ?? null;
+            $ex['imagen_path'] = $metaPl['imagen_path'] ?? null;
             $ex['series'] = $seriesPorEj[$exId] ?? [];
             $ejsPorPl[$pid][] = $ex;
         }
@@ -1022,6 +1407,115 @@ function adminApiListarPlantillasCatalogo(): void {
     }
     unset($pl);
     echo json_encode(['ok' => true, 'plantillas' => $plantillas], JSON_UNESCAPED_UNICODE);
+    exit;
+}
+
+function adminApiGuardarPlantillaCatalogo(): void {
+    csrfCheck();
+    header('Content-Type: application/json; charset=utf-8');
+
+    $db = getDB();
+    $adminUserId = (int)($_SESSION['user_id'] ?? 0);
+    $raw  = file_get_contents('php://input');
+    $data = json_decode($raw, true) ?: [];
+
+    $titulo = trim((string)($data['titulo'] ?? ''));
+    if ($titulo === '') {
+        $titulo = 'Plantilla de Rutina';
+    }
+    $descripcion = trim((string)($data['descripcion'] ?? ''));
+    $ejercicios  = is_array($data['ejercicios'] ?? null) ? $data['ejercicios'] : [];
+    if (empty($ejercicios)) {
+        echo json_encode(['ok' => false, 'msg' => 'Agrega al menos un ejercicio a la plantilla.']);
+        exit;
+    }
+
+    $cardioActivo       = !empty($data['cardio_activo']) ? 1 : 0;
+    $cardioTiempo       = (!empty($data['cardio_tiempo']) && is_numeric($data['cardio_tiempo'])) ? (int)$data['cardio_tiempo'] : null;
+    $cardioIndicaciones = isset($data['cardio_indicaciones']) ? trim((string)$data['cardio_indicaciones']) : null;
+
+    try {
+        $db->beginTransaction();
+
+        $stPl = $db->prepare(
+            "INSERT INTO plantillas_rutinas (entrenador_id, titulo, descripcion, es_catalogo, cardio_activo, cardio_tiempo, cardio_indicaciones)
+             VALUES (?, ?, ?, 1, ?, ?, ?)"
+        );
+        $stPl->execute([$adminUserId, $titulo, $descripcion, $cardioActivo, $cardioTiempo, $cardioIndicaciones]);
+        $plantillaId = (int)$db->lastInsertId();
+
+        $stEx = $db->prepare(
+            "INSERT INTO plantilla_ejercicios (plantilla_id, nombre_override, orden, descanso_segundos, tipo_implemento, unidad_carga)
+             VALUES (?, ?, ?, ?, ?, ?)"
+        );
+        $stSerie = $db->prepare(
+            "INSERT INTO plantilla_series (plantilla_ej_id, numero_serie, tipo_serie, kg_objetivo, reps_objetivo, rir)
+             VALUES (?, ?, ?, ?, ?, ?)"
+        );
+
+        foreach ($ejercicios as $ex) {
+            $nombre = trim((string)($ex['nombre'] ?? ''));
+            if ($nombre === '') continue;
+            $descanso = isset($ex['descanso_segundos']) && is_numeric($ex['descanso_segundos']) ? (int)$ex['descanso_segundos'] : null;
+            $tipoImp  = in_array($ex['tipo_implemento'] ?? '', ['mancuerna', 'barra', 'polea_maquina', 'sin_peso'], true) ? $ex['tipo_implemento'] : 'barra';
+            $uniCarga = in_array($ex['unidad_carga'] ?? '', ['kg', 'lbs', 'placas', 'ninguna'], true) ? $ex['unidad_carga'] : 'kg';
+            if ($tipoImp === 'sin_peso') $uniCarga = 'ninguna';
+
+            $stEx->execute([$plantillaId, $nombre, (int)($ex['orden'] ?? 1), $descanso, $tipoImp, $uniCarga]);
+            $ejId = (int)$db->lastInsertId();
+
+            foreach (($ex['series'] ?? []) as $s) {
+                $tipo = in_array($s['tipo_serie'] ?? '', ['normal', 'calentamiento', 'fallo', 'drop'], true) ? $s['tipo_serie'] : 'normal';
+                $kg   = ($tipoImp !== 'sin_peso' && is_numeric($s['kg_objetivo'] ?? null) && (float)$s['kg_objetivo'] > 0) ? max(0.0, min(9999.0, (float)$s['kg_objetivo'])) : null;
+                $reps = is_numeric($s['reps_objetivo'] ?? null) ? max(1, min(250, (int)$s['reps_objetivo'])) : null;
+                $rir  = (isset($s['rir']) && is_numeric($s['rir'])) ? max(0, min(5, (int)$s['rir'])) : null;
+                $stSerie->execute([$ejId, (int)($s['numero_serie'] ?? 1), $tipo, $kg, $reps, $rir]);
+            }
+        }
+
+        $db->commit();
+        echo json_encode(['ok' => true, 'msg' => 'Plantilla "' . $titulo . '" guardada con éxito.', 'plantilla_id' => $plantillaId]);
+    } catch (\Throwable $e) {
+        if ($db->inTransaction()) $db->rollBack();
+        error_log('[adminApiGuardarPlantillaCatalogo] ' . $e->getMessage());
+        echo json_encode(['ok' => false, 'msg' => 'Error interno al guardar la plantilla.']);
+    }
+    exit;
+}
+
+function adminApiEliminarPlantillaCatalogo(): void {
+    csrfCheck();
+    header('Content-Type: application/json; charset=utf-8');
+
+    $db   = getDB();
+    $raw  = file_get_contents('php://input');
+    $data = json_decode($raw, true) ?: $_POST;
+    $plantillaId = (int)($data['plantilla_id'] ?? 0);
+
+    if ($plantillaId <= 0) {
+        echo json_encode(['ok' => false, 'msg' => 'ID de plantilla inválido.']);
+        exit;
+    }
+
+    $chk = $db->prepare("SELECT id FROM plantillas_rutinas WHERE id = ? AND es_catalogo = 1 LIMIT 1");
+    $chk->execute([$plantillaId]);
+    if (!$chk->fetch()) {
+        echo json_encode(['ok' => false, 'msg' => 'Plantilla no encontrada.']);
+        exit;
+    }
+
+    try {
+        $db->beginTransaction();
+        $db->prepare("DELETE FROM plantilla_series WHERE plantilla_ej_id IN (SELECT id FROM plantilla_ejercicios WHERE plantilla_id = ?)")->execute([$plantillaId]);
+        $db->prepare("DELETE FROM plantilla_ejercicios WHERE plantilla_id = ?")->execute([$plantillaId]);
+        $db->prepare("DELETE FROM plantillas_rutinas WHERE id = ?")->execute([$plantillaId]);
+        $db->commit();
+        echo json_encode(['ok' => true, 'msg' => 'Plantilla eliminada correctamente.']);
+    } catch (\Throwable $e) {
+        if ($db->inTransaction()) $db->rollBack();
+        error_log('[adminApiEliminarPlantillaCatalogo] ' . $e->getMessage());
+        echo json_encode(['ok' => false, 'msg' => 'Error interno al eliminar la plantilla.']);
+    }
     exit;
 }
 
