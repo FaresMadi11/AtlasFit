@@ -124,12 +124,13 @@ function googleCallback(): void {
     $cookieState   = (string)($_COOKIE['xp_oauth_state'] ?? '');
     $savedRedirUri = trim((string)($_SESSION['oauth_redirect_uri'] ?? ($_COOKIE['xp_oauth_redir'] ?? '')));
 
-    // Si una petición paralela/duplicada del mismo callback ya inició la sesión, evitar canjear el code dos veces
-    if (!empty($_SESSION['user_id']) && !empty($_SESSION['_via']) && $_SESSION['_via'] === 'google' && (time() - (int)($_SESSION['_login_at'] ?? 0)) <= 15) {
-        $destDup = ($_SESSION['rol'] ?? '') === 'admin'
+    // Si el usuario ya tiene sesión activa (ej. callback duplicado o reintento en navegador móvil/PWA), redirigir directamente sin mostrar error invalid_grant
+    if (!empty($_SESSION['user_id']) && !empty($_SESSION['rol'])) {
+        unset($_SESSION['flash'], $_SESSION['oauth_state'], $_SESSION['oauth_state_time'], $_SESSION['oauth_redirect_uri']);
+        $destAct = ($_SESSION['rol'] ?? '') === 'admin'
             ? 'admin/rutina'
             : (($_SESSION['rol'] ?? '') === 'entrenador' ? 'entrenador/dashboard' : 'cliente/dashboard');
-        redirect($destDup);
+        redirect($destAct);
     }
 
     // Limpiar state de sesión y cookies
@@ -292,6 +293,7 @@ function googleCallback(): void {
 
         // ── Paso E: Establecer sesión (Usuario activo) ──
         session_regenerate_id(true);
+        unset($_SESSION['flash']);
         $_SESSION['user_id']    = (int)$user['id'];
         $_SESSION['nombre']     = $user['nombre'];
         $_SESSION['email']      = $user['email'];

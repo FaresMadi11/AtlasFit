@@ -3291,9 +3291,11 @@ svg.silueta-interactive {
             <i class="ti ti-check"></i> <span class="d-none d-sm-inline">Activar Atleta</span>
           </button>
           <?php endif; ?>
+          <?php if ((int)($cliente['usuario_id'] ?? 0) !== (int)($_SESSION['user_id'] ?? 0)): ?>
           <button type="button" class="btn-xp" style="padding:8px 14px;background:rgba(239,68,68,0.15);color:#ef4444;border:1px solid rgba(239,68,68,0.3);border-radius:12px;font-size:0.82rem;display:inline-flex;align-items:center;gap:6px;transition:all .2s;" data-uid="<?= (int)($cliente['usuario_id'] ?? 0) ?>" data-nombre="<?= e($cliente['nombre']) ?>" onclick="eliminarAtletaPerfil(Number(this.dataset.uid), this.dataset.nombre)" onmouseover="this.style.background='rgba(239,68,68,0.28)'" onmouseout="this.style.background='rgba(239,68,68,0.15)'" title="Eliminar atleta permanentemente">
             <i class="ti ti-trash"></i> <span class="d-none d-sm-inline">Eliminar</span>
           </button>
+          <?php endif; ?>
         </div>
       </div>
 

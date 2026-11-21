@@ -11,7 +11,6 @@
     <div class="user-text-wrap">
       <h1 class="sys-top-title user-name-gradient" title="Mis Atletas" style="font-size: 1.12rem !important; font-weight: 800; color: var(--text, #fff); margin: 0; line-height: 1.25;">
         <span class="user-name-text">Mis Atletas</span>
-        <span class="cl-count-badge" style="font-size: 0.72rem; padding: 2px 8px; border-radius: 10px; background: rgba(138,43,226,0.25); color: #d8b4fe; border: 1px solid rgba(138,43,226,0.4);"><?= count($clientes) ?></span>
       </h1>
       <p style="font-size: .74rem; font-weight: 500; color: #94a3af; margin: 2px 0 0; letter-spacing: 0.2px; line-height: 1.2;">
         Directorio y gestión de atletas

@@ -59,16 +59,19 @@ require __DIR__ . '/../layout/header.php';
 </div>
 
 <?php
-$xpPaletaEsAdmin = false;
-require __DIR__ . '/../partials/cfg_paleta_colores.php';
+// 1. Catálogo de Ejercicios (Arriba)
+$xpCatalogoEsAdmin = false;
+$xpCatalogoApiBase = 'entrenador';
+require __DIR__ . '/../partials/cfg_catalogo_ejercicios.php';
 ?>
 
 <?php
+  // 2. Código y Link de Invitación de Entrenador + Tienda
   $codRefCfg  = (string)($membresiaEnt['codigo_referido'] ?? '');
   $linkRefCfg = (string)($membresiaEnt['link_referido'] ?? (str_replace(' ', '%20', rtrim((string)APP_URL, '/')) . '/auth/registro?ref=' . rawurlencode($codRefCfg)));
 ?>
 <!-- ── Código y Link de Invitación de Entrenador ── -->
-<div id="cfgCodigoEntCard" class="form-container xp-ref-cfg-card" style="width: 100%; margin-bottom: 25px;">
+<div id="cfgCodigoEntCard" class="form-container xp-ref-cfg-card" style="width: 100%; margin-top: 24px; margin-bottom: 25px;">
   <div class="xp-ref-head">
     <div class="xp-ref-cfg-ico" aria-hidden="true">
       <i class="ti ti-qrcode"></i>
@@ -161,25 +164,22 @@ require __DIR__ . '/../partials/cfg_paleta_colores.php';
 </div>
 
 <?php
-$xpCatalogoEsAdmin = false;
-$xpCatalogoApiBase = 'entrenador';
-require __DIR__ . '/../partials/cfg_catalogo_ejercicios.php';
-
+// 3. Los Cuatro Cuadros (Pagos Pendientes, Métodos de Pago, Importador IA, Copia de Seguridad)
 $xpHerramientasEsAdmin = false;
 $xpHerramientasApiBase = 'entrenador';
 require __DIR__ . '/../partials/cfg_herramientas_ia_backup.php';
 ?>
 
-<!-- ── Gestion de Usuarios ── -->
-<div class="card-bento" style="margin-top:24px">
+<!-- ── 4. Gestión de Atletas ── -->
+<div class="card-bento" style="margin-top:24px; margin-bottom:24px;">
   <div class="gu-header">
     <div class="gu-title">
       <i class="ti ti-users" style="color:var(--accent)"></i>
-      <h3>Gestion de Atletas</h3>
+      <h3>Gestión de Atletas</h3>
     </div>
     <div class="gu-search-wrap">
       <i class="ti ti-search"></i>
-      <input type="search" id="atletaSearch" placeholder="Buscar por nombre o email..." class="gu-search" autocomplete="off" readonly onfocus="this.removeAttribute('readonly');">
+      <input type="search" id="atletaSearch" name="xp_atleta_search_nofill" placeholder="Buscar por nombre o email..." class="gu-search" autocomplete="off" readonly onfocus="this.removeAttribute('readonly');">
     </div>
   </div>
 
@@ -196,12 +196,22 @@ require __DIR__ . '/../partials/cfg_herramientas_ia_backup.php';
         </tr>
       </thead>
       <tbody id="atletasTbody">
-        <?php foreach($atletasList as $a): ?>
+        <?php foreach($atletasList as $a):
+          $edadAtl = '--';
+          if (!empty($a['fecha_nac'])) {
+              try {
+                  $edadAtl = (new DateTime((string)$a['fecha_nac']))->diff(new DateTime('today'))->y . ' años';
+              } catch (\Throwable $e) {}
+          }
+        ?>
         <tr class="atleta-row" data-id="<?= $a['usuario_id'] ?>"
             data-cliente="<?= $a['cliente_id'] ?>"
             data-nombre="<?= e($a['nombre']) ?>"
             data-email="<?= e($a['email']) ?>"
+            data-cedula="<?= e($a['cedula'] ?? '--') ?>"
+            data-edad="<?= e($edadAtl) ?>"
             data-peso="<?= $a['peso_kg'] ? (float)$a['peso_kg'].' kg' : '--' ?>"
+            data-altura="<?= !empty($a['altura_cm']) ? (float)$a['altura_cm'].' cm' : '--' ?>"
             data-objetivo="<?= e($a['objetivo'] ?: '--') ?>"
             data-activo="<?= $a['activo'] ?>"
             data-estado="<?= $a['estado_cuenta'] ?>"
@@ -222,6 +232,12 @@ require __DIR__ . '/../partials/cfg_herramientas_ia_backup.php';
     </table>
   </div>
 </div>
+
+<?php
+// 5. Paleta de Colores (Al final, en desplegable)
+$xpPaletaEsAdmin = false;
+require __DIR__ . '/../partials/cfg_paleta_colores.php';
+?>
 
 <!-- ── Modal Cambiar Contrasena ── -->
 <div id="pwdModal" class="pwd-modal-backdrop" style="display:none">
@@ -878,7 +894,10 @@ function openPanel(d) {
     </div>
     <div class="panel-stats">
       <div class="panel-stat"><div class="panel-stat-lbl">Email</div><div class="panel-stat-val" style="font-size:.78rem;word-break:break-all">${escCfgHtml(d.email)}</div></div>
+      <div class="panel-stat"><div class="panel-stat-lbl">Cédula</div><div class="panel-stat-val">${escCfgHtml(d.cedula || '--')}</div></div>
+      <div class="panel-stat"><div class="panel-stat-lbl">Edad</div><div class="panel-stat-val">${escCfgHtml(d.edad || '--')}</div></div>
       <div class="panel-stat"><div class="panel-stat-lbl">Peso Actual</div><div class="panel-stat-val">${escCfgHtml(d.peso)}</div></div>
+      <div class="panel-stat"><div class="panel-stat-lbl">Altura</div><div class="panel-stat-val">${escCfgHtml(d.altura || '--')}</div></div>
       <div class="panel-stat"><div class="panel-stat-lbl">Objetivo</div><div class="panel-stat-val" style="font-size:.78rem">${escCfgHtml(d.objetivo)}</div></div>
       <div class="panel-stat"><div class="panel-stat-lbl">Desde</div><div class="panel-stat-val">${escCfgHtml(d.desde)}</div></div>
     </div>

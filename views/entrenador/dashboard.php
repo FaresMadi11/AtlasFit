@@ -1,7 +1,7 @@
 <?php $pageTitle = 'Dashboard'; require __DIR__ . '/../layout/header.php'; ?>
 
 <div class="sys-top-header premium-header">
-  <div class="user-info-group">
+  <a href="<?= APP_URL ?>/entrenador/perfil-cliente?id=<?= (int)($miClienteIdEnt ?? 0) ?>" class="user-info-group" style="text-decoration:none; color:inherit; cursor:pointer;" title="Ver mi perfil de entrenamiento">
     <div class="user-avatar">
        <?= strtoupper(substr($nomUser, 0, 1)) ?>
     </div>
@@ -11,7 +11,7 @@
         <span class="user-name-text"><?= e($nomUser) ?></span>
       </h1>
     </div>
-  </div>
+  </a>
   
   <div class="header-actions">
     <div id="xpPwaSyncPill" class="xp-pwa-header-pill online" title="Conectado a la red">
@@ -67,6 +67,16 @@
     <div class="dash-stat-value" style="color:var(--danger, #f87171)"><?= $totalSinAsignar ?></div>
   </a>
 </div>
+
+<!-- ══════════════════════════════════════════════════════════════════
+     PUNTO 6: VISTA DE MI RUTINA PERSONAL DEL ENTRENADOR (ESTILO IMAGEN 5)
+     ══════════════════════════════════════════════════════════════════ -->
+<?php
+  $xpMrRole            = 'entrenador';
+  $xpMrClienteId       = (int)($miClienteIdEnt ?? 0);
+  $xpMrDiasProgramados = $miDiasProgramadosEnt ?? [];
+  require __DIR__ . '/../partials/mi_rutina_personal_bento.php';
+?>
 
 <!-- ── TIENDA DE CONSUMIBLES (VISTA ENTRENADOR - HOMOGÉNEA CON ATLETA) ── -->
 <style>
@@ -495,10 +505,12 @@ a.dash-stat-card:hover {
   flex-direction: column;
   align-items: flex-end;
   gap: 12px;
+  pointer-events: none;
 }
 
 /* ── FAB MAIN BUTTON ─────────────────────────────────────── */
 .fab-main {
+  pointer-events: auto;
   width: 56px; height: 56px;
   border-radius: 16px; /* Forma cuadrada redondeada */
   border: none;

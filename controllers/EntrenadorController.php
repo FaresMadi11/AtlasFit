@@ -83,15 +83,71 @@ match($action) {
 };
 
 /*─────────────────────────────────────────────────────────────
+  PERFIL DE ATLETA PERSONAL DEL ENTRENADOR (MI RUTINA)
+─────────────────────────────────────────────────────────────*/
+function entObtenerClienteIdPropio(PDO $db, int $entId): int {
+    if ($entId <= 0) {
+        return 0;
+    }
+
+    $st = $db->prepare("SELECT id, entrenador_id FROM clientes WHERE usuario_id = ? LIMIT 1");
+    $st->execute([$entId]);
+    $row = $st->fetch(PDO::FETCH_ASSOC);
+
+    if ($row) {
+        $cid = (int)$row['id'];
+        if ((int)($row['entrenador_id'] ?? 0) !== $entId) {
+            $db->prepare("UPDATE clientes SET entrenador_id = ? WHERE id = ?")->execute([$entId, $cid]);
+        }
+        return $cid;
+    }
+
+    $db->prepare(
+        "INSERT INTO clientes (usuario_id, entrenador_id, peso_kg, altura_cm, objetivo)
+         VALUES (?, ?, 75.0, 175.0, 'Mi Rutina Personal')"
+    )->execute([$entId, $entId]);
+
+    return (int)$db->lastInsertId();
+}
+
+function entObtenerDiasProgramados(PDO $db, int $clienteId): array {
+    if ($clienteId <= 0) {
+        return [];
+    }
+    $st = $db->prepare(
+        "SELECT dias_semana
+         FROM rutinas
+         WHERE cliente_id = ?
+           AND estado = 'en_progreso'
+           AND (es_modificacion IS NULL OR es_modificacion = 0 OR estado_modificacion = 'aprobada')"
+    );
+    $st->execute([$clienteId]);
+    $diasSet = [];
+    foreach ($st->fetchAll(PDO::FETCH_COLUMN) as $ds) {
+        foreach (explode(',', (string)$ds) as $part) {
+            $d = (int)trim($part);
+            if ($d >= 1 && $d <= 7) {
+                $diasSet[$d] = true;
+            }
+        }
+    }
+    $dias = array_keys($diasSet);
+    sort($dias);
+    return $dias;
+}
+
+/*─────────────────────────────────────────────────────────────
   DASHBOARD
 ─────────────────────────────────────────────────────────────*/
 function entDashboard(): void {
     $db          = getDB();
     $entId       = (int)$_SESSION['user_id'];
     $membresiaEntrenador = obtenerEstadoMembresiaEntrenador($entId);
+    $miClienteIdEnt      = entObtenerClienteIdPropio($db, $entId);
+    $miDiasProgramadosEnt = entObtenerDiasProgramados($db, $miClienteIdEnt);
 
-    $stClientes  = $db->prepare("SELECT COUNT(*) FROM clientes WHERE entrenador_id = ?");
-    $stClientes->execute([$entId]);
+    $stClientes  = $db->prepare("SELECT COUNT(*) FROM clientes WHERE entrenador_id = ? AND usuario_id != ?");
+    $stClientes->execute([$entId, $entId]);
     $totalClientes = (int)$stClientes->fetchColumn();
 
     $hoy = date('N');
@@ -99,11 +155,11 @@ function entDashboard(): void {
     $stVerificar = $db->prepare(
         "SELECT COUNT(DISTINCT sa.cliente_id) FROM sesiones_asistencia sa
          JOIN clientes c ON sa.cliente_id = c.id
-         WHERE c.entrenador_id = ? AND sa.estado = 'completada' 
+         WHERE c.entrenador_id = ? AND c.usuario_id != ? AND sa.estado = 'completada' 
            AND DATE(sa.fin_en) = CURDATE()
            AND (sa.verificada = 0 OR sa.verificada IS NULL)"
     );
-    $stVerificar->execute([$entId]);
+    $stVerificar->execute([$entId, $entId]);
     $totalVerificar = (int)$stVerificar->fetchColumn();
 
     $stSinTerminar = $db->prepare(
@@ -117,19 +173,19 @@ function entDashboard(): void {
              GROUP BY cliente_id
          ) r_lat ON r_lat.cliente_id = c.id
          JOIN rutinas r ON r.id = r_lat.max_id
-         WHERE c.entrenador_id = ?
+         WHERE c.entrenador_id = ? AND c.usuario_id != ?
            AND NOT EXISTS (
                SELECT 1 FROM sesiones_asistencia sa 
                WHERE sa.cliente_id = c.id 
                  AND (DATE(sa.inicio_en) = CURDATE() OR DATE(sa.fin_en) = CURDATE())
            )"
     );
-    $stSinTerminar->execute([$hoy, $entId]);
+    $stSinTerminar->execute([$hoy, $entId, $entId]);
     $totalSinTerminar = (int)$stSinTerminar->fetchColumn();
 
     $stSinAsignar = $db->prepare(
         "SELECT COUNT(DISTINCT c.id) FROM clientes c
-         WHERE c.entrenador_id = ? 
+         WHERE c.entrenador_id = ? AND c.usuario_id != ?
            AND NOT EXISTS (
                SELECT 1 FROM rutinas r 
                WHERE r.cliente_id = c.id 
@@ -137,7 +193,7 @@ function entDashboard(): void {
                  AND (r.es_modificacion IS NULL OR r.es_modificacion = 0)
            )"
     );
-    $stSinAsignar->execute([$entId]);
+    $stSinAsignar->execute([$entId, $entId]);
     $totalSinAsignar = (int)$stSinAsignar->fetchColumn();
 
     // Objetivos del entrenador para el widget
@@ -204,10 +260,10 @@ function entClientes(): void {
                 c.id AS cliente_id, c.peso_kg, c.altura_cm, c.objetivo
          FROM clientes c
          JOIN usuarios u ON c.usuario_id = u.id
-         WHERE c.entrenador_id = ? AND u.estado_cuenta = 'activo'
+         WHERE c.entrenador_id = ? AND c.usuario_id != ? AND u.rol != 'admin' AND u.estado_cuenta = 'activo'
          ORDER BY u.nombre"
     );
-    $stmt->execute([$entId]);
+    $stmt->execute([$entId, $entId]);
     $clientes = $stmt->fetchAll();
 
     // Zero N+1: cargar el primer peso registrado de todos los clientes en 1 sola consulta
@@ -765,16 +821,27 @@ function entGuardarRutina(): void {
 
 function entCrearRutina(): void {
     $db    = getDB();
-    $entId = $_SESSION['user_id'];
+    $entId = (int)$_SESSION['user_id'];
+    $miClienteIdEnt = entObtenerClienteIdPropio($db, $entId);
+    $entNombre = trim((string)($_SESSION['nombre'] ?? 'Entrenador')) ?: 'Entrenador';
 
-    // Clientes del entrenador
+    // Clientes del entrenador (incluye el perfil personal del entrenador en primer lugar)
     $stmt = $db->prepare(
-        "SELECT c.id, u.nombre FROM clientes c
+        "SELECT c.id, u.nombre, c.usuario_id
+         FROM clientes c
          JOIN usuarios u ON c.usuario_id = u.id
-         WHERE c.entrenador_id = ? ORDER BY u.nombre"
+         WHERE c.entrenador_id = ?
+         ORDER BY (c.usuario_id = ?) DESC, u.nombre ASC"
     );
-    $stmt->execute([$entId]);
-    $clientes = $stmt->fetchAll();
+    $stmt->execute([$entId, $entId]);
+    $rowsCli = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    $clientes = [];
+    foreach ($rowsCli as $rc) {
+        if ((int)($rc['usuario_id'] ?? 0) === $entId) {
+            $rc['nombre'] = $entNombre . ' (Mi Rutina Personal)';
+        }
+        $clientes[] = $rc;
+    }
 
     $catalogo = CatalogoService::obtenerEjerciciosVisibles($db, (int)$entId);
     usort($catalogo, static fn(array $a, array $b): int => strcasecmp((string)$a['nombre'], (string)$b['nombre']));
@@ -852,7 +919,12 @@ function entCrearRutina(): void {
         }
     }
 
-    $atleta_id = $atleta_id ?? (isset($_GET['atleta_id']) ? (int)$_GET['atleta_id'] : null);
+    $atleta_id = $atleta_id ?? (isset($_GET['atleta_id']) ? (int)$_GET['atleta_id'] : (!empty($_GET['propia']) ? $miClienteIdEnt : null));
+    $esRutinaPropiaEntrenador = (!empty($_GET['propia']) || ($atleta_id && (int)$atleta_id === (int)$miClienteIdEnt));
+    if (!$esRutinaPropiaEntrenador) {
+        // Cuando crea rutina para sus atletas, no mezclar el registro propio del entrenador en el selector
+        $clientes = array_values(array_filter($clientes, static fn($c) => (int)($c['id'] ?? 0) !== (int)$miClienteIdEnt));
+    }
     $atleta_nombre = null;
     if ($atleta_id) {
         foreach ($clientes as $c) {
@@ -862,8 +934,12 @@ function entCrearRutina(): void {
             }
         }
     }
+    $estadoDiasInicial  = $atleta_id ? obtenerEstadoDiasSemanaAtleta($db, (int)$atleta_id) : null;
+    $diaPreseleccionado = isset($_GET['dia']) ? max(1, min(7, (int)$_GET['dia'])) : null;
 
-    $pageTitle = $rutinaEditar ? 'Editar Rutina' : ($atleta_nombre ? 'Asignar Rutina a ' . e($atleta_nombre) : 'Crear Rutina');
+    $pageTitle = $esRutinaPropiaEntrenador
+        ? ($rutinaEditar ? 'Editar Mi Rutina' : 'Crear Mi Rutina')
+        : ($rutinaEditar ? 'Editar Rutina' : ($atleta_nombre ? 'Asignar Rutina a ' . e($atleta_nombre) : 'Crear Rutina'));
     require BASE_DIR . '/views/entrenador/crear_rutina.php';
 }
 
@@ -1289,12 +1365,12 @@ function entAsistencias(): void {
          JOIN clientes c ON sa.cliente_id = c.id
          JOIN usuarios u ON c.usuario_id = u.id
          JOIN rutinas r ON sa.rutina_id = r.id
-         WHERE c.entrenador_id = ? 
+         WHERE c.entrenador_id = ? AND c.usuario_id != ?
            AND (sa.estado = 'completada' OR sa.estado = 'incompleta')
            AND DATE(COALESCE(sa.fin_en, sa.inicio_en)) = ?
          ORDER BY COALESCE(sa.verificada, 0) ASC, COALESCE(sa.fin_en, sa.inicio_en) DESC"
     );
-    $stVerificar->execute([$entId, $fechaSeleccionada]);
+    $stVerificar->execute([$entId, $entId, $fechaSeleccionada]);
     $atletasVerificar = $stVerificar->fetchAll();
 
     // ── Panel 2: En Vivo / Sin Terminar (Asignadas para esa fecha, o iniciadas esa fecha)
@@ -1307,10 +1383,10 @@ function entAsistencias(): void {
          JOIN clientes c ON sa.cliente_id = c.id
          JOIN usuarios u ON c.usuario_id = u.id
          JOIN rutinas r ON sa.rutina_id = r.id
-         WHERE c.entrenador_id = ? AND sa.estado = 'iniciada' AND DATE(sa.inicio_en) = ?
+         WHERE c.entrenador_id = ? AND c.usuario_id != ? AND sa.estado = 'iniciada' AND DATE(sa.inicio_en) = ?
          ORDER BY sa.inicio_en DESC"
     );
-    $stEnVivo->execute([$entId, $fechaSeleccionada]);
+    $stEnVivo->execute([$entId, $entId, $fechaSeleccionada]);
     $rutinasEnVivo = $stEnVivo->fetchAll();
 
     // Extraemos las asignadas no iniciadas para ese día (1:1 por atleta)
@@ -1329,7 +1405,7 @@ function entAsistencias(): void {
              GROUP BY cliente_id
          ) r_lat ON r_lat.cliente_id = c.id
          JOIN rutinas r ON r.id = r_lat.max_id
-         WHERE c.entrenador_id = ?
+         WHERE c.entrenador_id = ? AND c.usuario_id != ?
            AND NOT EXISTS (
                SELECT 1 FROM sesiones_asistencia sa 
                WHERE sa.cliente_id = c.id 
@@ -1337,7 +1413,7 @@ function entAsistencias(): void {
            )
          ORDER BY u.nombre"
     );
-    $stSinTerminar->execute([$hoy, $entId, $fechaSeleccionada, $fechaSeleccionada]);
+    $stSinTerminar->execute([$hoy, $entId, $entId, $fechaSeleccionada, $fechaSeleccionada]);
     $rutinasSinTerminar = $stSinTerminar->fetchAll();
     
     // Juntamos ambas en "En Progreso" / Pendientes
@@ -1353,11 +1429,11 @@ function entAsistencias(): void {
          FROM rutinas r
          JOIN clientes c ON r.cliente_id = c.id
          JOIN usuarios u ON c.usuario_id = u.id
-         WHERE c.entrenador_id = ? AND r.es_modificacion = 1 AND r.estado_modificacion = 'pendiente'
+         WHERE c.entrenador_id = ? AND c.usuario_id != ? AND r.es_modificacion = 1 AND r.estado_modificacion = 'pendiente'
          GROUP BY r.cliente_id, u.id, u.nombre
          ORDER BY creado_en DESC"
     );
-    $stMods->execute([$entId]);
+    $stMods->execute([$entId, $entId]);
     $modificacionesPendientes = $stMods->fetchAll();
 
     // Obtener todos los clientes activos para evaluar asignaciones y estado de semana
@@ -1365,10 +1441,10 @@ function entAsistencias(): void {
         "SELECT u.nombre AS atleta_nombre, c.id AS cliente_id, c.objetivo, c.dias_entrenamiento
          FROM clientes c
          JOIN usuarios u ON c.usuario_id = u.id
-         WHERE c.entrenador_id = ? AND (u.activo = 1 OR u.activo IS NULL)
+         WHERE c.entrenador_id = ? AND c.usuario_id != ? AND u.rol = 'cliente' AND (u.activo = 1 OR u.activo IS NULL)
          ORDER BY u.nombre"
     );
-    $stTodosClientes->execute([$entId]);
+    $stTodosClientes->execute([$entId, $entId]);
     $todosLosClientes = $stTodosClientes->fetchAll();
 
     // ── Pre-calcular estado semanal de días (L M X J V S D) para todos los atletas (Zero N+1) ──
@@ -1436,14 +1512,14 @@ function entAsistenciasFiltro(): void {
                 GROUP BY cliente_id
             ) r_lat ON r_lat.cliente_id = c.id
             JOIN rutinas r ON r.id = r_lat.max_id
-            WHERE c.entrenador_id = ?
+            WHERE c.entrenador_id = ? AND c.usuario_id != ?
               AND NOT EXISTS (
                   SELECT 1 FROM sesiones_asistencia sa 
                   WHERE sa.cliente_id = c.id 
                     AND (DATE(sa.inicio_en) = CURDATE() OR DATE(sa.fin_en) = CURDATE())
               )";
               
-    $params = [$hoy, $entId];
+    $params = [$hoy, $entId, $entId];
 
     if ($grupo !== 'Todos') {
         $sql .= " AND EXISTS (SELECT 1 FROM ejercicios ej WHERE ej.rutina_id = r.id AND ej.grupo_muscular = ?)";
@@ -1522,12 +1598,12 @@ function entAsistenciasData(): void {
          JOIN clientes c ON sa.cliente_id = c.id
          JOIN usuarios u ON c.usuario_id = u.id
          JOIN rutinas r ON sa.rutina_id = r.id
-         WHERE c.entrenador_id = ? 
+         WHERE c.entrenador_id = ? AND c.usuario_id != ?
            AND (sa.estado = 'completada' OR sa.estado = 'incompleta')
            AND DATE(COALESCE(sa.fin_en, sa.inicio_en)) = ?
          ORDER BY COALESCE(sa.verificada, 0) ASC, COALESCE(sa.fin_en, sa.inicio_en) DESC"
     );
-    $stV->execute([$entId, $fechaSeleccionada]);
+    $stV->execute([$entId, $entId, $fechaSeleccionada]);
     $verificar = $stV->fetchAll();
 
     // ── En vivo ──
@@ -1540,11 +1616,11 @@ function entAsistenciasData(): void {
          JOIN clientes c ON sa.cliente_id = c.id
          JOIN usuarios u ON c.usuario_id = u.id
          JOIN rutinas r ON sa.rutina_id = r.id
-         WHERE c.entrenador_id = ? AND sa.estado = 'iniciada'
+         WHERE c.entrenador_id = ? AND c.usuario_id != ? AND sa.estado = 'iniciada'
            AND DATE(sa.inicio_en) = ?
          ORDER BY sa.inicio_en DESC"
     );
-    $stL->execute([$entId, $fechaSeleccionada]);
+    $stL->execute([$entId, $entId, $fechaSeleccionada]);
     $enVivo = $stL->fetchAll();
 
     // ── Sin iniciar (1:1 por atleta) ──
@@ -1564,7 +1640,7 @@ function entAsistenciasData(): void {
              GROUP BY cliente_id
          ) r_lat ON r_lat.cliente_id = c.id
          JOIN rutinas r ON r.id = r_lat.max_id
-         WHERE c.entrenador_id = ?
+         WHERE c.entrenador_id = ? AND c.usuario_id != ?
            AND NOT EXISTS (
                SELECT 1 FROM sesiones_asistencia sa
                WHERE sa.cliente_id = c.id
@@ -1572,7 +1648,7 @@ function entAsistenciasData(): void {
            )
          ORDER BY u.nombre"
     );
-    $stS->execute([$hoy, $entId, $fechaSeleccionada, $fechaSeleccionada]);
+    $stS->execute([$hoy, $entId, $entId, $fechaSeleccionada, $fechaSeleccionada]);
     $sinIniciar = $stS->fetchAll();
 
     // ── Modificaciones (agrupadas: una tarjeta por atleta) ──
@@ -1584,12 +1660,12 @@ function entAsistenciasData(): void {
          FROM rutinas r
          JOIN clientes c ON r.cliente_id = c.id
          JOIN usuarios u ON c.usuario_id = u.id
-         WHERE c.entrenador_id = ? AND r.es_modificacion = 1
+         WHERE c.entrenador_id = ? AND c.usuario_id != ? AND r.es_modificacion = 1
            AND r.estado_modificacion = 'pendiente'
          GROUP BY r.cliente_id, u.id, u.nombre
          ORDER BY creado_en DESC"
     );
-    $stM->execute([$entId]);
+    $stM->execute([$entId, $entId]);
     $modificaciones = $stM->fetchAll();
 
     // Obtener todos los clientes activos para evaluar asignaciones y estado de semana
@@ -1598,10 +1674,10 @@ function entAsistenciasData(): void {
                 c.objetivo, c.dias_entrenamiento
          FROM clientes c
          JOIN usuarios u ON c.usuario_id = u.id
-         WHERE c.entrenador_id = ? AND (u.activo = 1 OR u.activo IS NULL)
+         WHERE c.entrenador_id = ? AND c.usuario_id != ? AND u.rol != 'admin' AND (u.activo = 1 OR u.activo IS NULL)
          ORDER BY u.nombre"
     );
-    $stTodosClientes->execute([$entId]);
+    $stTodosClientes->execute([$entId, $entId]);
     $todosLosClientes = $stTodosClientes->fetchAll();
 
     // Inyectar estado de días en cada lista para renderizado dinámico (Zero N+1)
@@ -1753,21 +1829,71 @@ function entGuardarMetodo(): void {
 
     if (!$tipo) jsonOut(false, 'El tipo de método de pago es requerido.');
 
-    // Limpieza de campos según tipo: solo tomar lo que corresponde
+    $bancosVenezuelaValidos = [
+        '0102 - Banco de Venezuela',
+        '0104 - Banco Venezolano de Crédito',
+        '0105 - Banco Mercantil',
+        '0108 - Banco Provincial',
+        '0114 - Bancaribe',
+        '0115 - Banco Exterior',
+        '0128 - Banco Caroní',
+        '0134 - Banesco',
+        '0137 - Banco Sofitasa',
+        '0138 - Banco Plaza',
+        '0146 - Bangente',
+        '0151 - BFC Banco Fondo Común',
+        '0156 - 100% Banco',
+        '0157 - DelSur Banco Universal',
+        '0163 - Banco del Tesoro',
+        '0166 - Banco Agrícola de Venezuela',
+        '0168 - Bancrecer',
+        '0169 - R4 Banco Microfinanciero',
+        '0171 - Banco Activo',
+        '0172 - Bancamiga',
+        '0173 - Banco Internacional de Desarrollo',
+        '0174 - Banplus',
+        '0175 - Banco Digital de los Trabajadores (Bicentenario)',
+        '0177 - Banfanb',
+        '0178 - N58 Banco Digital',
+        '0191 - Banco Nacional de Crédito (BNC)',
+    ];
+
+    // Limpieza y validación estricta de campos según tipo
     if ($tipo === 'Binance') {
         $cuenta = trim($_POST['numero_cuenta'] ?? ''); // ID Binance se guarda en numero_cuenta
         $correo_binance = trim($_POST['correo_binance'] ?? '');
         if (!$cuenta || !$correo_binance) jsonOut(false, 'El ID Binance y el Correo son requeridos.');
+        if (!filter_var($correo_binance, FILTER_VALIDATE_EMAIL)) {
+            jsonOut(false, 'Ingresa un correo electrónico válido para Binance.');
+        }
     } elseif ($tipo === 'Transferencia Bancaria') {
         $banco = trim($_POST['banco'] ?? '');
-        $cuenta = trim($_POST['numero_cuenta'] ?? '');
-        $telefono = trim($_POST['telefono'] ?? '');
+        $cuenta = preg_replace('/\D+/', '', trim((string)($_POST['numero_cuenta'] ?? '')));
+        $telefono = preg_replace('/\D+/', '', trim((string)($_POST['telefono'] ?? '')));
         if (!$banco || !$cuenta || !$telefono) jsonOut(false, 'Banco, Cuenta y Teléfono son requeridos.');
+        if (!in_array($banco, $bancosVenezuelaValidos, true)) {
+            jsonOut(false, 'Selecciona un banco válido de Venezuela.');
+        }
+        if (!preg_match('/^\d{7,15}$/', $telefono)) {
+            jsonOut(false, 'El número de teléfono solo debe contener números.');
+        }
+        if (!preg_match('/^\d{10,20}$/', $cuenta)) {
+            jsonOut(false, 'El número de cuenta solo debe contener números.');
+        }
     } elseif ($tipo === 'Pago Móvil') {
         $banco = trim($_POST['banco'] ?? '');
-        $telefono = trim($_POST['telefono'] ?? '');
-        $cedula = trim($_POST['cedula'] ?? '');
+        $telefono = trim((string)($_POST['telefono'] ?? ''));
+        $cedula = trim((string)($_POST['cedula'] ?? ''));
         if (!$banco || !$telefono || !$cedula) jsonOut(false, 'Banco, Teléfono y Cédula son requeridos.');
+        if (!in_array($banco, $bancosVenezuelaValidos, true)) {
+            jsonOut(false, 'Selecciona un banco válido de Venezuela.');
+        }
+        if (!preg_match('/^\d{7,15}$/', $telefono)) {
+            jsonOut(false, 'El número de teléfono solo debe contener números.');
+        }
+        if (!preg_match('/^\d{7,8}$/', $cedula)) {
+            jsonOut(false, 'La cédula solo debe contener números (mínimo 7 y máximo 8 dígitos).');
+        }
     } elseif ($tipo === 'Efectivo') {
         $monto_bs = trim($_POST['monto_bs'] ?? ''); // Opcional, pero se acepta
     } else {
@@ -1963,16 +2089,16 @@ function entConfiguracion(): void {
     $stmt->execute([$entId]);
     $user = $stmt->fetch();
 
-    // Lista de atletas para la gestion de usuarios (solo rol cliente)
+    // Lista de atletas para la gestion de usuarios (excluyendo el propio perfil del entrenador y superadmin)
     $stAtl = $db->prepare(
         "SELECT u.id AS usuario_id, u.nombre, u.email, u.activo, u.creado_en, u.estado_cuenta,
-                c.id AS cliente_id, c.peso_kg, c.altura_cm, c.objetivo
+                c.id AS cliente_id, c.cedula, c.fecha_nac, c.peso_kg, c.altura_cm, c.objetivo
          FROM clientes c
          JOIN usuarios u ON c.usuario_id = u.id
-         WHERE c.entrenador_id = ? AND u.rol = 'cliente'
+         WHERE c.entrenador_id = ? AND c.usuario_id != ? AND u.rol != 'admin'
          ORDER BY u.nombre"
     );
-    $stAtl->execute([$entId]);
+    $stAtl->execute([$entId, $entId]);
     $atletasList = $stAtl->fetchAll();
 
     // Categorias de la BD para el catalogo
@@ -3152,6 +3278,8 @@ function entApiDiaDetalle(): void {
         $soloProgramada = !empty($_GET['programada']);
         $rutinaForzada  = (int)($_GET['rutina_id'] ?? 0);
         $resultado = obtenerDetalleDia($db, $clienteId, $fecha, 'entrenador', $soloProgramada, $rutinaForzada);
+        $resultado['dias_programados'] = entObtenerDiasProgramados($db, $clienteId);
+        $resultado['cliente_id']       = $clienteId;
 
         // Verificar si el atleta tiene una solicitud de modificación pendiente para enriquecer la rutina con el diff exacto
         $sqlSol = "SELECT id, rutina_padre_id, tipo_modificacion, descripcion, creado_en 
@@ -3968,7 +4096,7 @@ function entApiGuardarTemaSistema(): void {
     $data = json_decode($raw, true);
     $tema = trim((string)($data['tema'] ?? ''));
 
-    if (!in_array($tema, ['classic', 'obsidian', 'royal-plum', 'deep-ocean', 'nordic-frost', 'dark', 'light'], true)) {
+    if (!in_array($tema, ['classic', 'obsidian', 'deep-ocean', 'dark'], true)) {
         echo json_encode(['ok' => false, 'msg' => 'Tema no válido.']);
         exit;
     }

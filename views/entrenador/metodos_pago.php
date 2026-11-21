@@ -383,20 +383,56 @@
 
         <div class="mp-divider"></div>
 
+        <?php
+        $bancosVenezuela = [
+            '0102 - Banco de Venezuela',
+            '0104 - Banco Venezolano de Crédito',
+            '0105 - Banco Mercantil',
+            '0108 - Banco Provincial',
+            '0114 - Bancaribe',
+            '0115 - Banco Exterior',
+            '0128 - Banco Caroní',
+            '0134 - Banesco',
+            '0137 - Banco Sofitasa',
+            '0138 - Banco Plaza',
+            '0146 - Bangente',
+            '0151 - BFC Banco Fondo Común',
+            '0156 - 100% Banco',
+            '0157 - DelSur Banco Universal',
+            '0163 - Banco del Tesoro',
+            '0166 - Banco Agrícola de Venezuela',
+            '0168 - Bancrecer',
+            '0169 - R4 Banco Microfinanciero',
+            '0171 - Banco Activo',
+            '0172 - Bancamiga',
+            '0173 - Banco Internacional de Desarrollo',
+            '0174 - Banplus',
+            '0175 - Banco Digital de los Trabajadores (Bicentenario)',
+            '0177 - Banfanb',
+            '0178 - N58 Banco Digital',
+            '0191 - Banco Nacional de Crédito (BNC)',
+        ];
+        ?>
+
         <!-- Campos Transferencia Bancaria -->
         <div id="fieldsTransferencia" class="mp-hidden">
           <div class="mp-row">
             <div class="mp-field">
-              <input id="banco" type="text" placeholder="Ej: Banesco">
+              <select id="banco">
+                <option value="">— Selecciona un banco —</option>
+                <?php foreach ($bancosVenezuela as $bco): ?>
+                  <option value="<?= e($bco) ?>"><?= e($bco) ?></option>
+                <?php endforeach; ?>
+              </select>
               <label>Banco *</label>
             </div>
             <div class="mp-field">
-              <input id="telefono" type="text" placeholder="0412-1234567">
-              <label>Teléfono *</label>
+              <input id="telefono" type="text" inputmode="numeric" pattern="\d{7,15}" minlength="7" maxlength="15" placeholder="Ej: 04121234567" oninput="this.value = this.value.replace(/\D+/g, '').slice(0, 15);">
+              <label>Teléfono (solo números) *</label>
             </div>
           </div>
           <div class="mp-field">
-            <input name="numero_cuenta" id="numero_cuenta_trans" type="text" placeholder="0134-XXXX-XXXX-XXXX">
+            <input name="numero_cuenta" id="numero_cuenta_trans" type="text" inputmode="numeric" maxlength="24" placeholder="0134XXXXXXXXXXXXXXXX" oninput="this.value = this.value.replace(/\D+/g, '').slice(0, 20);">
             <label>Número de cuenta *</label>
           </div>
         </div>
@@ -405,17 +441,22 @@
         <div id="fieldsPagoMovil" class="mp-hidden">
           <div class="mp-row">
             <div class="mp-field">
-              <input id="banco_pm" type="text" placeholder="Ej: Banesco">
+              <select id="banco_pm">
+                <option value="">— Selecciona un banco —</option>
+                <?php foreach ($bancosVenezuela as $bco): ?>
+                  <option value="<?= e($bco) ?>"><?= e($bco) ?></option>
+                <?php endforeach; ?>
+              </select>
               <label>Banco *</label>
             </div>
             <div class="mp-field">
-              <input id="telefono_pm" type="text" placeholder="0412-1234567">
-              <label>Teléfono *</label>
+              <input id="telefono_pm" type="text" inputmode="numeric" pattern="\d{7,15}" minlength="7" maxlength="15" placeholder="Ej: 04121234567" oninput="this.value = this.value.replace(/\D+/g, '').slice(0, 15);">
+              <label>Teléfono (solo números) *</label>
             </div>
           </div>
           <div class="mp-field">
-            <input id="cedula_pm" type="text" placeholder="V-12345678">
-            <label>Cédula *</label>
+            <input id="cedula_pm" type="text" inputmode="numeric" pattern="\d{7,8}" minlength="7" maxlength="8" placeholder="Ej: 12345678 (7 a 8 dígitos)" oninput="this.value = this.value.replace(/\D+/g, '').slice(0, 8);">
+            <label>Cédula (7 a 8 números) *</label>
           </div>
         </div>
 
@@ -594,6 +635,20 @@ function resetForm() {
     document.getElementById('cancelBtn').classList.add('mp-hidden');
 }
 
+function seleccionarBancoSelect(selectEl, rawBanco) {
+    if (!selectEl) return;
+    const val = String(rawBanco || '').trim();
+    if (!val) { selectEl.value = ''; return; }
+    for (let i = 0; i < selectEl.options.length; i++) {
+        const optVal = selectEl.options[i].value;
+        if (optVal === val || (optVal && optVal.toLowerCase().includes(val.toLowerCase()))) {
+            selectEl.selectedIndex = i;
+            return;
+        }
+    }
+    selectEl.value = '';
+}
+
 function editMethod(btnElement) {
     const data = JSON.parse(btnElement.getAttribute('data-payload'));
     
@@ -607,15 +662,15 @@ function editMethod(btnElement) {
     
     // Fill specific fields based on type manually
     if (data.tipo === 'Transferencia Bancaria') {
-        document.getElementById('banco').value = data.banco;
-        document.getElementById('telefono').value = data.telefono;
-        document.getElementById('numero_cuenta_trans').value = data.numero_cuenta;
+        seleccionarBancoSelect(document.getElementById('banco'), data.banco);
+        document.getElementById('telefono').value = String(data.telefono || '').replace(/\D+/g, '').slice(0, 15);
+        document.getElementById('numero_cuenta_trans').value = String(data.numero_cuenta || '').replace(/\D+/g, '').slice(0, 20);
     } else if (data.tipo === 'Efectivo') {
         document.getElementById('monto_bs').value = data.monto_bs;
     } else if (data.tipo === 'Pago Móvil') {
-        document.getElementById('banco_pm').value = data.banco;
-        document.getElementById('telefono_pm').value = data.telefono;
-        document.getElementById('cedula_pm').value = data.cedula;
+        seleccionarBancoSelect(document.getElementById('banco_pm'), data.banco);
+        document.getElementById('telefono_pm').value = String(data.telefono || '').replace(/\D+/g, '').slice(0, 15);
+        document.getElementById('cedula_pm').value = String(data.cedula || '').replace(/\D+/g, '').slice(0, 8);
     } else if (data.tipo === 'Binance') {
         document.getElementById('id_binance').value = data.numero_cuenta;
         document.getElementById('correo_binance').value = data.correo_binance;
@@ -662,6 +717,42 @@ async function deleteMethod(id) {
 
 document.getElementById('metodoForm').addEventListener('submit', async e => {
   e.preventDefault();
+  const tipo = document.getElementById('tipoSelect').value;
+
+  if (tipo === 'Pago Móvil') {
+    const bco = (document.getElementById('banco_pm')?.value || '').trim();
+    const tel = (document.getElementById('telefono_pm')?.value || '').trim();
+    const ced = (document.getElementById('cedula_pm')?.value || '').trim();
+    if (!bco) {
+      Xp.toast('error', 'Selecciona un banco de Venezuela.');
+      return;
+    }
+    if (!/^\d{7,15}$/.test(tel)) {
+      Xp.toast('error', 'El número de teléfono solo debe contener números.');
+      return;
+    }
+    if (!/^\d{7,8}$/.test(ced)) {
+      Xp.toast('error', 'La cédula debe contener solo números (mínimo 7 y máximo 8 dígitos).');
+      return;
+    }
+  } else if (tipo === 'Transferencia Bancaria') {
+    const bco = (document.getElementById('banco')?.value || '').trim();
+    const tel = (document.getElementById('telefono')?.value || '').trim();
+    const cta = (document.getElementById('numero_cuenta_trans')?.value || '').trim();
+    if (!bco) {
+      Xp.toast('error', 'Selecciona un banco de Venezuela.');
+      return;
+    }
+    if (!/^\d{7,15}$/.test(tel)) {
+      Xp.toast('error', 'El número de teléfono solo debe contener números.');
+      return;
+    }
+    if (!/^\d{10,20}$/.test(cta)) {
+      Xp.toast('error', 'El número de cuenta debe contener solo números.');
+      return;
+    }
+  }
+
   const btn = document.getElementById('submitBtn');
   const orgHtml = btn.innerHTML;
   

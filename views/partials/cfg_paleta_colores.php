@@ -19,7 +19,8 @@ $csrf                 = (string)($csrf ?? ($_SESSION['csrf_token'] ?? ''));
   border: 1px solid color-mix(in srgb, var(--accent-primary, #8a2be2) 30%, rgba(255, 255, 255, 0.08)) !important;
   box-shadow: 0 12px 32px rgba(0, 0, 0, 0.28) !important;
   border-radius: 22px;
-  padding: 22px 24px;
+  padding: 18px 22px;
+  transition: all 0.25s ease;
 }
 .xp-paleta-header-row {
   display: flex;
@@ -27,7 +28,49 @@ $csrf                 = (string)($csrf ?? ($_SESSION['csrf_token'] ?? ''));
   justify-content: space-between;
   gap: 14px;
   flex-wrap: wrap;
-  margin-bottom: 14px;
+  cursor: pointer;
+  user-select: none;
+}
+.xp-theme-cfg-card.is-open .xp-paleta-header-row {
+  margin-bottom: 16px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+.xp-paleta-collapse-body {
+  display: none;
+  animation: xpPaletaFadeIn 0.22s ease;
+}
+.xp-theme-cfg-card.is-open .xp-paleta-collapse-body {
+  display: block;
+}
+@keyframes xpPaletaFadeIn {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.xp-paleta-toggle-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: #e2e8f0;
+  font-size: 0.76rem;
+  font-weight: 700;
+  transition: all 0.2s ease;
+}
+.xp-paleta-toggle-btn:hover {
+  background: rgba(138, 43, 226, 0.16);
+  border-color: rgba(168, 85, 247, 0.4);
+}
+.xp-paleta-chevron {
+  font-size: 1.1rem;
+  color: var(--accent-light, #b388ff);
+  transition: transform 0.25s ease;
+}
+.xp-theme-cfg-card.is-open .xp-paleta-chevron {
+  transform: rotate(180deg);
 }
 .xp-paleta-scope-box {
   display: flex;
@@ -97,10 +140,10 @@ $csrf                 = (string)($csrf ?? ($_SESSION['csrf_token'] ?? ''));
 }
 </style>
 
-<!-- ── BENTO CARD: APARIENCIA Y PALETA DE COLORES ── -->
-<div class="form-container xp-theme-cfg-card" style="width: 100%; margin-bottom: 25px;">
-  <div class="xp-paleta-header-row">
-    <div style="min-width: 0;">
+<!-- ── BENTO CARD DESPLEGABLE: APARIENCIA Y PALETA DE COLORES ── -->
+<div class="form-container xp-theme-cfg-card" id="xpPaletaCfgCard" style="width: 100%; margin-bottom: 25px;">
+  <div class="xp-paleta-header-row" onclick="toggleXpPaletaCollapse(event)" role="button" tabindex="0" aria-expanded="false" aria-controls="xpPaletaCollapseBody" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();toggleXpPaletaCollapse(event);}">
+    <div style="min-width: 0; flex: 1;">
       <h3 style="margin: 0; font-size: 1.05rem; color: #fff; display: flex; align-items: center; gap: 8px; font-weight: 800;">
         <i class="ti ti-palette" style="color:var(--accent-primary, #8a2be2); font-size: 1.25rem;"></i> Apariencia y Paleta de Colores
       </h3>
@@ -113,112 +156,83 @@ $csrf                 = (string)($csrf ?? ($_SESSION['csrf_token'] ?? ''));
       </div>
     </div>
 
-    <?php if ($xpPaletaEsAdmin): ?>
-      <div id="xpPaletaScopeBox" class="xp-paleta-scope-box<?= $xpPaletaGlobalActivo ? ' is-global' : '' ?>">
-        <span id="xpPaletaScopeLabel" class="xp-paleta-scope-lbl">
-          <i class="ti <?= $xpPaletaGlobalActivo ? 'ti-world' : 'ti-user-shield' ?>"></i>
-          <span><?= $xpPaletaGlobalActivo ? 'Global (Toda la Web)' : 'Solo Super Admin' ?></span>
-        </span>
-        <label class="xp-bento-switch" title="Activar paleta global para toda la web">
-          <input type="checkbox" id="switchTemaGlobalAdmin" <?= $xpPaletaGlobalActivo ? 'checked' : '' ?> onchange="toggleAlcancePaletaAdmin(this)" aria-label="Aplicar paleta de forma global">
-          <span class="xp-bento-slider"></span>
-        </label>
-      </div>
-    <?php endif; ?>
+    <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+      <?php if ($xpPaletaEsAdmin): ?>
+        <div id="xpPaletaScopeBox" class="xp-paleta-scope-box<?= $xpPaletaGlobalActivo ? ' is-global' : '' ?>" onclick="event.stopPropagation()">
+          <span id="xpPaletaScopeLabel" class="xp-paleta-scope-lbl">
+            <i class="ti <?= $xpPaletaGlobalActivo ? 'ti-world' : 'ti-user-shield' ?>"></i>
+            <span><?= $xpPaletaGlobalActivo ? 'Global (Toda la Web)' : 'Solo Super Admin' ?></span>
+          </span>
+          <label class="xp-bento-switch" title="Activar paleta global para toda la web">
+            <input type="checkbox" id="switchTemaGlobalAdmin" <?= $xpPaletaGlobalActivo ? 'checked' : '' ?> onchange="toggleAlcancePaletaAdmin(this)" aria-label="Aplicar paleta de forma global">
+            <span class="xp-bento-slider"></span>
+          </label>
+        </div>
+      <?php endif; ?>
+
+      <span class="xp-paleta-toggle-btn">
+        <span id="xpPaletaCurrentNameBadge">Estilo Clásico</span>
+        <i class="ti ti-chevron-down xp-paleta-chevron"></i>
+      </span>
+    </div>
   </div>
 
-  <div class="xp-theme-grid">
-    <!-- Tema 1: Atlas Clásico -->
-    <div class="xp-theme-card" id="themeCardClassic" onclick="solicitarCambioTema('classic', 'Estilo Clásico Atlas Fit')">
-      <div class="xp-theme-card-head">
-        <div class="xp-theme-info">
-          <div class="xp-theme-name">Estilo Clásico Atlas Fit</div>
-          <div class="xp-theme-desc">Morado Eléctrico, estética nocturna y wallpapers góticos</div>
+  <div class="xp-paleta-collapse-body" id="xpPaletaCollapseBody">
+    <div class="xp-theme-grid">
+      <!-- Tema 1: Atlas Clásico -->
+      <div class="xp-theme-card" id="themeCardClassic" onclick="solicitarCambioTema('classic', 'Estilo Clásico Atlas Fit')">
+        <div class="xp-theme-card-head">
+          <div class="xp-theme-info">
+            <div class="xp-theme-name">Estilo Clásico Atlas Fit</div>
+            <div class="xp-theme-desc">Morado Eléctrico, estética nocturna y wallpapers góticos</div>
+          </div>
+          <span class="xp-theme-badge" id="badgeThemeClassic"><i class="ti ti-check"></i> Activo</span>
         </div>
-        <span class="xp-theme-badge" id="badgeThemeClassic"><i class="ti ti-check"></i> Activo</span>
+        <div class="xp-theme-swatches">
+          <span class="xp-swatch" style="background:#09090B;" title="Fondo #09090B"></span>
+          <span class="xp-swatch" style="background:#121217;" title="Tarjetas #121217"></span>
+          <span class="xp-swatch" style="background:#8a2be2;" title="Acento #8a2be2"></span>
+          <span class="xp-swatch" style="background:#b388ff;" title="Luz #b388ff"></span>
+          <span class="xp-swatch" style="background:#F4F4F5;" title="Texto #F4F4F5"></span>
+        </div>
       </div>
-      <div class="xp-theme-swatches">
-        <span class="xp-swatch" style="background:#09090B;" title="Fondo #09090B"></span>
-        <span class="xp-swatch" style="background:#121217;" title="Tarjetas #121217"></span>
-        <span class="xp-swatch" style="background:#8a2be2;" title="Acento #8a2be2"></span>
-        <span class="xp-swatch" style="background:#b388ff;" title="Luz #b388ff"></span>
-        <span class="xp-swatch" style="background:#F4F4F5;" title="Texto #F4F4F5"></span>
-      </div>
-    </div>
 
-    <!-- Tema 2: Atlas Obsidian -->
-    <div class="xp-theme-card" id="themeCardObsidian" onclick="solicitarCambioTema('obsidian', 'Estilo Atlas Obsidian')">
-      <div class="xp-theme-card-head">
-        <div class="xp-theme-info">
-          <div class="xp-theme-name">Estilo Atlas Obsidian</div>
-          <div class="xp-theme-desc">Minimalismo puro, morado lavanda y fondo limpio</div>
+      <!-- Tema 2: Atlas Obsidian -->
+      <div class="xp-theme-card" id="themeCardObsidian" onclick="solicitarCambioTema('obsidian', 'Estilo Atlas Obsidian')">
+        <div class="xp-theme-card-head">
+          <div class="xp-theme-info">
+            <div class="xp-theme-name">Estilo Atlas Obsidian</div>
+            <div class="xp-theme-desc">Minimalismo puro, morado lavanda y fondo limpio</div>
+          </div>
+          <span class="xp-theme-badge" id="badgeThemeObsidian"><i class="ti ti-check"></i> Activo</span>
         </div>
-        <span class="xp-theme-badge" id="badgeThemeObsidian"><i class="ti ti-check"></i> Activo</span>
+        <div class="xp-theme-swatches">
+          <span class="xp-swatch" style="background:#17151C;" title="#17151C"></span>
+          <span class="xp-swatch" style="background:#292531;" title="#292531"></span>
+          <span class="xp-swatch" style="background:#45404F;" title="#45404F"></span>
+          <span class="xp-swatch" style="background:#716879;" title="#716879"></span>
+          <span class="xp-swatch" style="background:#AAA2B3;" title="#AAA2B3"></span>
+          <span class="xp-swatch" style="background:#E2DDE7;" title="#E2DDE7"></span>
+        </div>
       </div>
-      <div class="xp-theme-swatches">
-        <span class="xp-swatch" style="background:#17151C;" title="#17151C"></span>
-        <span class="xp-swatch" style="background:#292531;" title="#292531"></span>
-        <span class="xp-swatch" style="background:#45404F;" title="#45404F"></span>
-        <span class="xp-swatch" style="background:#716879;" title="#716879"></span>
-        <span class="xp-swatch" style="background:#AAA2B3;" title="#AAA2B3"></span>
-        <span class="xp-swatch" style="background:#E2DDE7;" title="#E2DDE7"></span>
-      </div>
-    </div>
 
-    <!-- Tema 3: Royal Plum -->
-    <div class="xp-theme-card" id="themeCardPlum" onclick="solicitarCambioTema('royal-plum', 'Estilo Royal Plum')">
-      <div class="xp-theme-card-head">
-        <div class="xp-theme-info">
-          <div class="xp-theme-name">Estilo Royal Plum</div>
-          <div class="xp-theme-desc">Ciruela profundo, púrpura imperial y rosa lavanda</div>
+      <!-- Tema 3: Deep Ocean -->
+      <div class="xp-theme-card" id="themeCardOcean" onclick="solicitarCambioTema('deep-ocean', 'Estilo Deep Ocean')">
+        <div class="xp-theme-card-head">
+          <div class="xp-theme-info">
+            <div class="xp-theme-name">Estilo Deep Ocean</div>
+            <div class="xp-theme-desc">Abismo marino, acero y escarcha ártica</div>
+          </div>
+          <span class="xp-theme-badge" id="badgeThemeOcean"><i class="ti ti-check"></i> Activo</span>
         </div>
-        <span class="xp-theme-badge" id="badgeThemePlum"><i class="ti ti-check"></i> Activo</span>
-      </div>
-      <div class="xp-theme-swatches">
-        <span class="xp-swatch" style="background:#190019;" title="#190019"></span>
-        <span class="xp-swatch" style="background:#2B124C;" title="#2B124C"></span>
-        <span class="xp-swatch" style="background:#522B5B;" title="#522B5B"></span>
-        <span class="xp-swatch" style="background:#854F6C;" title="#854F6C"></span>
-        <span class="xp-swatch" style="background:#DFB6B2;" title="#DFB6B2"></span>
-        <span class="xp-swatch" style="background:#FBE4D8;" title="#FBE4D8"></span>
-      </div>
-    </div>
-
-    <!-- Tema 4: Deep Ocean -->
-    <div class="xp-theme-card" id="themeCardOcean" onclick="solicitarCambioTema('deep-ocean', 'Estilo Deep Ocean')">
-      <div class="xp-theme-card-head">
-        <div class="xp-theme-info">
-          <div class="xp-theme-name">Estilo Deep Ocean</div>
-          <div class="xp-theme-desc">Abismo marino, acero y escarcha ártica</div>
+        <div class="xp-theme-swatches">
+          <span class="xp-swatch" style="background:#06141B;" title="#06141B"></span>
+          <span class="xp-swatch" style="background:#11212D;" title="#11212D"></span>
+          <span class="xp-swatch" style="background:#253745;" title="#253745"></span>
+          <span class="xp-swatch" style="background:#4A5C6A;" title="#4A5C6A"></span>
+          <span class="xp-swatch" style="background:#9BA8AB;" title="#9BA8AB"></span>
+          <span class="xp-swatch" style="background:#CCD0CF;" title="#CCD0CF"></span>
         </div>
-        <span class="xp-theme-badge" id="badgeThemeOcean"><i class="ti ti-check"></i> Activo</span>
-      </div>
-      <div class="xp-theme-swatches">
-        <span class="xp-swatch" style="background:#06141B;" title="#06141B"></span>
-        <span class="xp-swatch" style="background:#11212D;" title="#11212D"></span>
-        <span class="xp-swatch" style="background:#253745;" title="#253745"></span>
-        <span class="xp-swatch" style="background:#4A5C6A;" title="#4A5C6A"></span>
-        <span class="xp-swatch" style="background:#9BA8AB;" title="#9BA8AB"></span>
-        <span class="xp-swatch" style="background:#CCD0CF;" title="#CCD0CF"></span>
-      </div>
-    </div>
-
-    <!-- Tema 5: Nordic Frost -->
-    <div class="xp-theme-card" id="themeCardFrost" onclick="solicitarCambioTema('nordic-frost', 'Estilo Nordic Frost')">
-      <div class="xp-theme-card-head">
-        <div class="xp-theme-info">
-          <div class="xp-theme-name">Estilo Nordic Frost</div>
-          <div class="xp-theme-desc">Lienzo nórdico limpio, menta aqua y blush pastel</div>
-        </div>
-        <span class="xp-theme-badge" id="badgeThemeFrost"><i class="ti ti-check"></i> Activo</span>
-      </div>
-      <div class="xp-theme-swatches">
-        <span class="xp-swatch" style="background:#F1F7F7;" title="#F1F7F7"></span>
-        <span class="xp-swatch" style="background:#DDD3D3;" title="#DDD3D3"></span>
-        <span class="xp-swatch" style="background:#D5E5E5;" title="#D5E5E5"></span>
-        <span class="xp-swatch" style="background:#B0D7D8;" title="#B0D7D8"></span>
-        <span class="xp-swatch" style="background:#F7CBCA;" title="#F7CBCA"></span>
-        <span class="xp-swatch" style="background:#5D6B6B;" title="#5D6B6B"></span>
       </div>
     </div>
   </div>
@@ -332,8 +346,14 @@ async function solicitarCambioTema(nuevoTema, nombre) {
   const rootEl = document.getElementById('htmlRoot');
   if (rootEl) rootEl.setAttribute('data-theme', nuevoTema);
 
-  try { localStorage.setItem('xp_theme', nuevoTema); } catch (_) {}
+  try {
+    localStorage.setItem('xp_theme', nuevoTema);
+    if (window.XP_AUTH_UID) {
+      localStorage.setItem('xp_theme_uid', String(window.XP_AUTH_UID));
+    }
+  } catch (_) {}
   actualizarUISelectorTema(nuevoTema);
+  purgarHtmlCachePorCambioTema();
 
   const token = window.CSRF || <?= json_encode($csrf, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
   const payload = window.XP_PALETA_ES_ADMIN
@@ -351,6 +371,7 @@ async function solicitarCambioTema(nuevoTema, nombre) {
       if (data.global_ver) {
         try { localStorage.setItem('xp_theme_gver', String(data.global_ver)); } catch (_) {}
       }
+      purgarHtmlCachePorCambioTema();
       const okMsg = data.msg || `¡${nombre} aplicado con éxito!`;
       if (typeof Xp !== 'undefined' && Xp.toast) {
         Xp.toast('success', okMsg);
@@ -365,19 +386,48 @@ async function solicitarCambioTema(nuevoTema, nombre) {
   }
 }
 
+function toggleXpPaletaCollapse(ev) {
+  if (ev && ev.target && ev.target.closest('#xpPaletaScopeBox')) return;
+  const card = document.getElementById('xpPaletaCfgCard');
+  if (!card) return;
+  const isOpen = card.classList.toggle('is-open');
+  const hdr = card.querySelector('.xp-paleta-header-row');
+  if (hdr) hdr.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+}
+
+function purgarHtmlCachePorCambioTema() {
+  if (!('caches' in window) || !window.XP_USER_CACHE) return;
+  caches.open(window.XP_USER_CACHE).then(function(cache) {
+    cache.keys().then(function(reqs) {
+      reqs.forEach(function(req) {
+        if (req.url.indexOf('/api-') === -1 && req.url.indexOf('/assets/') === -1) {
+          cache.delete(req);
+        }
+      });
+    });
+  }).catch(function(){});
+}
+
 function actualizarUISelectorTema(tema) {
-  const normTema = (tema === 'dark') ? 'classic' : (tema || 'classic');
+  const validos = ['classic', 'obsidian', 'deep-ocean'];
+  let normTema = (tema === 'dark') ? 'classic' : String(tema || 'classic').toLowerCase();
+  if (validos.indexOf(normTema) === -1) normTema = 'classic';
   const mapa = {
     'classic': 'themeCardClassic',
     'obsidian': 'themeCardObsidian',
-    'royal-plum': 'themeCardPlum',
-    'deep-ocean': 'themeCardOcean',
-    'nordic-frost': 'themeCardFrost'
+    'deep-ocean': 'themeCardOcean'
+  };
+  const nombres = {
+    'classic': 'Estilo Clásico',
+    'obsidian': 'Atlas Obsidian',
+    'deep-ocean': 'Deep Ocean'
   };
   Object.entries(mapa).forEach(([slug, elId]) => {
     const card = document.getElementById(elId);
     if (card) card.classList.toggle('is-active', (normTema === slug));
   });
+  const badgeName = document.getElementById('xpPaletaCurrentNameBadge');
+  if (badgeName) badgeName.textContent = nombres[normTema] || 'Estilo Clásico';
 }
 
 document.addEventListener('DOMContentLoaded', () => {

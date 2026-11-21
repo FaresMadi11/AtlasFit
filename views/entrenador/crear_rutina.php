@@ -1,8 +1,14 @@
 <?php
 $esModoAdminPropio = (($_SESSION['rol'] ?? '') === 'admin');
+$esRutinaPropia    = $esModoAdminPropio
+    || !empty($esRutinaPropiaEntrenador)
+    || !empty($_GET['propia'])
+    || (!empty($miClienteIdEnt) && !empty($atleta_id) && (int)$atleta_id === (int)$miClienteIdEnt);
 $crApiPrefix       = $esModoAdminPropio ? 'admin' : 'entrenador';
-$crBackUrl         = $esModoAdminPropio ? (APP_URL . '/admin/rutina') : '';
-$pageTitle         = $pageTitle ?? ($esModoAdminPropio ? 'Crear Mi Rutina' : 'Crear Rutina');
+$crBackUrl         = $esModoAdminPropio
+    ? (APP_URL . '/admin/rutina')
+    : ($esRutinaPropia ? (APP_URL . '/entrenador/dashboard') : '');
+$pageTitle         = $pageTitle ?? ($esRutinaPropia ? 'Crear Mi Rutina' : 'Crear Rutina');
 require __DIR__ . "/../layout/header.php";
 ?>
 
@@ -1585,7 +1591,7 @@ require __DIR__ . "/../layout/header.php";
 
   <!-- Top bar -->
   <div class="cr-topbar">
-    <button type="button" class="cr-btn-back" onclick="<?= $esModoAdminPropio ? "window.location.href='" . e($crBackUrl) . "'" : 'history.back()' ?>" aria-label="Cancelar y volver">
+    <button type="button" class="cr-btn-back" onclick="<?= $crBackUrl !== '' ? "window.location.href='" . e($crBackUrl) . "'" : 'history.back()' ?>" aria-label="Cancelar y volver">
       <i class="ti ti-arrow-left"></i> Cancelar
     </button>
     <span class="cr-topbar-title" role="heading" aria-level="1"><?= $pageTitle ?></span>
@@ -1594,14 +1600,8 @@ require __DIR__ . "/../layout/header.php";
 
   <!-- Formulario Superior (Glassmorphism) -->
   <div class="cr-form-glass">
-    <?php if ($esModoAdminPropio): ?>
-      <div class="cr-custom-select" id="customAtletaSelect" style="margin-bottom:18px;">
-        <div class="cr-select-trigger" style="cursor:default; border-color:rgba(139,92,246,0.35); background:rgba(139,92,246,0.1);">
-          <i class="ti ti-shield-check" style="color:#c084fc; font-size:1.15rem;"></i>
-          <span id="atletaSelectedText"><?= e($atleta_nombre ?? 'Mi Rutina Personal') ?></span>
-        </div>
-        <input type="hidden" id="selectAtleta" name="cliente_id" value="<?= (int)($atleta_id ?? 0) ?>">
-      </div>
+    <?php if ($esRutinaPropia): ?>
+      <input type="hidden" id="selectAtleta" name="cliente_id" value="<?= (int)($atleta_id ?? ($miClienteIdEnt ?? 0)) ?>">
     <?php else: ?>
       <!-- Custom Select Atleta -->
       <div class="cr-custom-select" id="customAtletaSelect">
@@ -1657,10 +1657,37 @@ require __DIR__ . "/../layout/header.php";
           <?php 
             $dias = ['L', 'M', 'X', 'J', 'V', 'S', 'D'];
             $diasNombres = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
-            foreach($dias as $i => $letra): 
+            $diasEditSet = [];
+            if (!empty($rutinaEditar['dias_semana'])) {
+                foreach (explode(',', (string)$rutinaEditar['dias_semana']) as $dp) {
+                    $dn = (int)trim($dp);
+                    if ($dn >= 1 && $dn <= 7) $diasEditSet[$dn] = true;
+                }
+            }
+            foreach($dias as $i => $letra):
+              $dNum = $i + 1;
+              $infoDia = $estadoDiasInicial[$dNum] ?? null;
+              $lblExtraCls = '';
+              $chkDisabled = false;
+              $chkChecked  = false;
+              if (isset($diasEditSet[$dNum])) {
+                  $chkChecked = true;
+              } elseif ($infoDia && ($infoDia['color'] ?? '') === 'verde') {
+                  $lblExtraCls = 'is-assigned';
+                  $chkDisabled = true;
+              } else {
+                  if (empty($rutinaEditar) && !empty($diaPreseleccionado) && (int)$diaPreseleccionado === $dNum) {
+                      $chkChecked = true;
+                  }
+                  if ($infoDia && ($infoDia['color'] ?? '') === 'azul') {
+                      $lblExtraCls = 'is-rest';
+                  } elseif ($infoDia && ($infoDia['color'] ?? '') === 'rojo') {
+                      $lblExtraCls = 'is-missing';
+                  }
+              }
           ?>
-          <input type="checkbox" id="dia_<?= $i ?>" class="cr-day-toggle" value="<?= $i+1 ?>">
-          <label for="dia_<?= $i ?>" class="cr-day-label" title="<?= $diasNombres[$i] ?>"><?= $letra ?></label>
+          <input type="checkbox" id="dia_<?= $i ?>" class="cr-day-toggle" value="<?= $dNum ?>" <?= $chkChecked ? 'checked' : '' ?> <?= $chkDisabled ? 'disabled' : '' ?>>
+          <label for="dia_<?= $i ?>" class="cr-day-label <?= $lblExtraCls ?>" title="<?= $diasNombres[$i] ?>"><?= $letra ?></label>
           <?php endforeach; ?>
         </div>
         <div class="cr-days-legend">
@@ -4063,71 +4090,79 @@ function selectAtleta(id, nombre) {
 }
 
 // Cargar estado de días de la semana del atleta para colorear y deshabilitar colisiones
+const ESTADO_DIAS_INICIAL = <?= json_encode($estadoDiasInicial ?? null, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_UNESCAPED_UNICODE) ?>;
+
+function aplicarEstadoDiasAtleta(diasMap) {
+  if (!diasMap || typeof diasMap !== 'object') return;
+  const diasPropiosEdit = new Set(
+    (typeof RUTINA_EDITAR !== 'undefined' && RUTINA_EDITAR && RUTINA_EDITAR.dias_semana)
+      ? String(RUTINA_EDITAR.dias_semana).split(',').map(s => parseInt(s.trim(), 10)).filter(n => n >= 1 && n <= 7)
+      : []
+  );
+
+  for (let d = 1; d <= 7; d++) {
+    const info = diasMap[d];
+    const chk = document.getElementById(`dia_${d - 1}`);
+    const lbl = document.querySelector(`label[for="dia_${d - 1}"]`);
+    if (!chk || !lbl) continue;
+
+    lbl.classList.remove('is-assigned', 'is-rest', 'is-missing');
+
+    if (diasPropiosEdit.has(d)) {
+      chk.disabled = false;
+      chk.checked = true;
+      lbl.onclick = null;
+      lbl.title = `${info?.nombre || 'Día'}: Asignado actualmente a esta rutina`;
+    } else if (info && info.color === 'verde') {
+      chk.checked = false;
+      chk.disabled = true;
+      lbl.classList.add('is-assigned');
+      lbl.title = `${info.nombre}: Ya asignado a "${info.rutina_nombre || 'otra rutina'}". No se permite más de una rutina por día.`;
+      lbl.onclick = (e) => {
+        if (chk.disabled) {
+          e.preventDefault();
+          Swal.fire({
+            toast: true,
+            position: 'top-end',
+            icon: 'info',
+            title: `${info.nombre} ya tiene rutina`,
+            text: `Ya existe la rutina "${info.rutina_nombre || 'otra rutina'}" asignada para este día.`,
+            showConfirmButton: false,
+            timer: 3000,
+            background: '#141724',
+            color: '#fff'
+          });
+        }
+      };
+    } else {
+      chk.disabled = false;
+      lbl.onclick = null;
+      if (!RUTINA_EDITAR && DIA_PRESELECCIONADO && Number(DIA_PRESELECCIONADO) === d) {
+        chk.checked = true;
+      }
+      if (info && info.color === 'azul') {
+        lbl.classList.add('is-rest');
+        lbl.title = `${info.nombre}: Día de descanso (puedes seleccionarlo si deseas asignarle rutina)`;
+      } else if (info && info.color === 'rojo') {
+        lbl.classList.add('is-missing');
+        lbl.title = `${info.nombre}: Falta programar rutina`;
+      }
+    }
+  }
+}
+
 async function cargarDiasAtleta(clienteId) {
   if (!clienteId) {
     resetearDiasSelector();
     return;
   }
   try {
-    const res = await fetch(`<?= APP_URL ?>/${CR_API_PREFIX}/api-dias-atleta?id=${clienteId}`);
+    const res = await fetch(`<?= APP_URL ?>/${CR_API_PREFIX}/api-dias-atleta?id=${clienteId}&_t=${Date.now()}`, {
+      cache: 'no-store'
+    });
     const data = await res.json();
     if (!data.ok || !data.dias) return;
-
-    const diasPropiosEdit = new Set(
-      (typeof RUTINA_EDITAR !== 'undefined' && RUTINA_EDITAR && RUTINA_EDITAR.dias_semana)
-        ? String(RUTINA_EDITAR.dias_semana).split(',').map(s => parseInt(s.trim(), 10)).filter(n => n >= 1 && n <= 7)
-        : []
-    );
-
-    for (let d = 1; d <= 7; d++) {
-      const info = data.dias[d];
-      const chk = document.getElementById(`dia_${d - 1}`);
-      const lbl = document.querySelector(`label[for="dia_${d - 1}"]`);
-      if (!chk || !lbl) continue;
-
-      lbl.classList.remove('is-assigned', 'is-rest', 'is-missing');
-
-      if (diasPropiosEdit.has(d)) {
-        chk.disabled = false;
-        chk.checked = true;
-        lbl.onclick = null;
-        lbl.title = `${info?.nombre || 'Día'}: Asignado actualmente a esta rutina`;
-      } else if (info && info.color === 'verde') {
-        chk.checked = false;
-        chk.disabled = true;
-        lbl.classList.add('is-assigned');
-        lbl.title = `${info.nombre}: Ya asignado a "${info.rutina_nombre || 'otra rutina'}". No se permite más de una rutina por día.`;
-        lbl.onclick = (e) => {
-          if (chk.disabled) {
-            e.preventDefault();
-            Swal.fire({
-              toast: true,
-              position: 'top-end',
-              icon: 'info',
-              title: `${info.nombre} ya tiene rutina`,
-              text: `Ya existe la rutina "${info.rutina_nombre || 'otra rutina'}" asignada para este día.`,
-              showConfirmButton: false,
-              timer: 3000,
-              background: '#141724',
-              color: '#fff'
-            });
-          }
-        };
-      } else {
-        chk.disabled = false;
-        lbl.onclick = null;
-        if (!RUTINA_EDITAR && DIA_PRESELECCIONADO && Number(DIA_PRESELECCIONADO) === d) {
-          chk.checked = true;
-        }
-        if (info && info.color === 'azul') {
-          lbl.classList.add('is-rest');
-          lbl.title = `${info.nombre}: Día de descanso (puedes seleccionarlo si deseas asignarle rutina)`;
-        } else if (info && info.color === 'rojo') {
-          lbl.classList.add('is-missing');
-          lbl.title = `${info.nombre}: Falta programar rutina`;
-        }
-      }
-    }
+    aplicarEstadoDiasAtleta(data.dias);
   } catch (err) {
     console.error('Error al cargar días del atleta:', err);
   }
@@ -4165,6 +4200,9 @@ function toggleRirExercise(idx) {
 
 document.addEventListener('DOMContentLoaded', () => {
   initWheelEvents();
+  if (ESTADO_DIAS_INICIAL) {
+    aplicarEstadoDiasAtleta(ESTADO_DIAS_INICIAL);
+  }
   const initCid = document.getElementById('selectAtleta') ? document.getElementById('selectAtleta').value : '';
   if (initCid) {
     cargarDiasAtleta(initCid);

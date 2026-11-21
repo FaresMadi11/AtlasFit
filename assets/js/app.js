@@ -228,10 +228,7 @@ document.addEventListener('DOMContentLoaded', () => {
             <div style="display:flex; align-items:center; gap:12px;">
               <div class="xp-sk-element" style="width:42px; height:42px; border-radius:12px; flex-shrink:0;"></div>
               <div style="display:flex; flex-direction:column; gap:6px;">
-                <div style="display:flex; align-items:center; gap:8px;">
-                  <div class="xp-sk-element" style="width:95px; height:16px;"></div>
-                  <div class="xp-sk-element xp-sk-pill" style="width:26px; height:18px; opacity:0.5;"></div>
-                </div>
+                <div class="xp-sk-element" style="width:95px; height:16px;"></div>
                 <div class="xp-sk-element" style="width:145px; height:11px; opacity:0.5;"></div>
               </div>
             </div>

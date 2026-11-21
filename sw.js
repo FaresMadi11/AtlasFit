@@ -2,7 +2,7 @@
 //  Atlas Fit — Service Worker (Offline-First 3 Vistas + Fast Race)
 // ══════════════════════════════════════════════════════════════
 
-const SW_VER = new URL(self.location.href).searchParams.get('v') || '5.0';
+const SW_VER = new URL(self.location.href).searchParams.get('v') || '5.2';
 const STATIC_CACHE = 'atlas-fit-static-' + SW_VER;
 const USER_CACHE   = 'atlas-fit-user-' + SW_VER;
 const META_PATH    = '/__atlas_offline_meta__';
@@ -200,8 +200,8 @@ async function resolveOfflineHtml(userCache, req, pathname) {
   const exactMatch = await userCache.match(req);
   if (exactMatch) return exactMatch;
 
-  // 2. Coincidencia por ruta limpia ignorando query (NO mezclar perfiles de distintos atletas ?id=X)
-  const isEntityParameterized = pathname.includes('/perfil-cliente') || pathname.includes('/estadisticas-cliente') || pathname.includes('/revisar-modificacion');
+  // 2. Coincidencia por ruta limpia ignorando query (NO mezclar perfiles de distintos atletas ?id=X ni creador de rutinas con ?atleta_id=...&dia=...)
+  const isEntityParameterized = pathname.includes('/perfil-cliente') || pathname.includes('/estadisticas-cliente') || pathname.includes('/revisar-modificacion') || pathname.includes('/crear-rutina') || pathname.includes('/asignar-rutina');
   if (!isRootPath && !pathname.includes('/auth/') && !isEntityParameterized) {
     const cleanMatch = await userCache.match(req, { ignoreSearch: true });
     if (cleanMatch) return cleanMatch;
@@ -241,6 +241,9 @@ async function resolveOfflineHtml(userCache, req, pathname) {
 
   // 4. Coincidencia semántica ESTRICTA por módulo exacto (NUNCA redirigir silenciosamente a Inicio si falta otra subpágina)
   if (pathname.includes('/admin/')) {
+    if (pathname.includes('/crear-rutina')) {
+      return await userCache.match(req);
+    }
     const mapAdmin = [
       ['/gestion', '/admin/gestion'],
       ['/configuracion', '/admin/configuracion'],
@@ -258,12 +261,14 @@ async function resolveOfflineHtml(userCache, req, pathname) {
   }
 
   if (pathname.includes('/entrenador/')) {
+    if (pathname.includes('/crear-rutina') || pathname.includes('/perfil-cliente')) {
+      return await userCache.match(req);
+    }
     const mapEnt = [
       ['/pagos-recibidos', '/entrenador/pagos-recibidos'],
       ['/metodos-pago', '/entrenador/metodos-pago'],
       ['/registrar-cliente', '/entrenador/registrar-cliente'],
       ['/notificaciones', '/entrenador/notificaciones'],
-      ['/crear-rutina', '/entrenador/crear-rutina'],
       ['/clientes', '/entrenador/clientes'],
       ['/asistencias', '/entrenador/asistencias'],
       ['/configuracion', '/entrenador/configuracion'],
@@ -488,10 +493,10 @@ self.addEventListener('fetch', event => {
       const netPromise = fetchAndCacheNav();
 
       if (cachedFallback) {
-        // Red rápida (<500ms): entrega HTML fresco; red inestable/lenta/offline: entrega caché al instante y actualiza en segundo plano
+        // Cuando hay conexión a internet, esperar hasta 3500ms para entregar siempre HTML fresco; offline cae a caché al instante
+        const navTimeoutMs = (self.navigator && self.navigator.onLine === false) ? 150 : 3500;
         try {
-          const fresh = await fetchWithTimeout(netPromise, 500);
-          // Si estando offline/inestable el servidor devolvió 5xx, priorizar caché estable
+          const fresh = await fetchWithTimeout(netPromise, navTimeoutMs);
           if (fresh && fresh.status >= 500) return cachedFallback;
           return fresh;
         } catch (_) {

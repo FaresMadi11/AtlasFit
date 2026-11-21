@@ -5,6 +5,15 @@ $flash   = getFlash();
 if (function_exists('releaseSessionLockIfReadOnly')) { releaseSessionLockIfReadOnly(); }
 $rolUser = $_SESSION['rol'] ?? '';
 $nomUser = $_SESSION['nombre'] ?? '';
+// Nunca mostrar un flash residual de error de login OAuth dentro de un perfil ya autenticado
+if ($flash && !empty($rolUser) && isset($flash['msg']) && (
+    str_contains((string)$flash['msg'], 'iniciar sesión con Google') ||
+    str_contains((string)$flash['msg'], 'invalid_grant') ||
+    str_contains((string)$flash['msg'], 'Código de autorización') ||
+    str_contains((string)$flash['msg'], 'sesión de inicio con Google expiró')
+)) {
+    $flash = null;
+}
 global $route, $segment;
 $route   = $route ?? (($segment[0] ?? '') . '/' . ($segment[1] ?? ''));
 
@@ -133,17 +142,30 @@ $temaGlobalVer     = (int)($temaInfoUser['global_ver'] ?? 1);
 
     // Aplicar tema efectivo del usuario/web ANTES de pintar el DOM (evita flash y sincroniza cambios globales)
     (function() {
-      const ssrTheme = <?= json_encode($temaGlobalDefecto) ?>;
+      const validThemes = ['classic', 'obsidian', 'deep-ocean'];
+      const normalizeTheme = function(val) {
+        const v = String(val || '').toLowerCase().trim();
+        if (v === 'dark') return 'classic';
+        return validThemes.indexOf(v) !== -1 ? v : 'classic';
+      };
+      const ssrTheme = normalizeTheme(<?= json_encode($temaGlobalDefecto) ?>);
       const ssrUid   = <?= json_encode((string)((int)($_SESSION['user_id'] ?? 0))) ?>;
       const ssrGVer  = <?= (int)$temaGlobalVer ?>;
       let t = ssrTheme;
       try {
-        const lsTheme = localStorage.getItem('xp_theme');
+        const rawLsTheme = localStorage.getItem('xp_theme');
+        const lsTheme = rawLsTheme ? normalizeTheme(rawLsTheme) : '';
         const lsUid   = localStorage.getItem('xp_theme_uid');
         const lsGVer  = Number(localStorage.getItem('xp_theme_gver') || '0');
-        if (navigator.onLine === false && lsTheme && lsUid === ssrUid && lsGVer >= ssrGVer) {
+        // Si el usuario activo ya eligió una paleta en este dispositivo y el tema global no se ha actualizado a una versión mayor,
+        // preservar lsTheme incluso cuando el Service Worker sirve una vista HTML pre-cacheada con un ssrTheme anterior.
+        if (lsTheme && lsUid === ssrUid && lsGVer >= ssrGVer) {
           t = lsTheme;
+          if (rawLsTheme !== lsTheme) {
+            localStorage.setItem('xp_theme', lsTheme);
+          }
         } else {
+          t = ssrTheme;
           localStorage.setItem('xp_theme', ssrTheme);
           localStorage.setItem('xp_theme_uid', ssrUid);
           localStorage.setItem('xp_theme_gver', String(ssrGVer));

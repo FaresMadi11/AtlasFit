@@ -33,6 +33,9 @@ match ($action) {
     'api-reasignar-atleta'               => adminApiReasignarAtleta(),
     'api-revocar-entrenador'             => adminApiRevocarEntrenador(),
     'api-guardar-configuracion'          => adminApiGuardarConfiguracion(),
+    'api-aprobar-atleta'                 => adminApiAprobarAtleta(),
+    'cambiar-password-atleta'            => adminCambiarPasswordAtleta(),
+    'eliminar-atleta'                    => adminEliminarAtleta(),
     'api-catalogo-list'                  => adminApiCatalogoList(),
     'api-catalogo-agregar'               => adminApiCatalogoAgregar(),
     'api-catalogo-editar'                => adminApiCatalogoEditar(),
@@ -233,6 +236,7 @@ function adminCrearRutina(): void {
 
     $atleta_id     = $adminClienteId;
     $atleta_nombre = $clientes[0]['nombre'];
+    $estadoDiasInicial  = obtenerEstadoDiasSemanaAtleta($db, (int)$adminClienteId);
     $diaPreseleccionado = isset($_GET['dia']) ? max(1, min(7, (int)$_GET['dia'])) : null;
 
     $pageTitle = $rutinaEditar ? 'Editar Mi Rutina' : 'Crear Mi Rutina';
@@ -1546,10 +1550,11 @@ function adminGestion(): void {
     ");
     $solicitudesEntrenadores = $stSolEnt->fetchAll(PDO::FETCH_ASSOC);
 
-    // Obtener todos los atletas reales (rol = 'cliente') y agruparlos por entrenador_id
+    // Obtener todos los atletas reales (rol = 'cliente') con ficha ampliada y agruparlos por entrenador_id
     $stAtletas = $db->query("
         SELECT c.id AS cliente_id, c.usuario_id, c.cedula, c.entrenador_id, c.peso_kg, c.altura_cm, c.objetivo,
-               u.nombre, u.email, u.estado_cuenta, u.avatar_url,
+               c.fecha_nac, COALESCE(c.genero, 'masculino') AS genero, c.dias_entrenamiento, c.monto_mensualidad,
+               u.nombre, u.email, u.estado_cuenta, u.activo, u.avatar_url, u.creado_en,
                ue.nombre AS entrenador_nombre
         FROM clientes c
         JOIN usuarios u ON u.id = c.usuario_id
@@ -1559,11 +1564,134 @@ function adminGestion(): void {
     ");
     $atletas = $stAtletas->fetchAll(PDO::FETCH_ASSOC);
 
+    // Zero N+1: Cargar métodos de pago configurados por cada entrenador
+    $metodosPorEntrenador = [];
+    try {
+        $stMp = $db->query("
+            SELECT id, entrenador_id, tipo, banco, titular, numero_cuenta, cedula, telefono, activo,
+                   instrucciones, monto_dolares, monto_bs, correo_binance
+            FROM metodos_pago
+            ORDER BY entrenador_id ASC, id ASC
+        ");
+        if ($stMp) {
+            foreach ($stMp->fetchAll(PDO::FETCH_ASSOC) as $mpRow) {
+                $metodosPorEntrenador[(int)$mpRow['entrenador_id']][] = $mpRow;
+            }
+        }
+    } catch (\Throwable $e) {}
+
+    // Zero N+1: Cargar peso inicial, rutinas activas, pagos y asistencias de todos los atletas en lote
+    $cIds = array_values(array_unique(array_filter(array_map(static fn($r) => (int)($r['cliente_id'] ?? 0), $atletas))));
+    $pesoInicialPorCli = [];
+    $rutinasPorCli     = [];
+    $pagosPorCli       = [];
+    $asistenciasPorCli = [];
+
+    if (!empty($cIds)) {
+        $phC = implode(',', array_fill(0, count($cIds), '?'));
+
+        try {
+            $stPh = $db->prepare("SELECT cliente_id, peso_kg FROM peso_historial WHERE cliente_id IN ($phC) ORDER BY cliente_id ASC, fecha ASC, id ASC");
+            $stPh->execute($cIds);
+            foreach ($stPh->fetchAll(PDO::FETCH_ASSOC) as $rPh) {
+                $cidK = (int)$rPh['cliente_id'];
+                if (!array_key_exists($cidK, $pesoInicialPorCli)) {
+                    $pesoInicialPorCli[$cidK] = (float)$rPh['peso_kg'];
+                }
+            }
+        } catch (\Throwable $e) {}
+
+        try {
+            $stRut = $db->prepare("
+                SELECT r.id, r.cliente_id, COALESCE(NULLIF(TRIM(r.titulo), ''), NULLIF(TRIM(r.descripcion), ''), CONCAT('Rutina #', r.id)) AS titulo,
+                       r.dias_semana, r.estado, r.cardio_activo, r.cardio_tiempo,
+                       COUNT(e.id) AS total_ejercicios
+                FROM rutinas r
+                LEFT JOIN ejercicios e ON e.rutina_id = r.id
+                WHERE r.cliente_id IN ($phC)
+                  AND r.estado IN ('en_progreso', 'pendiente')
+                  AND (r.es_modificacion IS NULL OR r.es_modificacion = 0 OR r.estado_modificacion = 'aprobada')
+                GROUP BY r.id
+                ORDER BY r.id DESC
+            ");
+            $stRut->execute($cIds);
+            foreach ($stRut->fetchAll(PDO::FETCH_ASSOC) as $rRut) {
+                $rutinasPorCli[(int)$rRut['cliente_id']][] = [
+                    'id'               => (int)$rRut['id'],
+                    'titulo'           => (string)$rRut['titulo'],
+                    'dias_semana'      => (string)($rRut['dias_semana'] ?? ''),
+                    'total_ejercicios' => (int)($rRut['total_ejercicios'] ?? 0),
+                    'cardio_activo'    => (int)($rRut['cardio_activo'] ?? 0),
+                    'cardio_tiempo'    => (int)($rRut['cardio_tiempo'] ?? 0),
+                ];
+            }
+        } catch (\Throwable $e) {}
+
+        try {
+            $stPag = $db->prepare("
+                SELECT cliente_id,
+                       SUM(CASE WHEN estado = 'pagado' THEN 1 ELSE 0 END) AS pagados_count,
+                       SUM(CASE WHEN estado = 'pendiente' THEN 1 ELSE 0 END) AS pendientes_count,
+                       COALESCE(SUM(CASE WHEN estado = 'pagado' THEN monto ELSE 0 END), 0) AS total_pagado_usd,
+                       MAX(fecha_emision) AS ultimo_pago_fecha
+                FROM pagos
+                WHERE cliente_id IN ($phC)
+                GROUP BY cliente_id
+            ");
+            $stPag->execute($cIds);
+            foreach ($stPag->fetchAll(PDO::FETCH_ASSOC) as $rPag) {
+                $pagosPorCli[(int)$rPag['cliente_id']] = [
+                    'pagados_count'     => (int)($rPag['pagados_count'] ?? 0),
+                    'pendientes_count'  => (int)($rPag['pendientes_count'] ?? 0),
+                    'total_pagado_usd'  => round((float)($rPag['total_pagado_usd'] ?? 0), 2),
+                    'ultimo_pago_fecha' => !empty($rPag['ultimo_pago_fecha']) ? date('d/m/Y', strtotime((string)$rPag['ultimo_pago_fecha'])) : null,
+                ];
+            }
+        } catch (\Throwable $e) {}
+
+        try {
+            $stAs = $db->prepare("
+                SELECT cliente_id,
+                       COUNT(*) AS sesiones_completadas,
+                       MAX(COALESCE(fin_en, inicio_en)) AS ultima_asistencia
+                FROM sesiones_asistencia
+                WHERE cliente_id IN ($phC) AND estado = 'completada'
+                GROUP BY cliente_id
+            ");
+            $stAs->execute($cIds);
+            foreach ($stAs->fetchAll(PDO::FETCH_ASSOC) as $rAs) {
+                $asistenciasPorCli[(int)$rAs['cliente_id']] = [
+                    'sesiones_completadas' => (int)($rAs['sesiones_completadas'] ?? 0),
+                    'ultima_asistencia'    => !empty($rAs['ultima_asistencia']) ? date('d/m/Y', strtotime((string)$rAs['ultima_asistencia'])) : null,
+                ];
+            }
+        } catch (\Throwable $e) {}
+    }
+
     $atletasPorEntrenador = [];
-    foreach ($atletas as $atl) {
+    foreach ($atletas as &$atl) {
+        $cid = (int)($atl['cliente_id'] ?? 0);
         $eid = (int)($atl['entrenador_id'] ?? 0);
+        $edad = null;
+        if (!empty($atl['fecha_nac'])) {
+            try {
+                $edad = (new DateTime((string)$atl['fecha_nac']))->diff(new DateTime('today'))->y;
+            } catch (\Throwable $e) {}
+        }
+        $pesoKg   = !empty($atl['peso_kg']) ? (float)$atl['peso_kg'] : null;
+        $alturaCm = !empty($atl['altura_cm']) ? (float)$atl['altura_cm'] : null;
+        $imc      = ($pesoKg && $alturaCm && $alturaCm >= 100) ? round($pesoKg / (($alturaCm / 100) ** 2), 1) : null;
+
+        $atl['edad']                 = $edad;
+        $atl['peso_inicial']         = $pesoInicialPorCli[$cid] ?? $pesoKg;
+        $atl['imc']                  = $imc;
+        $atl['creado_en_fmt']        = !empty($atl['creado_en']) ? date('d/m/Y', strtotime((string)$atl['creado_en'])) : '--';
+        $atl['rutinas_activas']      = $rutinasPorCli[$cid] ?? [];
+        $atl['pagos_resumen']        = $pagosPorCli[$cid] ?? ['pagados_count' => 0, 'pendientes_count' => 0, 'total_pagado_usd' => 0.0, 'ultimo_pago_fecha' => null];
+        $atl['asistencias_resumen']  = $asistenciasPorCli[$cid] ?? ['sesiones_completadas' => 0, 'ultima_asistencia' => null];
         $atletasPorEntrenador[$eid][] = $atl;
     }
+    unset($atl);
 
     $entrenadores   = [];
     $kpiActivos     = 0;
@@ -1588,6 +1716,7 @@ function adminGestion(): void {
 
         $entrenadores[] = array_merge($r, [
             'membresia'          => $mem,
+            'metodos_pago'       => $metodosPorEntrenador[$eid] ?? [],
             'total_atletas'      => count($listaAtl),
             'atletas_activos'    => $activosCount,
             'atletas_pendientes' => $pendCount,
@@ -1672,6 +1801,24 @@ function adminConfiguracion(): void {
         $atletasList = $stAtl->fetchAll(PDO::FETCH_ASSOC);
     } catch (\Throwable $e) {}
 
+    // Lista completa de atletas para el Gestor de Atletas en Configuración del Super Admin
+    $atletasGestorList = [];
+    try {
+        $stGest = $db->query("
+            SELECT u.id AS usuario_id, u.nombre, u.email, u.activo, u.creado_en, u.estado_cuenta,
+                   c.id AS cliente_id, c.cedula, c.fecha_nac, c.peso_kg, c.altura_cm, c.objetivo,
+                   ue.nombre AS entrenador_nombre
+            FROM clientes c
+            JOIN usuarios u ON c.usuario_id = u.id
+            LEFT JOIN usuarios ue ON ue.id = c.entrenador_id
+            WHERE u.rol = 'cliente'
+            ORDER BY u.nombre ASC
+        ");
+        if ($stGest) {
+            $atletasGestorList = $stGest->fetchAll(PDO::FETCH_ASSOC);
+        }
+    } catch (\Throwable $e) {}
+
     // Métricas para Copia de Seguridad
     try {
         $dbName      = (string)$db->query("SELECT DATABASE()")->fetchColumn();
@@ -1694,7 +1841,7 @@ function adminApiGuardarConfiguracion(): void {
 
     $tipo        = trim((string)($in['tipo'] ?? 'mensaje_pausa'));
     $adminUserId = (int)($_SESSION['user_id'] ?? 0);
-    $temasOk     = ['classic', 'obsidian', 'royal-plum', 'deep-ocean', 'nordic-frost', 'dark', 'light'];
+    $temasOk     = ['classic', 'obsidian', 'deep-ocean', 'dark'];
 
     try {
         $upsertAj = $db->prepare("
@@ -2470,3 +2617,94 @@ function adminDescargarRespaldoDb(): void {
         exit;
     }
 }
+
+// ══════════════════════════════════════════════════════════════════
+//  GESTOR DE ATLETAS DESDE CONFIGURACIÓN DEL SUPER ADMIN (PUNTO 7)
+// ══════════════════════════════════════════════════════════════════
+
+function adminApiAprobarAtleta(): void {
+    requireRole('admin');
+    csrfCheck();
+    $db = getDB();
+    $data = array_merge($_POST, getJsonPayload());
+    $usuarioId = (int)($data['usuario_id'] ?? 0);
+    $accion    = trim((string)($data['accion'] ?? ''));
+
+    if ($usuarioId <= 0 || !in_array($accion, ['aprobar', 'rechazar'], true)) {
+        jsonOut(false, 'Datos inválidos o acción no permitida.');
+    }
+
+    $stU = $db->prepare("SELECT u.id, u.rol, c.id AS cliente_id FROM usuarios u LEFT JOIN clientes c ON c.usuario_id = u.id WHERE u.id = ? LIMIT 1");
+    $stU->execute([$usuarioId]);
+    $rowU = $stU->fetch(PDO::FETCH_ASSOC);
+    if (!$rowU || ($rowU['rol'] ?? '') !== 'cliente') {
+        jsonOut(false, 'No se encontró el atleta especificado.');
+    }
+
+    $nuevoEstado = ($accion === 'aprobar') ? 'activo' : 'rechazado';
+    $activoVal   = ($accion === 'aprobar') ? 1 : 0;
+    $db->prepare("UPDATE usuarios SET estado_cuenta = ?, activo = ? WHERE id = ?")
+       ->execute([$nuevoEstado, $activoVal, $usuarioId]);
+
+    jsonOut(true, $accion === 'aprobar' ? '¡Atleta activado con éxito!' : 'Atleta desactivado correctamente.');
+}
+
+function adminCambiarPasswordAtleta(): void {
+    requireRole('admin');
+    csrfCheck();
+    $db = getDB();
+    $in = array_merge($_POST, getJsonPayload());
+    $usuarioId = (int)($in['usuario_id'] ?? 0);
+    $password  = trim((string)($in['password'] ?? ''));
+
+    if ($usuarioId <= 0) jsonOut(false, 'Usuario no especificado.');
+    if (strlen($password) < 6) jsonOut(false, 'Mínimo 6 caracteres.');
+
+    $chk = $db->prepare("SELECT id FROM usuarios WHERE id = ? AND rol = 'cliente' LIMIT 1");
+    $chk->execute([$usuarioId]);
+    if (!$chk->fetch()) jsonOut(false, 'Atleta no encontrado.');
+
+    $db->prepare("UPDATE usuarios SET password_hash = ? WHERE id = ?")
+       ->execute([password_hash($password, PASSWORD_BCRYPT), $usuarioId]);
+
+    jsonOut(true, 'Contraseña actualizada correctamente.');
+}
+
+function adminEliminarAtleta(): void {
+    requireRole('admin');
+    csrfCheck();
+    $db = getDB();
+    $in = array_merge($_POST, getJsonPayload());
+    $usuarioId = (int)($in['usuario_id'] ?? 0);
+
+    if ($usuarioId <= 0) {
+        jsonOut(false, 'Usuario no especificado.');
+    }
+
+    $check = $db->prepare("SELECT u.id, u.nombre, u.rol, c.foto FROM usuarios u LEFT JOIN clientes c ON c.usuario_id = u.id WHERE u.id = ? LIMIT 1");
+    $check->execute([$usuarioId]);
+    $user = $check->fetch(PDO::FETCH_ASSOC);
+
+    if (!$user || ($user['rol'] ?? '') !== 'cliente') {
+        jsonOut(false, 'Solo está permitido eliminar cuentas de atletas.');
+    }
+
+    try {
+        $db->beginTransaction();
+        $db->prepare("DELETE FROM csrf_tokens WHERE usuario_id = ?")->execute([$usuarioId]);
+        if (!empty($user['foto'])) {
+            $fotoPath = BASE_DIR . '/' . ltrim((string)$user['foto'], '/');
+            if (file_exists($fotoPath) && is_file($fotoPath)) {
+                @unlink($fotoPath);
+            }
+        }
+        $db->prepare("DELETE FROM usuarios WHERE id = ?")->execute([$usuarioId]);
+        $db->commit();
+        jsonOut(true, "El atleta {$user['nombre']} ha sido eliminado correctamente del sistema.");
+    } catch (\Throwable $e) {
+        if ($db->inTransaction()) $db->rollBack();
+        error_log('[adminEliminarAtleta] ' . $e->getMessage());
+        jsonOut(false, 'Ocurrió un error al intentar eliminar el atleta.');
+    }
+}
+

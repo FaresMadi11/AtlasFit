@@ -349,6 +349,14 @@ require BASE_DIR . '/views/layout/header.php';
 </style>
 
 <div class="sa-cfg-shell">
+  <?php
+  // 1. Catálogo de Ejercicios (Arriba)
+  $xpCatalogoEsAdmin = true;
+  $xpCatalogoApiBase = 'admin';
+  require BASE_DIR . '/views/partials/cfg_catalogo_ejercicios.php';
+  ?>
+
+  <!-- 2. Mensajes de Aviso y Suspensión de Entrenadores -->
   <section class="sa-cfg-card">
 
     <!-- ── SELECTOR DE OPCIÓN: MENSAJE DE AVISO / MENSAJE DE SUSPENSIÓN (CON SUS RESPECTIVOS COLORES) ── -->
@@ -438,19 +446,164 @@ require BASE_DIR . '/views/layout/header.php';
   </section>
 
   <?php
-  $xpPaletaEsAdmin      = true;
-  $xpPaletaGlobalActivo = !empty($temaGlobalActivo);
-  require BASE_DIR . '/views/partials/cfg_paleta_colores.php';
-
-  $xpCatalogoEsAdmin = true;
-  $xpCatalogoApiBase = 'admin';
-  require BASE_DIR . '/views/partials/cfg_catalogo_ejercicios.php';
-
+  // 3. Herramientas (Importador IA + Copia de Seguridad)
   $xpHerramientasEsAdmin = true;
   $xpHerramientasApiBase = 'admin';
   require BASE_DIR . '/views/partials/cfg_herramientas_ia_backup.php';
   ?>
+
+  <!-- 4. Gestión de Atletas (Super Admin) -->
+  <section class="card-bento" style="margin-top:4px;">
+    <div class="gu-header">
+      <div class="gu-title">
+        <i class="ti ti-users" style="color:var(--accent)"></i>
+        <h3>Gestión de Atletas</h3>
+      </div>
+      <div class="gu-search-wrap">
+        <i class="ti ti-search"></i>
+        <input type="search" id="atletaSearch" name="xp_admin_atleta_search_nofill" placeholder="Buscar por nombre, email o entrenador..." class="gu-search" autocomplete="off" readonly onfocus="this.removeAttribute('readonly');">
+      </div>
+    </div>
+
+    <!-- Panel de detalle inline -->
+    <div id="atletaPanel" class="atleta-panel" style="display:none"></div>
+
+    <!-- Tabla de atletas -->
+    <div class="gu-table-wrap">
+      <table class="gu-table">
+        <thead>
+          <tr>
+            <th>Nombre</th>
+            <th>Email</th>
+          </tr>
+        </thead>
+        <tbody id="atletasTbody">
+          <?php
+          $atletasGestorAdmin = $atletasGestorList ?? array_filter($atletasList ?? [], static fn($r) => !empty($r['email']));
+          foreach ($atletasGestorAdmin as $a):
+            $edadAtl = '--';
+            if (!empty($a['fecha_nac'])) {
+                try {
+                    $edadAtl = (new DateTime((string)$a['fecha_nac']))->diff(new DateTime('today'))->y . ' años';
+                } catch (\Throwable $e) {}
+            }
+          ?>
+          <tr class="atleta-row" data-id="<?= (int)($a['usuario_id'] ?? 0) ?>"
+              data-cliente="<?= (int)($a['cliente_id'] ?? 0) ?>"
+              data-nombre="<?= e($a['nombre'] ?? '') ?>"
+              data-email="<?= e($a['email'] ?? '') ?>"
+              data-cedula="<?= e($a['cedula'] ?? '--') ?>"
+              data-edad="<?= e($edadAtl) ?>"
+              data-peso="<?= !empty($a['peso_kg']) ? (float)$a['peso_kg'].' kg' : '--' ?>"
+              data-altura="<?= !empty($a['altura_cm']) ? (float)$a['altura_cm'].' cm' : '--' ?>"
+              data-objetivo="<?= e(!empty($a['objetivo']) ? $a['objetivo'] : '--') ?>"
+              data-entrenador="<?= e(!empty($a['entrenador_nombre']) ? $a['entrenador_nombre'] : 'Sin entrenador') ?>"
+              data-activo="<?= (int)($a['activo'] ?? 1) ?>"
+              data-estado="<?= e($a['estado_cuenta'] ?? 'activo') ?>"
+              data-desde="<?= !empty($a['creado_en']) ? date('d/m/Y', strtotime((string)$a['creado_en'])) : '--' ?>">
+            <td>
+              <div class="atleta-name-cell">
+                <div class="atleta-avatar"><?= strtoupper(substr((string)($a['nombre'] ?? 'AT'), 0, 2)) ?></div>
+                <div style="min-width:0;">
+                  <strong class="atleta-fullname" style="display:block;"><?= e($a['nombre'] ?? '') ?></strong>
+                  <?php if (!empty($a['entrenador_nombre'])): ?>
+                    <span style="font-size:0.7rem;color:#a855f7;font-weight:600;">Coach: <?= e($a['entrenador_nombre']) ?></span>
+                  <?php endif; ?>
+                </div>
+              </div>
+            </td>
+            <td class="gu-muted gu-email-cell" title="<?= e($a['email'] ?? '') ?>"><?= e($a['email'] ?? '') ?></td>
+          </tr>
+          <?php endforeach; ?>
+          <?php if (empty($atletasGestorAdmin)): ?>
+          <tr><td colspan="2" style="text-align:center;color:var(--muted);padding:32px">No hay atletas registrados en el sistema.</td></tr>
+          <?php endif; ?>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <?php
+  // 5. Paleta de Colores (Al final, en desplegable)
+  $xpPaletaEsAdmin      = true;
+  $xpPaletaGlobalActivo = !empty($temaGlobalActivo);
+  require BASE_DIR . '/views/partials/cfg_paleta_colores.php';
+  ?>
 </div>
+
+<!-- ── Modal Cambiar Contraseña Atleta (Super Admin) ── -->
+<div id="pwdModal" class="pwd-modal-backdrop" style="display:none">
+  <div class="pwd-modal">
+    <div class="pwd-modal-icon"><i class="ti ti-lock"></i></div>
+    <h3>Cambiar Contraseña</h3>
+    <p id="pwdModalFor" class="pwd-modal-sub"></p>
+    <input type="hidden" id="pwdTargetId">
+    <div class="form-group" style="margin-top:16px;text-align:left">
+      <label>Nueva Contraseña <span style="color:var(--accent)">*</span></label>
+      <input type="password" id="pwdNew" placeholder="Mínimo 6 caracteres">
+    </div>
+    <div class="form-group" style="text-align:left">
+      <label>Confirmar Contraseña <span style="color:var(--accent)">*</span></label>
+      <input type="password" id="pwdConfirm" placeholder="Repite la contraseña">
+    </div>
+    <div class="pwd-modal-actions">
+      <button type="button" class="btn-xp btn-ghost" onclick="closePwdModal()">
+        <i class="ti ti-x"></i> Cancelar
+      </button>
+      <button type="button" class="btn-xp btn-warn" onclick="submitPwd()">
+        <i class="ti ti-lock"></i> Cambiar Contraseña
+      </button>
+    </div>
+  </div>
+</div>
+
+<style>
+  .gu-header { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 18px; flex-wrap: wrap; }
+  .gu-title { display: flex; align-items: center; gap: 10px; }
+  .gu-title h3 { font-size: 1.05rem; font-weight: 700; margin: 0; }
+  .gu-search-wrap { display: flex; align-items: center; gap: 8px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 10px; padding: 8px 14px; flex: 1; min-width: 220px; max-width: 340px; }
+  .gu-search-wrap i { color: var(--muted); flex-shrink: 0; }
+  .gu-search { background: none; border: none; outline: none; color: var(--text); font-family: 'Inter', sans-serif; font-size: .875rem; width: 100%; }
+  .gu-search::placeholder { color: var(--muted); }
+  .gu-table-wrap { overflow-x: hidden; border-radius: 12px; }
+  .gu-table { width: 100%; border-collapse: collapse; font-size: .86rem; table-layout: fixed; }
+  .gu-table th { text-align: left; padding: 10px 10px; font-size: .7rem; text-transform: uppercase; letter-spacing: 1px; color: var(--muted); border-bottom: 1px solid rgba(255,255,255,0.07); white-space: nowrap; }
+  .gu-table th:first-child { width: 48%; }
+  .gu-table th:last-child { width: 52%; }
+  .gu-table td { padding: 12px 10px; border-bottom: 1px solid rgba(255,255,255,0.04); vertical-align: middle; }
+  .gu-table th:first-child, .gu-table td:first-child { padding-left: 0; }
+  .gu-table th:last-child, .gu-table td:last-child { padding-right: 0; }
+  .atleta-row { cursor: pointer; transition: background .18s; }
+  .atleta-row:hover { background: rgba(255,255,255,0.04); }
+  .atleta-row.is-selected { background: rgba(139,92,246,0.06); }
+  .atleta-name-cell { display: flex; align-items: center; gap: 10px; min-width: 0; }
+  .atleta-fullname { line-height: 1.25; overflow-wrap: break-word; min-width: 0; }
+  .atleta-avatar { width: 34px; height: 34px; border-radius: 50%; background: linear-gradient(135deg, var(--accent), #0ea5e9); display: grid; place-items: center; font-size: .75rem; font-weight: 800; color: #0b0e1a; flex-shrink: 0; }
+  .gu-muted { color: var(--muted); font-size: .8rem; }
+  .gu-email-cell { overflow-wrap: anywhere; word-break: break-word; line-height: 1.3; }
+  .gu-badge { display: inline-block; padding: 3px 10px; border-radius: 999px; font-size: .7rem; font-weight: 700; }
+  .gu-badge-on  { background: rgba(139,92,246,.15); color: var(--accent); }
+  .gu-badge-off { background: rgba(239,68,68,.15); color: #f87171; }
+  .atleta-panel { margin-bottom: 16px; background: linear-gradient(135deg, rgba(139,92,246,0.08), rgba(14,165,233,0.06)); border: 1px solid rgba(139,92,246,0.2); border-radius: 16px; padding: 20px; position: relative; }
+  .panel-close { position: absolute; top: 12px; right: 12px; background: rgba(255,255,255,0.08); border: none; color: var(--muted); width: 28px; height: 28px; border-radius: 50%; cursor: pointer; display: grid; place-items: center; }
+  .panel-top { display: flex; align-items: center; gap: 14px; margin-bottom: 14px; }
+  .panel-avatar { width: 48px; height: 48px; border-radius: 50%; background: linear-gradient(135deg, var(--accent), #0ea5e9); display: grid; place-items: center; font-size: 1.1rem; font-weight: 800; color: #0b0e1a; flex-shrink: 0; }
+  .panel-name { font-size: 1.1rem; font-weight: 800; margin-bottom: 2px; }
+  .panel-role { font-size: .7rem; text-transform: uppercase; letter-spacing: 1px; color: var(--muted); }
+  .panel-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 10px; margin-bottom: 14px; }
+  .panel-stat { background: rgba(255,255,255,0.04); border-radius: 10px; padding: 10px 12px; }
+  .panel-stat-lbl { font-size: .6rem; text-transform: uppercase; letter-spacing: 1px; color: var(--muted); margin-bottom: 3px; }
+  .panel-stat-val { font-size: .9rem; font-weight: 700; color: var(--text); }
+  .panel-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+  .pwd-modal-backdrop { position: fixed; inset:0; background: rgba(0,0,0,0.65); backdrop-filter: blur(6px); z-index: 9999; display: grid; place-items: center; }
+  .pwd-modal { background: #0f1623; border: 1px solid rgba(255,255,255,0.12); border-radius: 20px; padding: 32px; max-width: 440px; width: 90%; text-align: center; }
+  .pwd-modal-icon { width: 56px; height: 56px; border-radius: 16px; background: linear-gradient(135deg, #f59e0b, #d97706); display: grid; place-items: center; font-size: 1.6rem; color: #fff; margin: 0 auto 14px; }
+  .pwd-modal h3 { font-size: 1.2rem; font-weight: 800; margin-bottom: 4px; }
+  .pwd-modal-sub { font-size: .82rem; color: var(--muted); margin-bottom: 4px; }
+  .pwd-modal-actions { display: flex; gap: 10px; justify-content: center; margin-top: 20px; }
+  .btn-xp.btn-warn { background: linear-gradient(135deg, #f59e0b, #d97706); color: #fff; border: none; }
+  .btn-xp.btn-ghost { background: transparent; border: 1px solid rgba(255,255,255,0.15); color: var(--text); }
+</style>
 
 <script>
 let currentTipo = 'aviso'; // 'aviso' | 'suspension'
@@ -603,6 +756,189 @@ async function guardarConfiguracionMensaje() {
   } finally {
     if (btn) btn.disabled = false;
   }
+}
+
+/* ── Gestión de Atletas (Super Admin) ── */
+document.getElementById('atletaSearch')?.addEventListener('input', function() {
+  const q = this.value.toLowerCase();
+  document.querySelectorAll('.atleta-row').forEach(function(row) {
+    const txt = (row.dataset.nombre || '').toLowerCase() + ' ' + (row.dataset.email || '').toLowerCase() + ' ' + (row.dataset.entrenador || '').toLowerCase();
+    row.style.display = txt.includes(q) ? '' : 'none';
+  });
+});
+
+let selectedRow = null;
+document.querySelectorAll('.atleta-row').forEach(function(row) {
+  row.addEventListener('click', function() {
+    if (selectedRow === row) {
+      row.classList.remove('is-selected');
+      selectedRow = null;
+      closePanel();
+      return;
+    }
+    if (selectedRow) selectedRow.classList.remove('is-selected');
+    selectedRow = row;
+    row.classList.add('is-selected');
+    openPanel(row.dataset);
+  });
+});
+
+function escCfgHtml(str) {
+  return String(str == null ? '' : str)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+function openPanel(d) {
+  const panel = document.getElementById('atletaPanel');
+  if (!panel) return;
+  const initials = escCfgHtml((d.nombre || '').substring(0, 2).toUpperCase());
+  const badgeClass = d.estado === 'activo' ? 'gu-badge-on' : 'gu-badge-off';
+  const badgeTxt   = d.estado === 'activo' ? 'Activo' : (d.estado === 'rechazado' ? 'Rechazado' : 'Pendiente');
+  const uidNum = parseInt(d.id, 10) || 0;
+
+  const btnDesactivar = d.estado === 'activo'
+    ? `<button type="button" class="btn-xp" data-cfg-action="estado" data-accion="rechazar" style="font-size:.8rem;padding:7px 14px;background:rgba(239,68,68,0.15);color:#ef4444;border:1px solid rgba(239,68,68,0.3);">
+         <i class="ti ti-user-off"></i> Desactivar
+       </button>`
+    : `<button type="button" class="btn-xp" data-cfg-action="estado" data-accion="aprobar" style="font-size:.8rem;padding:7px 14px;background:rgba(16,185,129,0.15);color:#10b981;border:1px solid rgba(16,185,129,0.3);">
+         <i class="ti ti-user-check"></i> Activar
+       </button>`;
+
+  panel.innerHTML = `
+    <button type="button" class="panel-close" onclick="closePanel()"><i class="ti ti-x"></i></button>
+    <div class="panel-top">
+      <div class="panel-avatar">${initials}</div>
+      <div>
+        <div class="panel-name">${escCfgHtml(d.nombre)}</div>
+        <div class="panel-role">Atleta &bull; Coach: ${escCfgHtml(d.entrenador || 'Sin entrenador')} &bull; <span class="gu-badge ${badgeClass}">${badgeTxt}</span></div>
+      </div>
+    </div>
+    <div class="panel-stats">
+      <div class="panel-stat"><div class="panel-stat-lbl">Email</div><div class="panel-stat-val" style="font-size:.78rem;word-break:break-all">${escCfgHtml(d.email)}</div></div>
+      <div class="panel-stat"><div class="panel-stat-lbl">Cédula</div><div class="panel-stat-val">${escCfgHtml(d.cedula || '--')}</div></div>
+      <div class="panel-stat"><div class="panel-stat-lbl">Edad</div><div class="panel-stat-val">${escCfgHtml(d.edad || '--')}</div></div>
+      <div class="panel-stat"><div class="panel-stat-lbl">Peso Actual</div><div class="panel-stat-val">${escCfgHtml(d.peso)}</div></div>
+      <div class="panel-stat"><div class="panel-stat-lbl">Altura</div><div class="panel-stat-val">${escCfgHtml(d.altura || '--')}</div></div>
+      <div class="panel-stat"><div class="panel-stat-lbl">Objetivo</div><div class="panel-stat-val" style="font-size:.78rem">${escCfgHtml(d.objetivo)}</div></div>
+      <div class="panel-stat"><div class="panel-stat-lbl">Desde</div><div class="panel-stat-val">${escCfgHtml(d.desde)}</div></div>
+    </div>
+    <div class="panel-actions" style="display:flex; flex-wrap:wrap; gap:8px;">
+      ${btnDesactivar}
+      <button type="button" class="btn-xp btn-warn" data-cfg-action="pwd" style="font-size:.8rem;padding:7px 14px">
+        <i class="ti ti-lock"></i> Contraseña
+      </button>
+      <button type="button" class="btn-xp" data-cfg-action="eliminar" style="font-size:.8rem;padding:7px 14px;background:rgba(239,68,68,0.18);color:#ef4444;border:1px solid rgba(239,68,68,0.4);">
+        <i class="ti ti-trash"></i> Eliminar
+      </button>
+    </div>
+  `;
+  const btnEstado = panel.querySelector('[data-cfg-action="estado"]');
+  if (btnEstado) btnEstado.addEventListener('click', () => toggleEstadoAtleta(uidNum, btnEstado.dataset.accion));
+  const btnPwd = panel.querySelector('[data-cfg-action="pwd"]');
+  if (btnPwd) btnPwd.addEventListener('click', () => openPwdModal(uidNum, d.nombre || ''));
+  const btnDel = panel.querySelector('[data-cfg-action="eliminar"]');
+  if (btnDel) btnDel.addEventListener('click', () => eliminarAtleta(uidNum, d.nombre || ''));
+  panel.style.display = 'block';
+}
+
+function closePanel() {
+  const panel = document.getElementById('atletaPanel');
+  if (panel) {
+    panel.style.display = 'none';
+    panel.innerHTML = '';
+  }
+  if (selectedRow) { selectedRow.classList.remove('is-selected'); selectedRow = null; }
+}
+
+function toggleEstadoAtleta(usuarioId, accion) {
+  const isActivar = accion === 'aprobar';
+  Swal.fire({
+    title: isActivar ? '¿Activar Atleta?' : '¿Desactivar Atleta?',
+    text: isActivar ? 'El usuario podrá ingresar al sistema.' : 'El usuario no podrá ingresar al sistema.',
+    icon: 'warning',
+    showCancelButton: true,
+    confirmButtonColor: isActivar ? '#10b981' : '#ef4444',
+    cancelButtonColor: '#6b7280',
+    confirmButtonText: isActivar ? 'Sí, activar' : 'Sí, desactivar',
+    cancelButtonText: 'Cancelar'
+  }).then((result) => {
+    if (result.isConfirmed) {
+      fetch(APP + '/admin/api-aprobar-atleta', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': CSRF },
+        body: JSON.stringify({ csrf_token: CSRF, usuario_id: usuarioId, accion: accion })
+      })
+      .then(res => res.json())
+      .then(data => {
+        if (data.ok) {
+          Swal.fire({ icon: 'success', title: '¡Actualizado!', text: data.msg, showConfirmButton: false, timer: 1400 })
+            .then(() => location.reload());
+        } else {
+          Swal.fire('Error', data.msg, 'error');
+        }
+      })
+      .catch(() => Swal.fire('Error', 'Problema de red', 'error'));
+    }
+  });
+}
+
+function openPwdModal(userId, nombre) {
+  document.getElementById('pwdTargetId').value = userId;
+  document.getElementById('pwdModalFor').textContent = 'Establecer nueva contraseña para: ' + nombre;
+  document.getElementById('pwdNew').value = '';
+  document.getElementById('pwdConfirm').value = '';
+  document.getElementById('pwdModal').style.display = 'grid';
+}
+function closePwdModal() {
+  document.getElementById('pwdModal').style.display = 'none';
+}
+async function submitPwd() {
+  const uid  = document.getElementById('pwdTargetId').value;
+  const pwd  = document.getElementById('pwdNew').value;
+  const pwd2 = document.getElementById('pwdConfirm').value;
+  if (!pwd || pwd.length < 6) { Xp.toast('error', 'Mínimo 6 caracteres.'); return; }
+  if (pwd !== pwd2) { Xp.toast('error', 'Las contraseñas no coinciden.'); return; }
+  const r = await Xp.post('admin/cambiar-password-atleta', { usuario_id: uid, password: pwd })
+                   .catch(() => ({ ok: false, msg: 'Error de conexión.' }));
+  if (r.ok) { Xp.toast('success', r.msg); closePwdModal(); }
+  else       { Xp.toast('error', r.msg); }
+}
+document.getElementById('pwdModal')?.addEventListener('click', function(e) {
+  if (e.target === this) closePwdModal();
+});
+
+function eliminarAtleta(uid, nombre) {
+  Swal.fire({
+    title: `¿Eliminar a ${nombre}?`,
+    html: `<div style="text-align:left;font-size:0.9rem;color:#cbd5e1;line-height:1.5;">
+             <p style="margin-bottom:8px;font-weight:600;color:#f87171;">⚠️ Esta acción es irreversible.</p>
+             <p style="margin-bottom:0;color:#94a3b8;">Se eliminará permanentemente al atleta junto con sus rutinas, asistencias, registros de peso y pagos.</p>
+           </div>`,
+    icon: 'warning',
+    showCancelButton: true,
+    confirmButtonColor: '#ef4444',
+    cancelButtonColor: '#475569',
+    confirmButtonText: 'Sí, eliminar atleta',
+    cancelButtonText: 'Cancelar',
+    background: '#151c2e',
+    color: '#e2e8f0'
+  }).then(async (result) => {
+    if (!result.isConfirmed) return;
+    try {
+      const r = await Xp.post('admin/eliminar-atleta', { usuario_id: uid });
+      if (r.ok) {
+        Swal.fire({ icon: 'success', title: 'Atleta eliminado', text: r.msg, background: '#151c2e', color: '#e2e8f0' });
+        closePanel();
+        const row = document.querySelector(`.atleta-row[data-id="${uid}"]`);
+        if (row) row.remove();
+      } else {
+        Swal.fire('Error', r.msg || 'No se pudo eliminar el atleta.', 'error');
+      }
+    } catch (_) {
+      Swal.fire('Error', 'Problema de conexión con el servidor.', 'error');
+    }
+  });
 }
 </script>
 

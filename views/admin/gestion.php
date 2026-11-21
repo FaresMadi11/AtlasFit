@@ -289,9 +289,55 @@ $unread_hdr = function_exists('contarNotificacionesNoLeidas')
                 class="sa-btn-athletes-shortcut"
                 onclick="abrirModalAtletasEntrenador(<?= $eid ?>)">
           <i class="ti ti-users"></i>
-          <span>Atletas Asignados</span>
+          <span>Atletas Asignados y Fichas</span>
           <span class="sa-athlete-count-box"><?= (int)$ent['total_atletas'] ?></span>
         </button>
+      </div>
+
+      <!-- PUNTO 10: Métodos de Pago Configurados por el Entrenador -->
+      <?php $metodosEnt = $ent['metodos_pago'] ?? []; ?>
+      <div class="sa-ref-box" style="background:rgba(15,16,26,0.75); border:1px solid rgba(255,255,255,0.08); border-radius:14px; padding:11px 12px;">
+        <div class="sa-ref-head" style="margin-bottom:8px;">
+          <span><i class="ti ti-wallet" style="color:#34d399;"></i> Métodos de Pago del Entrenador</span>
+          <span class="sa-ref-sub"><?= count($metodosEnt) ?> <?= count($metodosEnt) === 1 ? 'configurado' : 'configurados' ?></span>
+        </div>
+        <?php if (empty($metodosEnt)): ?>
+          <div style="font-size:0.76rem; color:#64748b; padding:6px 2px;">
+            Este entrenador aún no ha registrado métodos de pago.
+          </div>
+        <?php else: ?>
+          <div style="display:flex; flex-direction:column; gap:7px; max-height:175px; overflow-y:auto; padding-right:2px;">
+            <?php foreach ($metodosEnt as $mp):
+              $mpTipo = (string)($mp['tipo'] ?? 'Método');
+              $mpUsd  = (float)($mp['monto_dolares'] ?? 0);
+            ?>
+              <div style="background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.07); border-radius:11px; padding:8px 10px; font-size:0.76rem; color:#cbd5e1;">
+                <div style="display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:4px;">
+                  <strong style="color:#fff; font-size:0.8rem;"><?= e($mpTipo) ?></strong>
+                  <?php if ($mpUsd > 0): ?>
+                    <span style="background:rgba(16,185,129,0.16); border:1px solid rgba(16,185,129,0.35); color:#34d399; font-weight:800; font-size:0.7rem; padding:1px 7px; border-radius:6px;">
+                      $<?= number_format($mpUsd, 2) ?> USD
+                    </span>
+                  <?php endif; ?>
+                </div>
+                <?php if ($mpTipo === 'Pago Móvil'): ?>
+                  <div><i class="ti ti-building-bank" style="color:#a855f7;"></i> Banco: <strong><?= e($mp['banco'] ?? '--') ?></strong></div>
+                  <div><i class="ti ti-phone" style="color:#a855f7;"></i> Teléfono: <strong><?= e($mp['telefono'] ?? '--') ?></strong> &bull; Cédula: <strong><?= e($mp['cedula'] ?? '--') ?></strong></div>
+                <?php elseif ($mpTipo === 'Transferencia Bancaria'): ?>
+                  <div><i class="ti ti-building-bank" style="color:#a855f7;"></i> Banco: <strong><?= e($mp['banco'] ?? '--') ?></strong></div>
+                  <div><i class="ti ti-credit-card" style="color:#a855f7;"></i> Cuenta: <strong><?= e($mp['numero_cuenta'] ?? '--') ?></strong> &bull; Tel: <strong><?= e($mp['telefono'] ?? '--') ?></strong></div>
+                <?php elseif ($mpTipo === 'Binance'): ?>
+                  <div><i class="ti ti-currency-bitcoin" style="color:#f59e0b;"></i> ID Binance: <strong><?= e($mp['numero_cuenta'] ?? '--') ?></strong> &bull; Correo: <strong><?= e($mp['correo_binance'] ?? '--') ?></strong></div>
+                <?php elseif ($mpTipo === 'Efectivo' && !empty($mp['monto_bs'])): ?>
+                  <div><i class="ti ti-cash" style="color:#34d399;"></i> Monto Bs: <strong><?= number_format((float)$mp['monto_bs'], 2) ?> Bs</strong></div>
+                <?php endif; ?>
+                <?php if (!empty($mp['instrucciones'])): ?>
+                  <div style="font-size:0.71rem; color:#94a3b8; font-style:italic; margin-top:3px;"><?= e($mp['instrucciones']) ?></div>
+                <?php endif; ?>
+              </div>
+            <?php endforeach; ?>
+          </div>
+        <?php endif; ?>
       </div>
 
       <!-- Código y Link de Invitación -->
@@ -1546,17 +1592,34 @@ $unread_hdr = function_exists('contarNotificacionesNoLeidas')
 </style>
 
 <script>
-// Mapa en memoria de los atletas por entrenador para el modal instantáneo
+// Mapa en memoria de los atletas por entrenador para el modal instantáneo con ficha ampliada (Punto 10)
 const SA_ENTRENADORES_ATLETAS = <?= json_encode(
     array_reduce($entrenadores, function ($acc, $ent) {
         $acc[(int)$ent['id']] = [
-            'nombre'  => (string)$ent['nombre'],
-            'atletas' => array_map(function ($a) {
+            'nombre'       => (string)$ent['nombre'],
+            'email'        => (string)($ent['email'] ?? ''),
+            'metodos_pago' => $ent['metodos_pago'] ?? [],
+            'atletas'      => array_map(function ($a) {
                 return [
-                    'cliente_id' => (int)($a['cliente_id'] ?? 0),
-                    'nombre'     => (string)($a['nombre'] ?? ''),
-                    'email'      => (string)($a['email'] ?? ''),
-                    'peso_kg'    => isset($a['peso_kg']) && $a['peso_kg'] !== null ? (float)$a['peso_kg'] : null,
+                    'cliente_id'          => (int)($a['cliente_id'] ?? 0),
+                    'usuario_id'          => (int)($a['usuario_id'] ?? 0),
+                    'nombre'              => (string)($a['nombre'] ?? ''),
+                    'email'               => (string)($a['email'] ?? ''),
+                    'cedula'              => (string)($a['cedula'] ?? '--'),
+                    'edad'                => $a['edad'] ?? null,
+                    'fecha_nac'           => (string)($a['fecha_nac'] ?? ''),
+                    'genero'              => (string)($a['genero'] ?? 'masculino'),
+                    'peso_kg'             => isset($a['peso_kg']) && $a['peso_kg'] !== null ? (float)$a['peso_kg'] : null,
+                    'peso_inicial'        => isset($a['peso_inicial']) && $a['peso_inicial'] !== null ? (float)$a['peso_inicial'] : null,
+                    'altura_cm'           => isset($a['altura_cm']) && $a['altura_cm'] !== null ? (float)$a['altura_cm'] : null,
+                    'imc'                 => $a['imc'] ?? null,
+                    'objetivo'            => (string)($a['objetivo'] ?? '--'),
+                    'estado_cuenta'       => (string)($a['estado_cuenta'] ?? 'activo'),
+                    'creado_en_fmt'       => (string)($a['creado_en_fmt'] ?? '--'),
+                    'monto_mensualidad'   => isset($a['monto_mensualidad']) && $a['monto_mensualidad'] !== null ? (float)$a['monto_mensualidad'] : null,
+                    'rutinas_activas'     => $a['rutinas_activas'] ?? [],
+                    'pagos_resumen'       => $a['pagos_resumen'] ?? ['pagados_count' => 0, 'pendientes_count' => 0, 'total_pagado_usd' => 0, 'ultimo_pago_fecha' => null],
+                    'asistencias_resumen' => $a['asistencias_resumen'] ?? ['sesiones_completadas' => 0, 'ultima_asistencia' => null],
                 ];
             }, $ent['atletas_lista'] ?? []),
         ];
@@ -1748,7 +1811,15 @@ function recalcularFechasEntrenador(eid, nuevaFechaPagoIso) {
   }
 }
 
-// ── 3. MODAL DE ATLETAS ASIGNADOS AL ENTRENADOR (SIN "ACTIVO" NI SELECT DE COACH) ──
+// ── 3. MODAL DE ATLETAS ASIGNADOS AL ENTRENADOR CON FICHA DETALLADA EXPANDIBLE (PUNTO 10) ──
+const SA_DIAS_NOM_MAP = { '1':'Lun', '2':'Mar', '3':'Mié', '4':'Jue', '5':'Vie', '6':'Sáb', '7':'Dom' };
+
+function saFormatearDiasRutina(diasStr) {
+  const parts = String(diasStr || '').split(',').map(s => s.trim()).filter(Boolean);
+  if (parts.length === 0) return 'Sin días';
+  return parts.map(d => SA_DIAS_NOM_MAP[d] || d).join(', ');
+}
+
 function abrirModalAtletasEntrenador(eid) {
   const info = SA_ENTRENADORES_ATLETAS[eid] || { nombre: 'Entrenador', atletas: [] };
   const titleEl = document.getElementById('modalAtlCoachTitle');
@@ -1756,7 +1827,7 @@ function abrirModalAtletasEntrenador(eid) {
   const bodyEl  = document.getElementById('modalAtlCoachBody');
 
   if (titleEl) titleEl.textContent = `Atletas de ${info.nombre}`;
-  if (subEl)   subEl.textContent   = `${info.atletas.length} ${info.atletas.length === 1 ? 'atleta registrado' : 'atletas registrados'}`;
+  if (subEl)   subEl.textContent   = `${info.atletas.length} ${info.atletas.length === 1 ? 'atleta registrado (toca uno para ampliar su ficha)' : 'atletas registrados (toca uno para ampliar su ficha)'}`;
 
   if (bodyEl) {
     if (!info.atletas || info.atletas.length === 0) {
@@ -1766,20 +1837,30 @@ function abrirModalAtletasEntrenador(eid) {
           <p style="margin:0; font-size:0.88rem;">Este entrenador aún no tiene atletas registrados.</p>
         </div>`;
     } else {
-      let html = `<div class="modal-atletas-grid">`;
+      let html = `<div id="saAtletaDetalleInlineBox" style="display:none; margin-bottom:14px;"></div>`;
+      html += `<div class="modal-atletas-grid">`;
       info.atletas.forEach((atl, i) => {
         const parts = String(atl.nombre || '').trim().split(/\s+/);
         const shortName = parts.slice(0, 2).join(' ') || atl.nombre;
         const initial = String(parts[0] || 'A').charAt(0).toUpperCase();
         const color = SA_AVATAR_COLORS[i % SA_AVATAR_COLORS.length];
-        const micro = (atl.peso_kg ? `${atl.peso_kg} kg • ` : '') + (atl.email || 'Sin correo');
+        const pesoTxt = atl.peso_kg ? `${atl.peso_kg} kg` : '-- kg';
+        const altTxt  = atl.altura_cm ? `${atl.altura_cm} cm` : '-- cm';
+        const rutCount = Array.isArray(atl.rutinas_activas) ? atl.rutinas_activas.length : 0;
+        const micro = `${pesoTxt} • ${altTxt} • ${rutCount} ${rutCount === 1 ? 'rutina' : 'rutinas'}`;
 
         html += `
-          <div class="modal-ig-card glass-surface">
+          <div class="modal-ig-card glass-surface"
+               style="cursor:pointer; border:1px solid rgba(255,255,255,0.09); transition:all 0.18s ease;"
+               onclick="verFichaDetalladaAtletaAdmin(${eid}, ${i})">
             <div class="ig-avatar" style="background:${color};">${saEscHtml(initial)}</div>
             <div class="ig-info">
               <div class="ig-name" title="${saEscHtml(atl.nombre)}">${saEscHtml(shortName)}</div>
-              <div class="ig-micro" title="${saEscHtml(micro)}">${saEscHtml(micro)}</div>
+              <div class="ig-micro" title="${saEscHtml(atl.email || '')}">${saEscHtml(atl.email || 'Sin correo')}</div>
+              <div class="ig-micro" style="color:#c084fc; font-weight:700; margin-top:2px;">${saEscHtml(micro)}</div>
+            </div>
+            <div class="ig-btn-wrap" style="margin-top:6px;">
+              <span class="ig-btn"><i class="ti ti-id"></i> Ver Ficha</span>
             </div>
           </div>`;
       });
@@ -1790,6 +1871,97 @@ function abrirModalAtletasEntrenador(eid) {
 
   document.getElementById('modalAtletasEntrenador')?.classList.add('active');
   sincronizarEstadoModales();
+}
+
+function verFichaDetalladaAtletaAdmin(eid, idx) {
+  const info = SA_ENTRENADORES_ATLETAS[eid];
+  if (!info || !Array.isArray(info.atletas) || !info.atletas[idx]) return;
+  const a = info.atletas[idx];
+  const box = document.getElementById('saAtletaDetalleInlineBox');
+  if (!box) return;
+
+  const estBadge = a.estado_cuenta === 'activo'
+    ? '<span style="background:rgba(16,185,129,0.16);color:#34d399;border:1px solid rgba(16,185,129,0.35);padding:2px 8px;border-radius:99px;font-size:0.7rem;font-weight:800;">Activo</span>'
+    : `<span style="background:rgba(245,158,11,0.16);color:#fbbf24;border:1px solid rgba(245,158,11,0.35);padding:2px 8px;border-radius:99px;font-size:0.7rem;font-weight:800;">${saEscHtml(a.estado_cuenta)}</span>`;
+
+  const ruts = Array.isArray(a.rutinas_activas) ? a.rutinas_activas : [];
+  let rutsHtml = '';
+  if (ruts.length === 0) {
+    rutsHtml = `<div style="font-size:0.76rem;color:#64748b;">Sin rutinas activas asignadas.</div>`;
+  } else {
+    rutsHtml = ruts.map(r => `
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:6px 9px;border-radius:9px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);font-size:0.76rem;">
+        <div>
+          <strong style="color:#fff;">${saEscHtml(r.titulo)}</strong>
+          <span style="color:#a855f7;font-weight:700;margin-left:6px;">(${saEscHtml(saFormatearDiasRutina(r.dias_semana))})</span>
+        </div>
+        <span style="color:#94a3b8;font-weight:700;">${Number(r.total_ejercicios || 0)} ej.${Number(r.cardio_activo || 0) === 1 ? ` + Cardio ${Number(r.cardio_tiempo || 10)}m` : ''}</span>
+      </div>
+    `).join('');
+  }
+
+  const pag = a.pagos_resumen || {};
+  const asi = a.asistencias_resumen || {};
+
+  box.innerHTML = `
+    <div style="background:linear-gradient(145deg, rgba(138,43,226,0.14), rgba(15,16,28,0.96)); border:1px solid rgba(168,85,247,0.4); border-radius:16px; padding:14px; position:relative;">
+      <button type="button" onclick="document.getElementById('saAtletaDetalleInlineBox').style.display='none'"
+              style="position:absolute;top:10px;right:10px;width:28px;height:28px;border-radius:50%;border:none;background:rgba(255,255,255,0.08);color:#cbd5e1;cursor:pointer;display:grid;place-items:center;">
+        <i class="ti ti-x"></i>
+      </button>
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;padding-right:32px;">
+        <div style="width:42px;height:42px;border-radius:11px;background:#7c3aed;color:#fff;font-weight:800;display:grid;place-items:center;font-size:1.05rem;flex-shrink:0;">
+          ${saEscHtml(String(a.nombre || 'A').charAt(0).toUpperCase())}
+        </div>
+        <div style="min-width:0;">
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+            <strong style="color:#fff;font-size:0.96rem;">${saEscHtml(a.nombre)}</strong>
+            ${estBadge}
+          </div>
+          <div style="font-size:0.76rem;color:#94a3b8;word-break:break-all;">${saEscHtml(a.email)} &bull; Cédula: <strong style="color:#e2e8f0;">${saEscHtml(a.cedula || '--')}</strong></div>
+        </div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(105px,1fr));gap:8px;margin-bottom:12px;">
+        <div style="background:rgba(255,255,255,0.04);padding:8px 10px;border-radius:10px;">
+          <div style="font-size:0.62rem;color:#94a3b8;text-transform:uppercase;font-weight:700;">Edad / Género</div>
+          <div style="font-size:0.84rem;color:#fff;font-weight:800;">${a.edad ? `${a.edad} años` : '--'} &bull; ${saEscHtml(a.genero || '--')}</div>
+        </div>
+        <div style="background:rgba(255,255,255,0.04);padding:8px 10px;border-radius:10px;">
+          <div style="font-size:0.62rem;color:#94a3b8;text-transform:uppercase;font-weight:700;">Peso Actual / Inicial</div>
+          <div style="font-size:0.84rem;color:#fff;font-weight:800;">${a.peso_kg ? `${a.peso_kg} kg` : '--'} <span style="color:#94a3b8;font-size:0.74rem;">(Ini: ${a.peso_inicial ? `${a.peso_inicial} kg` : '--'})</span></div>
+        </div>
+        <div style="background:rgba(255,255,255,0.04);padding:8px 10px;border-radius:10px;">
+          <div style="font-size:0.62rem;color:#94a3b8;text-transform:uppercase;font-weight:700;">Altura / IMC</div>
+          <div style="font-size:0.84rem;color:#fff;font-weight:800;">${a.altura_cm ? `${a.altura_cm} cm` : '--'} &bull; IMC: ${a.imc || '--'}</div>
+        </div>
+        <div style="background:rgba(255,255,255,0.04);padding:8px 10px;border-radius:10px;">
+          <div style="font-size:0.62rem;color:#94a3b8;text-transform:uppercase;font-weight:700;">Objetivo</div>
+          <div style="font-size:0.78rem;color:#d8b4fe;font-weight:800;">${saEscHtml(a.objetivo || '--')}</div>
+        </div>
+        <div style="background:rgba(255,255,255,0.04);padding:8px 10px;border-radius:10px;">
+          <div style="font-size:0.62rem;color:#94a3b8;text-transform:uppercase;font-weight:700;">Asistencias</div>
+          <div style="font-size:0.82rem;color:#34d399;font-weight:800;">${Number(asi.sesiones_completadas || 0)} completadas ${asi.ultima_asistencia ? `<span style="display:block;font-size:0.68rem;color:#94a3b8;">Últ: ${saEscHtml(asi.ultima_asistencia)}</span>` : ''}</div>
+        </div>
+        <div style="background:rgba(255,255,255,0.04);padding:8px 10px;border-radius:10px;">
+          <div style="font-size:0.62rem;color:#94a3b8;text-transform:uppercase;font-weight:700;">Pagos / Mensualidad</div>
+          <div style="font-size:0.8rem;color:#fff;font-weight:800;">
+            ${a.monto_mensualidad ? `$${Number(a.monto_mensualidad).toFixed(2)}/mes` : 'Sin tarifa'}
+            <span style="display:block;font-size:0.68rem;color:#34d399;">${Number(pag.pagados_count || 0)} pagados ($${Number(pag.total_pagado_usd || 0).toFixed(2)}) · ${Number(pag.pendientes_count || 0)} pend.</span>
+          </div>
+        </div>
+      </div>
+
+      <div style="font-size:0.7rem;font-weight:800;color:#c084fc;text-transform:uppercase;letter-spacing:0.04em;margin-bottom:6px;">
+        <i class="ti ti-barbell"></i> Rutinas Activas (${ruts.length})
+      </div>
+      <div style="display:flex;flex-direction:column;gap:5px;">
+        ${rutsHtml}
+      </div>
+    </div>
+  `;
+  box.style.display = 'block';
+  box.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
 
 function cerrarModalAtletasEntrenador() {

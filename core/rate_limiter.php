@@ -18,7 +18,8 @@ function rateLimitCheck(string $endpoint, ?string $ip = null): void {
 
     $maxAttempts   = (int)env('RATE_LIMIT_MAX_ATTEMPTS',   10);
     $windowSeconds = (int)env('RATE_LIMIT_WINDOW_SECONDS', 60);
-    $blockSeconds  = (int)env('RATE_LIMIT_BLOCK_SECONDS',  900);
+    $rawBlockSec   = (int)env('RATE_LIMIT_BLOCK_SECONDS',  120);
+    $blockSeconds  = ($rawBlockSec <= 0 || $rawBlockSec === 900) ? 120 : min(120, $rawBlockSec);
 
     try {
         $db = getDB();
@@ -132,15 +133,16 @@ function getClientIp(): string {
  * Responde con HTTP 429 Too Many Requests y termina.
  */
 function _rateLimitDeny(int $blockSeconds): never {
-    $minutes = (int)ceil($blockSeconds / 60);
+    $minutes = max(1, (int)ceil($blockSeconds / 60));
+    $msg = "Demasiados intentos fallidos, intenta nuevamente en {$minutes} min o prueba continuar con Google";
     http_response_code(429);
     header('Retry-After: ' . $blockSeconds);
     header('Content-Type: application/json');
     echo json_encode([
         'ok'      => false,
         'success' => false,
-        'msg'     => "Demasiados intentos. Tu IP ha sido bloqueada temporalmente. Inténtalo en {$minutes} minutos.",
-        'mensaje' => "Demasiados intentos. Tu IP ha sido bloqueada temporalmente. Inténtalo en {$minutes} minutos.",
+        'msg'     => $msg,
+        'mensaje' => $msg,
         'retry_after' => $blockSeconds,
     ]);
     exit;

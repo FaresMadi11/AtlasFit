@@ -505,8 +505,22 @@ $csrf              = (string)($csrf ?? ($_SESSION['csrf_token'] ?? ''));
     <!-- SEARCH GLOBAL -->
     <div id="globalSearchContainer" style="position:relative; margin-bottom: 24px;">
       <i class="ti ti-search" style="position:absolute; left:16px; top:50%; transform:translateY(-50%); color:var(--muted); font-size:1.2rem;"></i>
-      <input type="text" id="drillSearch" oninput="buscarGlobalCMS()" class="drill-search" placeholder="Buscar cualquier ejercicio...">
+      <input type="search" id="drillSearch" name="xp_cat_ej_search_nofill" oninput="buscarGlobalCMS()" class="drill-search" placeholder="Buscar cualquier ejercicio..." autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" data-lpignore="true" data-1p-ignore="true" data-form-type="other" readonly onfocus="this.removeAttribute('readonly'); if(this.value.includes('@')){this.value=''; buscarGlobalCMS();}">
     </div>
+    <script>
+      document.addEventListener('DOMContentLoaded', function() {
+        const ds = document.getElementById('drillSearch');
+        if (ds && ds.value.includes('@')) {
+          ds.value = '';
+        }
+        setTimeout(function() {
+          if (ds && ds.value.includes('@')) {
+            ds.value = '';
+            if (typeof buscarGlobalCMS === 'function') buscarGlobalCMS();
+          }
+        }, 180);
+      });
+    </script>
 
     <!-- RESULTADOS BUSQUEDA GLOBALES -->
     <div id="drillSearchResults" class="ej-list" style="display:none; margin-bottom: 24px;"></div>

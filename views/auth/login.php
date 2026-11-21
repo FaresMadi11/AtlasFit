@@ -9,13 +9,10 @@ try {
     }
 } catch (\Throwable $e) {}
 $mapaMetaColorLogin = [
-    'classic'      => '#02040a',
-    'dark'         => '#02040a',
-    'obsidian'     => '#131118',
-    'royal-plum'   => '#190019',
-    'deep-ocean'   => '#06141b',
-    'nordic-frost' => '#121d1e',
-    'light'        => '#121024',
+    'classic'    => '#02040a',
+    'dark'       => '#02040a',
+    'obsidian'   => '#131118',
+    'deep-ocean' => '#06141b',
 ];
 $metaColorLogin = $mapaMetaColorLogin[$temaGlobalLogin] ?? '#02040a';
 ?><!DOCTYPE html>
@@ -72,8 +69,8 @@ $metaColorLogin = $mapaMetaColorLogin[$temaGlobalLogin] ?? '#02040a';
   try {
     var lsTheme = localStorage.getItem('xp_theme');
     var lsGVer  = Number(localStorage.getItem('xp_theme_gver') || '0');
-    if (navigator.onLine === false && lsTheme && ['classic','obsidian','royal-plum','deep-ocean','nordic-frost','dark','light'].indexOf(lsTheme) !== -1 && lsGVer >= dbGVer) {
-      savedTheme = lsTheme;
+    if (lsTheme && ['classic','obsidian','deep-ocean','dark'].indexOf(lsTheme) !== -1 && lsGVer >= dbGVer) {
+      savedTheme = (lsTheme === 'dark') ? 'classic' : lsTheme;
     } else {
       localStorage.setItem('xp_theme', dbTheme);
       localStorage.setItem('xp_theme_gver', String(dbGVer));
@@ -85,10 +82,7 @@ $metaColorLogin = $mapaMetaColorLogin[$temaGlobalLogin] ?? '#02040a';
     'classic': '#02040a',
     'dark': '#02040a',
     'obsidian': '#131118',
-    'royal-plum': '#190019',
-    'deep-ocean': '#06141b',
-    'nordic-frost': '#121d1e',
-    'light': '#121024'
+    'deep-ocean': '#06141b'
   };
   var metaEl = document.getElementById('loginThemeColorMeta');
   if (metaEl && metaMap[savedTheme]) {
@@ -248,14 +242,6 @@ html[data-theme="obsidian"] {
   --login-accent: #AAA2B3;
   --login-accent-glow: rgba(170, 162, 179, 0.28);
 }
-html[data-theme="royal-plum"] {
-  --login-bg: #1c0521;
-  --login-overlay: rgba(28, 5, 33, 0.28);
-  --login-orb1: rgba(223, 182, 178, 0.26);
-  --login-orb2: rgba(168, 72, 132, 0.32);
-  --login-accent: #DFB6B2;
-  --login-accent-glow: rgba(223, 182, 178, 0.28);
-}
 html[data-theme="deep-ocean"] {
   --login-bg: #051824;
   --login-overlay: rgba(5, 24, 36, 0.28);
@@ -263,22 +249,6 @@ html[data-theme="deep-ocean"] {
   --login-orb2: rgba(37, 99, 235, 0.22);
   --login-accent: #9BA8AB;
   --login-accent-glow: rgba(155, 168, 171, 0.28);
-}
-html[data-theme="nordic-frost"] {
-  --login-bg: #0d1f22;
-  --login-overlay: rgba(13, 31, 34, 0.28);
-  --login-orb1: rgba(176, 215, 216, 0.30);
-  --login-orb2: rgba(94, 234, 212, 0.22);
-  --login-accent: #B0D7D8;
-  --login-accent-glow: rgba(176, 215, 216, 0.30);
-}
-html[data-theme="light"] {
-  --login-bg: #151130;
-  --login-overlay: rgba(21, 17, 48, 0.28);
-  --login-orb1: rgba(139, 92, 246, 0.30);
-  --login-orb2: rgba(99, 102, 241, 0.24);
-  --login-accent: #A78BFA;
-  --login-accent-glow: rgba(167, 139, 250, 0.30);
 }
 
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}
@@ -1647,13 +1617,10 @@ select:-webkit-autofill:active {
   }
 
   const LOGIN_THEME_COLORS = {
-    'classic':      { bg: '#02040a', glow: 'rgba(138, 43, 226, 0.12)', particle: '#ffffff', showMahoraga: true },
-    'dark':         { bg: '#02040a', glow: 'rgba(138, 43, 226, 0.12)', particle: '#ffffff', showMahoraga: true },
-    'obsidian':     { bg: '#120e1c', glow: 'rgba(148, 128, 185, 0.22)', particle: '#e2dde7', showMahoraga: false },
-    'royal-plum':   { bg: '#1c0521', glow: 'rgba(195, 92, 148, 0.24)', particle: '#fbe4d8', showMahoraga: false },
-    'deep-ocean':   { bg: '#051824', glow: 'rgba(56, 189, 248, 0.20)', particle: '#ccd0cf', showMahoraga: false },
-    'nordic-frost': { bg: '#0d1f22', glow: 'rgba(135, 206, 210, 0.22)', particle: '#b0d7d8', showMahoraga: false },
-    'light':        { bg: '#151130', glow: 'rgba(139, 92, 246, 0.24)', particle: '#e9d5ff', showMahoraga: false }
+    'classic':    { bg: '#02040a', glow: 'rgba(138, 43, 226, 0.12)', particle: '#ffffff', showMahoraga: true },
+    'dark':       { bg: '#02040a', glow: 'rgba(138, 43, 226, 0.12)', particle: '#ffffff', showMahoraga: true },
+    'obsidian':   { bg: '#120e1c', glow: 'rgba(148, 128, 185, 0.22)', particle: '#e2dde7', showMahoraga: false },
+    'deep-ocean': { bg: '#051824', glow: 'rgba(56, 189, 248, 0.20)', particle: '#ccd0cf', showMahoraga: false }
   };
 
   function getActiveLoginThemeColors() {
@@ -1770,6 +1737,14 @@ $esStandbyEntrenador = ($esStandby && (($_GET['rol'] ?? '') === 'entrenador'));
 
   <!-- ══ VISTA LOGIN ══ -->
   <div id="view-login" class="auth-view"<?= $esLogin ? '' : ' style="display: none;" aria-hidden="true"' ?>>
+  <!-- Imagotipo sin fondo: silueta blanca + nombre de la web -->
+  <div class="login-brand-imagotipo" style="display:flex;align-items:center;justify-content:center;gap:12px;margin:0 auto 22px auto;padding:4px 0;background:transparent;user-select:none;">
+    <img src="<?= APP_URL ?>/assets/img/favicon.svg?v=<?= e($vIconSvg) ?>"
+         alt="Atlas Fit"
+         style="width:46px;height:46px;object-fit:contain;display:block;background:transparent;filter:drop-shadow(0 0 12px rgba(255,255,255,0.22));"
+         draggable="false">
+    <span style="font-size:1.45rem;font-weight:900;letter-spacing:2.5px;color:#ffffff;text-transform:uppercase;line-height:1;text-shadow:0 2px 14px rgba(0,0,0,0.65);">ATLAS FIT</span>
+  </div>
   <?php
     $flashMsg  = is_array($flash ?? null) ? trim((string)($flash['msg'] ?? $flash['error'] ?? '')) : '';
     $flashType = is_array($flash ?? null) ? (string)($flash['type'] ?? (!empty($flash['error']) ? 'error' : 'info')) : '';
@@ -1956,18 +1931,18 @@ $esStandbyEntrenador = ($esStandby && (($_GET['rol'] ?? '') === 'entrenador'));
           <small class="ibg-error" id="err_email" role="alert"></small>
         </div>
 
-        <div class="input-box-group" id="group_reg_pass" <?= $isGoogleMode ? 'style="display:none;"' : '' ?>>
+        <div class="input-box-group" id="group_reg_pass">
           <label for="reg_pass">Contraseña</label>
           <div class="pass-row">
-            <input type="password" id="reg_pass" name="password" placeholder="Mínimo 8 caracteres" autocomplete="new-password" aria-describedby="err_password">
+            <input type="password" id="reg_pass" name="password" placeholder="Mínimo 8 caracteres" required autocomplete="new-password" aria-required="true" aria-describedby="err_password">
             <button type="button" class="btn-eye" data-target="reg_pass" onclick="togglePassVisibility(this, event)" onpointerdown="event.stopPropagation();" aria-label="Mostrar u ocultar contraseña"><i class="ti ti-eye" aria-hidden="true"></i></button>
           </div>
           <small class="ibg-error" id="err_password" role="alert"></small>
         </div>
 
-        <div class="input-box-group" id="group_reg_pregunta" <?= $isGoogleMode ? 'style="display:none;"' : '' ?>>
+        <div class="input-box-group" id="group_reg_pregunta">
           <label for="reg_pregunta">Pregunta de Seguridad</label>
-          <select id="reg_pregunta" name="pregunta_seguridad" autocomplete="off" aria-describedby="err_pregunta_seguridad">
+          <select id="reg_pregunta" name="pregunta_seguridad" required autocomplete="off" aria-required="true" aria-describedby="err_pregunta_seguridad">
             <option value="<?= e(UsuarioModel::PREGUNTAS_SEGURIDAD[0]) ?>" selected><?= e(UsuarioModel::PREGUNTAS_SEGURIDAD[0]) ?></option>
             <?php for ($i = 1; $i < count(UsuarioModel::PREGUNTAS_SEGURIDAD); $i++): $q = UsuarioModel::PREGUNTAS_SEGURIDAD[$i]; ?>
             <option value="<?= e($q) ?>"><?= e($q) ?></option>
@@ -1976,9 +1951,9 @@ $esStandbyEntrenador = ($esStandby && (($_GET['rol'] ?? '') === 'entrenador'));
           <small class="ibg-error" id="err_pregunta_seguridad" role="alert"></small>
         </div>
 
-        <div class="input-box-group" id="group_reg_respuesta" <?= $isGoogleMode ? 'style="display:none;"' : '' ?>>
+        <div class="input-box-group" id="group_reg_respuesta">
           <label for="reg_respuesta">Respuesta de Seguridad</label>
-          <input type="text" id="reg_respuesta" name="respuesta_seguridad" placeholder="Tu respuesta secreta" maxlength="100" autocomplete="off" aria-describedby="err_respuesta_seguridad">
+          <input type="text" id="reg_respuesta" name="respuesta_seguridad" placeholder="Tu respuesta secreta" maxlength="100" required autocomplete="off" aria-required="true" aria-describedby="err_respuesta_seguridad">
           <small class="ibg-error" id="err_respuesta_seguridad" role="alert"></small>
         </div>
 
@@ -2240,7 +2215,7 @@ $esStandbyEntrenador = ($esStandby && (($_GET['rol'] ?? '') === 'entrenador'));
   <!-- ══ VISTA CONFIRMACIÓN STAND-BY ══ -->
   <div id="view-standby" class="auth-view" style="<?= $esStandby ? 'display: block;' : 'display: none;' ?>"<?= $esStandby ? '' : ' aria-hidden="true"' ?>>
     <div class="standby-icon-wrap" aria-hidden="true">
-      <i class="ti ti-shield-clock"></i>
+      <i class="ti ti-clock"></i>
     </div>
     <div style="text-align:center;">
       <span class="standby-status-pill"><i class="ti ti-clock"></i> Pendiente de Aprobación</span>
@@ -3272,20 +3247,18 @@ window.handleWizardStep1Next = async function(event) {
   } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(valEmail)) {
     errorField = 'reg_email';
     errorMsg   = 'Ingresa un correo electrónico con formato válido.';
-  } else if (!isGoogle) {
-    if (!valPass) {
-      errorField = 'reg_pass';
-      errorMsg   = 'Por favor ingresa una contraseña para tu cuenta.';
-    } else if (valPass.length < 8) {
-      errorField = 'reg_pass';
-      errorMsg   = 'La contraseña debe tener al menos 8 caracteres.';
-    } else if (!valPregunta) {
-      errorField = 'reg_pregunta';
-      errorMsg   = 'Por favor selecciona una pregunta de seguridad.';
-    } else if (!valRespuesta || valRespuesta.length < 2) {
-      errorField = 'reg_respuesta';
-      errorMsg   = 'Por favor escribe tu respuesta secreta (mínimo 2 letras).';
-    }
+  } else if (!valPass) {
+    errorField = 'reg_pass';
+    errorMsg   = 'Por favor ingresa una contraseña para tu cuenta.';
+  } else if (valPass.length < 8) {
+    errorField = 'reg_pass';
+    errorMsg   = 'La contraseña debe tener al menos 8 caracteres.';
+  } else if (!valPregunta) {
+    errorField = 'reg_pregunta';
+    errorMsg   = 'Por favor selecciona una pregunta de seguridad.';
+  } else if (!valRespuesta || valRespuesta.length < 2) {
+    errorField = 'reg_respuesta';
+    errorMsg   = 'Por favor escribe tu respuesta secreta (mínimo 2 letras).';
   }
 
   // Validación obligatoria de correo verificado por OTP para registros locales
@@ -3502,9 +3475,9 @@ async function submitRegistration(isOmitido = false) {
     cedula:              isTrainerMode ? '' : normalizarCedula(f['cedula']?.value || ''),
     codigo_entrenador:   isTrainerMode ? '' : (f['codigo_entrenador']?.value || '').trim().toUpperCase(),
     email:               (f['email']?.value || '').trim(),
-    password:            (!isGoogle && f['password']) ? f['password'].value.trim() : '',
-    pregunta_seguridad:  (!isGoogle && f['pregunta_seguridad']) ? f['pregunta_seguridad'].value : '',
-    respuesta_seguridad: (!isGoogle && f['respuesta_seguridad']) ? f['respuesta_seguridad'].value.trim() : '',
+    password:            (f['password']?.value || '').trim(),
+    pregunta_seguridad:  (f['pregunta_seguridad']?.value || ''),
+    respuesta_seguridad: (f['respuesta_seguridad']?.value || '').trim(),
     fecha_nacimiento:    isTrainerMode ? '' : (document.getElementById('fecha_nacimiento') || document.getElementById('regFechaNac')).value,
     peso_kg:             isTrainerMode ? '' : document.getElementById('regPesoInput').value,
     altura_cm:           isTrainerMode ? '' : document.getElementById('regAlturaInput').value,

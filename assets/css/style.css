@@ -130,50 +130,6 @@ html[data-theme="obsidian"] {
   --btn-text: #17151C;
 }
 
-/* ── ROYAL PLUM THEME (Paleta Ciruela & Lavanda Real) ───────────── */
-html[data-theme="royal-plum"] {
-  --bg: #190019;
-  --bg2: #2B124C;
-  --bg3: #3B1B66;
-  --card: #2B124C;
-  --border: #522B5B;
-  --border-accent: rgba(223, 182, 178, 0.45);
-
-  --accent-primary: #DFB6B2;
-  --accent-hover: #FBE4D8;
-  --accent-bg: rgba(223, 182, 178, 0.18);
-  --text-purple: #DFB6B2;
-
-  --accent: #DFB6B2;
-  --accent-light: #FBE4D8;
-  --accent2: #2B124C;
-  --accent-warm: #E11D48;
-
-  --danger: #F87171;
-  --danger-deep: #7F1D1D;
-  --warn: #F59E0B;
-  --success: #4ADE80;
-  --info: #DFB6B2;
-
-  --text: #FBE4D8;
-  --text2: #DFB6B2;
-  --muted: #854F6C;
-
-  --radius: 18px;
-  --radius-sm: 10px;
-  --shadow: 0 8px 32px rgba(0, 0, 0, 0.55);
-  --shadow-sm: 0 2px 12px rgba(0, 0, 0, 0.4);
-  --shadow-red: 0 8px 32px rgba(0, 0, 0, 0.55);
-  --trans: .22s cubic-bezier(.4, 0, .2, 1);
-
-  --nav-bg: #190019;
-  --card-glass: rgba(43, 18, 76, 0.92);
-  --card-border: rgba(82, 43, 91, 0.65);
-  --input-bg: #1E0D35;
-  --input-border: #522B5B;
-  --btn-text: #190019;
-}
-
 /* ── DEEP OCEAN THEME (Paleta Abismo Ártico @uiuxaadi) ───────────── */
 html[data-theme="deep-ocean"] {
   --bg: #06141B;
@@ -216,50 +172,6 @@ html[data-theme="deep-ocean"] {
   --input-bg: #0B1923;
   --input-border: #253745;
   --btn-text: #06141B;
-}
-
-/* ── NORDIC FROST THEME (Paleta Menta & Rosa Pastel @uiuxaadi) ───── */
-html[data-theme="nordic-frost"] {
-  --bg: #F1F7F7;
-  --bg2: #E3EDED;
-  --bg3: #D5E5E5;
-  --card: #FFFFFF;
-  --border: #DDD3D3;
-  --border-accent: rgba(93, 107, 107, 0.4);
-
-  --accent-primary: #5D6B6B;
-  --accent-hover: #4A5757;
-  --accent-bg: rgba(176, 215, 216, 0.3);
-  --text-purple: #5D6B6B;
-
-  --accent: #5D6B6B;
-  --accent-light: #B0D7D8;
-  --accent2: #F7CBCA;
-  --accent-warm: #F7CBCA;
-
-  --danger: #EF4444;
-  --danger-deep: #991B1B;
-  --warn: #D97706;
-  --success: #16A34A;
-  --info: #5D6B6B;
-
-  --text: #2D3737;
-  --text2: #5D6B6B;
-  --muted: #7E8C8C;
-
-  --radius: 18px;
-  --radius-sm: 10px;
-  --shadow: 0 6px 24px rgba(93, 107, 107, 0.12);
-  --shadow-sm: 0 2px 8px rgba(93, 107, 107, 0.08);
-  --shadow-red: 0 6px 24px rgba(239, 68, 68, 0.15);
-  --trans: .22s cubic-bezier(.4, 0, .2, 1);
-
-  --nav-bg: #FFFFFF;
-  --card-glass: rgba(255, 255, 255, 0.94);
-  --card-border: #DDD3D3;
-  --input-bg: #FFFFFF;
-  --input-border: #DDD3D3;
-  --btn-text: #FFFFFF;
 }
 
 /* ── LIGHT THEME ── */
@@ -534,51 +446,6 @@ html[data-theme="obsidian"] .xp-nav a.active {
   background: rgba(170, 162, 179, 0.12) !important;
 }
 
-/* ── Royal Plum theme background (sin wallpapers góticos) ── */
-html[data-theme="royal-plum"]::before {
-  background-image: 
-    radial-gradient(circle at 50% 0%, rgba(82, 43, 91, 0.55) 0%, rgba(25, 0, 25, 0.98) 75%),
-    linear-gradient(180deg, #190019 0%, #190019 100%) !important;
-  background-color: #190019 !important;
-}
-html[data-theme="royal-plum"] body {
-  background-color: #190019 !important;
-}
-html[data-theme="royal-plum"] .btn-primary,
-html[data-theme="royal-plum"] .cr-btn-save,
-html[data-theme="royal-plum"] .btn-xp-primary,
-html[data-theme="royal-plum"] .form-submit-btn,
-html[data-theme="royal-plum"] .btn-drill,
-html[data-theme="royal-plum"] .xp-pwa-install-btn,
-html[data-theme="royal-plum"] .t-filter-btn.active {
-  background: #DFB6B2 !important;
-  color: #190019 !important;
-  font-weight: 800 !important;
-  box-shadow: 0 4px 16px rgba(223, 182, 178, 0.25) !important;
-}
-html[data-theme="royal-plum"] .btn-primary:hover,
-html[data-theme="royal-plum"] .cr-btn-save:hover,
-html[data-theme="royal-plum"] .btn-xp-primary:hover,
-html[data-theme="royal-plum"] .form-submit-btn:hover,
-html[data-theme="royal-plum"] .btn-drill:hover,
-html[data-theme="royal-plum"] .xp-pwa-install-btn:hover {
-  background: #FBE4D8 !important;
-  color: #190019 !important;
-  box-shadow: 0 6px 22px rgba(251, 228, 216, 0.35) !important;
-}
-html[data-theme="royal-plum"] .btn-drill i,
-html[data-theme="royal-plum"] .btn-primary i,
-html[data-theme="royal-plum"] .form-submit-btn i {
-  color: #190019 !important;
-}
-html[data-theme="royal-plum"] .xp-nav a.active,
-html[data-theme="royal-plum"] .xp-nav a.active svg {
-  color: #DFB6B2 !important;
-}
-html[data-theme="royal-plum"] .xp-nav a.active {
-  background: rgba(223, 182, 178, 0.12) !important;
-}
-
 /* ── Deep Ocean theme background (sin wallpapers góticos) ── */
 html[data-theme="deep-ocean"]::before {
   background-image: 
@@ -622,58 +489,6 @@ html[data-theme="deep-ocean"] .xp-nav a.active svg {
 }
 html[data-theme="deep-ocean"] .xp-nav a.active {
   background: rgba(155, 168, 171, 0.12) !important;
-}
-
-/* ── Nordic Frost theme background (sin wallpapers góticos) ── */
-html[data-theme="nordic-frost"]::before {
-  background-image: 
-    radial-gradient(circle at 50% 0%, rgba(176, 215, 216, 0.45) 0%, rgba(241, 247, 247, 0.96) 75%),
-    linear-gradient(180deg, #F1F7F7 0%, #F1F7F7 100%) !important;
-  background-color: #F1F7F7 !important;
-}
-html[data-theme="nordic-frost"] body {
-  background-color: #F1F7F7 !important;
-  color: #2D3737 !important;
-}
-html[data-theme="nordic-frost"] .btn-primary,
-html[data-theme="nordic-frost"] .cr-btn-save,
-html[data-theme="nordic-frost"] .btn-xp-primary,
-html[data-theme="nordic-frost"] .form-submit-btn,
-html[data-theme="nordic-frost"] .btn-drill,
-html[data-theme="nordic-frost"] .xp-pwa-install-btn,
-html[data-theme="nordic-frost"] .t-filter-btn.active {
-  background: #5D6B6B !important;
-  color: #FFFFFF !important;
-  font-weight: 800 !important;
-  box-shadow: 0 4px 16px rgba(93, 107, 107, 0.25) !important;
-}
-html[data-theme="nordic-frost"] .btn-primary:hover,
-html[data-theme="nordic-frost"] .cr-btn-save:hover,
-html[data-theme="nordic-frost"] .btn-xp-primary:hover,
-html[data-theme="nordic-frost"] .form-submit-btn:hover,
-html[data-theme="nordic-frost"] .btn-drill:hover,
-html[data-theme="nordic-frost"] .xp-pwa-install-btn:hover {
-  background: #4A5757 !important;
-  color: #FFFFFF !important;
-  box-shadow: 0 6px 20px rgba(74, 87, 87, 0.3) !important;
-}
-html[data-theme="nordic-frost"] .btn-drill i,
-html[data-theme="nordic-frost"] .btn-primary i,
-html[data-theme="nordic-frost"] .form-submit-btn i {
-  color: #FFFFFF !important;
-}
-html[data-theme="nordic-frost"] .xp-nav a.active,
-html[data-theme="nordic-frost"] .xp-nav a.active svg {
-  color: #5D6B6B !important;
-}
-html[data-theme="nordic-frost"] .xp-nav a.active {
-  background: rgba(176, 215, 216, 0.35) !important;
-}
-html[data-theme="nordic-frost"] .t-card-title,
-html[data-theme="nordic-frost"] .t-card-price,
-html[data-theme="nordic-frost"] .t-header-left,
-html[data-theme="nordic-frost"] .xp-theme-name {
-  color: #2D3737 !important;
 }
 
 /* ── Selector de Temas Visuales (Bento UI) ── */
@@ -731,20 +546,10 @@ html[data-theme="obsidian"] .xp-theme-card.is-active {
   background: rgba(170, 162, 179, 0.08);
   box-shadow: 0 4px 16px rgba(170, 162, 179, 0.18);
 }
-html[data-theme="royal-plum"] .xp-theme-card.is-active {
-  border-color: #DFB6B2;
-  background: rgba(223, 182, 178, 0.1);
-  box-shadow: 0 4px 16px rgba(223, 182, 178, 0.18);
-}
 html[data-theme="deep-ocean"] .xp-theme-card.is-active {
   border-color: #9BA8AB;
   background: rgba(155, 168, 171, 0.1);
   box-shadow: 0 4px 16px rgba(155, 168, 171, 0.18);
-}
-html[data-theme="nordic-frost"] .xp-theme-card.is-active {
-  border-color: #5D6B6B;
-  background: rgba(176, 215, 216, 0.18);
-  box-shadow: 0 4px 16px rgba(93, 107, 107, 0.15);
 }
 .xp-theme-card-head {
   display: flex;
@@ -6681,19 +6486,7 @@ button, a, input, select, textarea, .btn-xp, .wd-check-btn, .wd-day-tab {
   html[data-theme="light"] .solicitud-card,
   html[data-theme="light"] .wd-hero-card,
   html[data-theme="light"] .wd-progress-card,
-  html[data-theme="light"] .wd-day-tab,
-  html[data-theme="nordic-frost"] .card-bento,
-  html[data-theme="nordic-frost"] .stat-card,
-  html[data-theme="nordic-frost"] .dash-stat-card,
-  html[data-theme="nordic-frost"] .exercise-item,
-  html[data-theme="nordic-frost"] .wd-ex-card,
-  html[data-theme="nordic-frost"] .ig-card,
-  html[data-theme="nordic-frost"] .glass-surface,
-  html[data-theme="nordic-frost"] .cl-search-wrap,
-  html[data-theme="nordic-frost"] .solicitud-card,
-  html[data-theme="nordic-frost"] .wd-hero-card,
-  html[data-theme="nordic-frost"] .wd-progress-card,
-  html[data-theme="nordic-frost"] .wd-day-tab {
+  html[data-theme="light"] .wd-day-tab {
     background: rgba(255, 255, 255, 0.96) !important;
     box-shadow: 0 4px 14px rgba(0, 0, 0, 0.07) !important;
   }
@@ -6713,8 +6506,7 @@ button, a, input, select, textarea, .btn-xp, .wd-check-btn, .wd-day-tab {
     background: rgba(10, 10, 16, 0.92) !important;
   }
 
-  html[data-theme="light"] .xp-nav,
-  html[data-theme="nordic-frost"] .xp-nav {
+  html[data-theme="light"] .xp-nav {
     background: rgba(255, 255, 255, 0.95) !important;
     border-top-color: var(--border) !important;
   }
@@ -6848,45 +6640,33 @@ html[data-theme="light"] .xp-skeleton-base {
   to { transform: rotate(360deg); }
 }
 
-/* ── Overrides de contraste para temas claros (light / nordic-frost) ── */
+/* ── Overrides de contraste para temas claros ── */
 html[data-theme="light"] .subnivel-card,
-html[data-theme="nordic-frost"] .subnivel-card,
-html[data-theme="light"] .goal-chip,
-html[data-theme="nordic-frost"] .goal-chip {
+html[data-theme="light"] .goal-chip {
   background: var(--surface, #f8fafc);
   border-color: var(--border, rgba(15, 23, 42, 0.12));
 }
 html[data-theme="light"] .subnivel-card-title,
-html[data-theme="nordic-frost"] .subnivel-card-title,
-html[data-theme="light"] .goal-chip-title,
-html[data-theme="nordic-frost"] .goal-chip-title {
+html[data-theme="light"] .goal-chip-title {
   color: var(--text, #0f172a);
 }
 html[data-theme="light"] .subnivel-card-desc,
-html[data-theme="nordic-frost"] .subnivel-card-desc,
-html[data-theme="light"] .goal-chip-icon,
-html[data-theme="nordic-frost"] .goal-chip-icon {
+html[data-theme="light"] .goal-chip-icon {
   color: var(--text2, #475569);
 }
-html[data-theme="light"] .subnivel-card-pill,
-html[data-theme="nordic-frost"] .subnivel-card-pill {
+html[data-theme="light"] .subnivel-card-pill {
   background: rgba(138, 43, 226, 0.12);
   color: #6d28d9;
 }
 html[data-theme="light"] .goal-chip.selected .goal-chip-title,
-html[data-theme="light"] .goal-chip.active .goal-chip-title,
-html[data-theme="nordic-frost"] .goal-chip.selected .goal-chip-title,
-html[data-theme="nordic-frost"] .goal-chip.active .goal-chip-title {
+html[data-theme="light"] .goal-chip.active .goal-chip-title {
   color: var(--text, #0f172a) !important;
 }
 html[data-theme="light"] .goal-chip.selected .goal-chip-icon,
-html[data-theme="light"] .goal-chip.active .goal-chip-icon,
-html[data-theme="nordic-frost"] .goal-chip.selected .goal-chip-icon,
-html[data-theme="nordic-frost"] .goal-chip.active .goal-chip-icon {
+html[data-theme="light"] .goal-chip.active .goal-chip-icon {
   color: #7c3aed !important;
 }
-html[data-theme="light"] .xp-nav-brand .brand-icon img,
-html[data-theme="nordic-frost"] .xp-nav-brand .brand-icon img {
+html[data-theme="light"] .xp-nav-brand .brand-icon img {
   filter: brightness(0);
 }
 

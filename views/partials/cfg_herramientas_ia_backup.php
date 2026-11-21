@@ -732,7 +732,6 @@ body.xp-modal-active, html.xp-modal-active { overflow: hidden !important; height
           </div>
         </div>
         <div class="xp-backup-metric">
-        <div class="xp-backup-metric">
           <div class="xp-backup-metric-icon"><i class="ti ti-barbell"></i></div>
           <div class="xp-backup-metric-data">
             <span class="xp-backup-metric-label"><?= $xpHerramientasEsAdmin ? 'Series y Registros' : 'Series de tus Atletas' ?></span>

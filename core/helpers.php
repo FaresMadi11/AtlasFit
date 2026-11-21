@@ -1373,7 +1373,12 @@ function sincronizarSesionAsistencia(PDO $db, int $clienteId, int $rutinaId, str
  * - `tema_usuario_{uid}`: preferencia privada `{tema}|{globalVer}` del usuario (entrenador o superadmin).
  */
 function xpResolverTemaWeb(PDO $db, ?int $userId = null): array {
-    $validos = ['classic', 'obsidian', 'royal-plum', 'deep-ocean', 'nordic-frost', 'dark', 'light'];
+    $validos = ['classic', 'obsidian', 'deep-ocean', 'dark'];
+    $normalizar = static function(string $t) use ($validos): string {
+        $t = strtolower(trim($t));
+        if ($t === 'dark') return 'classic';
+        return in_array($t, $validos, true) ? $t : 'classic';
+    };
     $temaGlobal = 'classic';
     $globalVer  = 1;
     $alcance    = 'personal';
@@ -1391,8 +1396,8 @@ function xpResolverTemaWeb(PDO $db, ?int $userId = null): array {
         while ($row = $st->fetch(PDO::FETCH_ASSOC)) {
             $kv[$row['clave']] = (string)($row['valor'] ?? '');
         }
-        if (!empty($kv['tema_sistema']) && in_array(trim($kv['tema_sistema']), $validos, true)) {
-            $temaGlobal = trim($kv['tema_sistema']);
+        if (!empty($kv['tema_sistema'])) {
+            $temaGlobal = $normalizar($kv['tema_sistema']);
         }
         if (!empty($kv['tema_global_ver']) && is_numeric($kv['tema_global_ver'])) {
             $globalVer = max(1, (int)$kv['tema_global_ver']);
@@ -1410,9 +1415,9 @@ function xpResolverTemaWeb(PDO $db, ?int $userId = null): array {
     $temaEfectivo = $temaGlobal;
     if ($userRaw !== '') {
         $partes = explode('|', $userRaw, 2);
-        $uTema  = trim($partes[0] ?? '');
+        $uTema  = $normalizar($partes[0] ?? '');
         $uVer   = isset($partes[1]) && is_numeric($partes[1]) ? (int)$partes[1] : $globalVer;
-        if (in_array($uTema, $validos, true) && $uVer >= $globalVer) {
+        if ($uVer >= $globalVer) {
             $temaEfectivo = $uTema;
         }
     }

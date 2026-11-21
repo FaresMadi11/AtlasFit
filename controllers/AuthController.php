@@ -43,6 +43,12 @@ function authLogin(string $vistaInicial = 'login'): void {
     header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
     header('Pragma: no-cache');
 
+    // Si se accede al login o registro sin el parámetro ?google=1, limpiar cualquier sesión residual de Google Onboarding
+    // para que nunca queden bloqueados u ocultos los campos del formulario de registro.
+    if (empty($_GET['google'])) {
+        unset($_SESSION['google_onboarding']);
+    }
+
     $tieneRefUrl = false;
     if (!empty($_GET['ref']) && is_string($_GET['ref'])) {
         $tieneRefUrl = true;
@@ -344,6 +350,7 @@ function authDoLogin(): void {
 
         // ── 7. Login exitoso: establecer sesión ──
         session_regenerate_id(true);
+        unset($_SESSION['flash']);
 
         $_SESSION['user_id'] = (int)$user['id'];
         $_SESSION['nombre']  = $user['nombre'];
@@ -554,19 +561,22 @@ function authDoRegistro(): void {
         if ($esEntrenador) {
             $nombreCompleto = trim($nombres . ' ' . $apellidos);
 
+            if (strlen($pass) < 8) {
+                authRegistroError('La contraseña debe tener al menos 8 caracteres.', 'password');
+            }
+            if (strlen($pass) > 1000) {
+                authRegistroError('Contraseña demasiado larga.', 'password');
+            }
+            if (!in_array($pregunta, UsuarioModel::PREGUNTAS_SEGURIDAD, true)) {
+                authRegistroError('Selecciona una pregunta de seguridad.', 'pregunta_seguridad');
+            }
+            if (mb_strlen($respuesta) < 2) {
+                authRegistroError('La respuesta de seguridad es obligatoria (mínimo 2 caracteres).', 'respuesta_seguridad');
+            }
+            $hashPassEnt = password_hash($pass, PASSWORD_BCRYPT, ['cost' => 12]);
+            $hashRespEnt = password_hash(strtolower(trim($respuesta)), PASSWORD_DEFAULT);
+
             if (!$isGoogle) {
-                if (strlen($pass) < 8) {
-                    authRegistroError('La contraseña debe tener al menos 8 caracteres.', 'password');
-                }
-                if (strlen($pass) > 1000) {
-                    authRegistroError('Contraseña demasiado larga.', 'password');
-                }
-                if (!in_array($pregunta, UsuarioModel::PREGUNTAS_SEGURIDAD, true)) {
-                    authRegistroError('Selecciona una pregunta de seguridad.', 'pregunta_seguridad');
-                }
-                if (mb_strlen($respuesta) < 2) {
-                    authRegistroError('La respuesta de seguridad es obligatoria (mínimo 2 caracteres).', 'respuesta_seguridad');
-                }
                 if ($um->emailExists($email)) {
                     authRegistroError('Este correo ya está registrado.', 'email', 409);
                 }
@@ -574,9 +584,9 @@ function authDoRegistro(): void {
                 $uid = $um->registrarEntrenadorPendiente(
                     $nombreCompleto,
                     $email,
-                    password_hash($pass, PASSWORD_BCRYPT, ['cost' => 12]),
+                    $hashPassEnt,
                     $pregunta,
-                    password_hash(strtolower(trim($respuesta)), PASSWORD_DEFAULT)
+                    $hashRespEnt
                 );
             } else {
                 $googleSession = $_SESSION['google_onboarding'] ?? [];
@@ -591,8 +601,8 @@ function authDoRegistro(): void {
                 try {
                     if ($user) {
                         $uid = (int)$user['id'];
-                        $db->prepare("UPDATE usuarios SET nombre = ?, rol = 'entrenador', activo = 0, estado_cuenta = 'pendiente', auth_provider = 'google' WHERE id = ?")
-                           ->execute([$nombreCompleto, $uid]);
+                        $db->prepare("UPDATE usuarios SET nombre = ?, password_hash = ?, pregunta_seguridad = ?, respuesta_seguridad = ?, rol = 'entrenador', activo = 0, estado_cuenta = 'pendiente', auth_provider = 'google' WHERE id = ?")
+                           ->execute([$nombreCompleto, $hashPassEnt, $pregunta, $hashRespEnt, $uid]);
                         // Limpiar fila vacía de clientes si fue creada por el onboarding temporal de Google
                         $db->prepare("DELETE FROM clientes WHERE usuario_id = ? AND cedula IS NULL AND peso_kg IS NULL AND altura_cm IS NULL")
                            ->execute([$uid]);
@@ -600,10 +610,10 @@ function authDoRegistro(): void {
                         $googleId  = $googleSession['google_id'] ?? null;
                         $avatarUrl = $googleSession['avatar_url'] ?? null;
                         $stIns = $db->prepare(
-                            "INSERT INTO usuarios (nombre, email, password_hash, rol, google_id, auth_provider, avatar_url, activo, estado_cuenta)
-                             VALUES (?, ?, '', 'entrenador', ?, 'google', ?, 0, 'pendiente')"
+                            "INSERT INTO usuarios (nombre, email, password_hash, pregunta_seguridad, respuesta_seguridad, rol, google_id, auth_provider, avatar_url, activo, estado_cuenta)
+                             VALUES (?, ?, ?, ?, ?, 'entrenador', ?, 'google', ?, 0, 'pendiente')"
                         );
-                        $stIns->execute([$nombreCompleto, $email, $googleId, $avatarUrl]);
+                        $stIns->execute([$nombreCompleto, $email, $hashPassEnt, $pregunta, $hashRespEnt, $googleId, $avatarUrl]);
                         $uid = (int)$db->lastInsertId();
                     }
                     $db->commit();
@@ -665,20 +675,22 @@ function authDoRegistro(): void {
 
         $entrenadorId = (int)$refEnt['entrenador_id'];
 
-        if (!$isGoogle) {
-            if (strlen($pass) < 8) {
-                authRegistroError('La contraseña debe tener al menos 8 caracteres.', 'password');
-            }
-            if (strlen($pass) > 1000) {
-                authRegistroError('Contraseña demasiado larga.', 'password');
-            }
-            if (!in_array($pregunta, UsuarioModel::PREGUNTAS_SEGURIDAD, true)) {
-                authRegistroError('Selecciona una pregunta de seguridad.', 'pregunta_seguridad');
-            }
-            if (mb_strlen($respuesta) < 2) {
-                authRegistroError('La respuesta de seguridad es obligatoria (mínimo 2 caracteres).', 'respuesta_seguridad');
-            }
+        if (strlen($pass) < 8) {
+            authRegistroError('La contraseña debe tener al menos 8 caracteres.', 'password');
+        }
+        if (strlen($pass) > 1000) {
+            authRegistroError('Contraseña demasiado larga.', 'password');
+        }
+        if (!in_array($pregunta, UsuarioModel::PREGUNTAS_SEGURIDAD, true)) {
+            authRegistroError('Selecciona una pregunta de seguridad.', 'pregunta_seguridad');
+        }
+        if (mb_strlen($respuesta) < 2) {
+            authRegistroError('La respuesta de seguridad es obligatoria (mínimo 2 caracteres).', 'respuesta_seguridad');
+        }
+        $hashPassAtl = password_hash($pass, PASSWORD_BCRYPT, ['cost' => 12]);
+        $hashRespAtl = password_hash(strtolower(trim($respuesta)), PASSWORD_DEFAULT);
 
+        if (!$isGoogle) {
             // ── 5. Unicidad ──
             if ($um->emailExists($email)) {
                 authRegistroError('Este correo ya está registrado.', 'email', 409);
@@ -691,10 +703,10 @@ function authDoRegistro(): void {
             $ids = $um->registrarAtleta(
                 $nombres . ' ' . $apellidos,
                 $email,
-                password_hash($pass, PASSWORD_BCRYPT, ['cost' => 12]),
+                $hashPassAtl,
                 $cedula,
                 $pregunta,
-                password_hash(strtolower(trim($respuesta)), PASSWORD_DEFAULT),
+                $hashRespAtl,
                 $entrenadorId > 0 ? $entrenadorId : null,
                 $fechaNac,
                 $pesoKg,
@@ -722,13 +734,13 @@ function authDoRegistro(): void {
             try {
                 if ($user) {
                     $uid = (int)$user['id'];
-                    $db->prepare("UPDATE usuarios SET nombre = ?, estado_cuenta = 'pendiente', auth_provider = 'google' WHERE id = ?")
-                       ->execute([$nombres . ' ' . $apellidos, $uid]);
+                    $db->prepare("UPDATE usuarios SET nombre = ?, password_hash = ?, pregunta_seguridad = ?, respuesta_seguridad = ?, estado_cuenta = 'pendiente', auth_provider = 'google' WHERE id = ?")
+                       ->execute([$nombres . ' ' . $apellidos, $hashPassAtl, $pregunta, $hashRespAtl, $uid]);
                 } else {
                     $googleId  = $googleSession['google_id'] ?? null;
                     $avatarUrl = $googleSession['avatar_url'] ?? null;
-                    $stIns = $db->prepare("INSERT INTO usuarios (nombre, email, password_hash, rol, google_id, auth_provider, avatar_url, estado_cuenta) VALUES (?, ?, '', 'cliente', ?, 'google', ?, 'pendiente')");
-                    $stIns->execute([$nombres . ' ' . $apellidos, $email, $googleId, $avatarUrl]);
+                    $stIns = $db->prepare("INSERT INTO usuarios (nombre, email, password_hash, pregunta_seguridad, respuesta_seguridad, rol, google_id, auth_provider, avatar_url, estado_cuenta) VALUES (?, ?, ?, ?, ?, 'cliente', ?, 'google', ?, 'pendiente')");
+                    $stIns->execute([$nombres . ' ' . $apellidos, $email, $hashPassAtl, $pregunta, $hashRespAtl, $googleId, $avatarUrl]);
                     $uid = (int)$db->lastInsertId();
                 }
 
