@@ -719,7 +719,10 @@ function saRender() {
     bodyHtml = `<div class="cri-ejercicios-list">`;
     data.ejercicios.forEach((ej, idx) => {
       const ejId = Number(ej.id || 0);
-      const seriesArr = Array.isArray(ej.series) && ej.series.length > 0 ? ej.series : [];
+      const rawSeries = Array.isArray(ej.series_detalle) && ej.series_detalle.length > 0
+        ? ej.series_detalle
+        : (Array.isArray(ej.series) && ej.series.length > 0 ? ej.series : []);
+      const seriesArr = rawSeries;
       const totalS = seriesArr.length || Number(ej.series_total || 3);
       const hechasS = seriesArr.filter(s => s.completado).length;
       const allDone = totalS > 0 && hechasS >= totalS;
@@ -852,11 +855,24 @@ async function saToggleSerie(ejercicioId, numSerie, imp, unidad, estabaCompletad
   }
 }
 
-function saActivarModoEdicion() {
+async function saActivarModoEdicion() {
   if (!saCurrentData || !saCurrentData.rutina) return;
+  let sourceData = saCurrentData;
+  const rId = Number(saCurrentData.rutina.id || 0);
+  if (saCurrentData.modo === 'historial' && rId > 0) {
+    try {
+      const resProg = await fetch(`${APP}/admin/api-dia-detalle?fecha=${encodeURIComponent(saCurrentFecha)}&programada=1&rutina_id=${rId}`);
+      if (resProg.ok) {
+        const dProg = await resProg.json();
+        if (dProg && dProg.ok && Array.isArray(dProg.ejercicios) && dProg.ejercicios.length > 0) {
+          sourceData = dProg;
+        }
+      }
+    } catch (_) {}
+  }
   saEditMode = true;
   saCreateMode = false;
-  const r = saCurrentData.rutina;
+  const r = sourceData.rutina || saCurrentData.rutina;
   const dtObj = new Date(saCurrentFecha + 'T12:00:00');
   const currentDow = dtObj.getDay() === 0 ? 7 : dtObj.getDay();
 
@@ -872,8 +888,11 @@ function saActivarModoEdicion() {
     cardio_activo: Number(r.cardio_activo || 0) === 1,
     cardio_tiempo: Number(r.cardio_tiempo || 10),
     cardio_indicaciones: String(r.cardio_indicaciones || ''),
-    ejercicios: (saCurrentData.ejercicios || []).map(ej => {
-      const sArr = Array.isArray(ej.series) && ej.series.length > 0 ? ej.series : [{ numero: 1, peso: '', reps: 10 }, { numero: 2, peso: '', reps: 10 }, { numero: 3, peso: '', reps: 10 }];
+    ejercicios: (sourceData.ejercicios || []).map(ej => {
+      const rawS = Array.isArray(ej.series_detalle) && ej.series_detalle.length > 0
+        ? ej.series_detalle
+        : (Array.isArray(ej.series) && ej.series.length > 0 ? ej.series : null);
+      const sArr = rawS || [{ numero: 1, peso: '', reps: 10 }, { numero: 2, peso: '', reps: 10 }, { numero: 3, peso: '', reps: 10 }];
       return {
         id: Number(ej.id || 0),
         nombre: ej.nombre || '',

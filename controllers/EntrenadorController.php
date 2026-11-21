@@ -4348,6 +4348,7 @@ function entApiActualizarRutinaCompleta(): void {
         $ejercicios = [];
     }
 
+    CatalogoService::asegurarColumnasScope($db);
     try {
         $db->beginTransaction();
 
@@ -4417,8 +4418,8 @@ function entApiActualizarRutinaCompleta(): void {
 
         $stIns = $db->prepare("
             INSERT INTO ejercicios 
-            (rutina_id, nombre, series, repeticiones, rir, orden, tipo_implemento, unidad_carga, descripcion, grupo_muscular, equipamiento, imagen_path, imagen_demo_path)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            (rutina_id, nombre, series, repeticiones, rir, orden, tipo_implemento, unidad_carga, descripcion, grupo_muscular, imagen_path, imagen_demo_path)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ");
 
         $orden = 1;
@@ -4458,9 +4459,10 @@ function entApiActualizarRutinaCompleta(): void {
                     if (!in_array($sTipo, ['normal', 'calentamiento', 'fallo', 'drop'], true)) {
                         $sTipo = 'normal';
                     }
-                    $sKg   = isset($sData['peso']) && $sData['peso'] !== '' && $sData['peso'] !== null && is_numeric($sData['peso']) ? (float)$sData['peso'] : null;
+                    $sKg   = isset($sData['peso']) && $sData['peso'] !== '' && $sData['peso'] !== null && is_numeric($sData['peso']) ? max(0.0, min(9999.0, (float)$sData['peso'])) : null;
                     if ($imp === 'sin_peso') $sKg = null;
-                    $sRep  = isset($sData['reps']) && is_numeric($sData['reps']) ? (int)$sData['reps'] : (int)$reps;
+                    $sRepRaw = isset($sData['reps']) && is_numeric($sData['reps']) ? (int)$sData['reps'] : ((int)preg_replace('/\D/', '', (string)($sData['reps'] ?? $reps)) ?: 10);
+                    $sRep  = max(1, min(250, $sRepRaw));
                     $sRir  = isset($sData['rir']) && $sData['rir'] !== '' && $sData['rir'] !== null && is_numeric($sData['rir']) ? max(0, min(5, (int)$sData['rir'])) : $rirVal;
                     $stInsPlS->execute([$plEjId, $sNum, $sTipo, $sKg, $sRep, $sRir]);
                     if ($sKg !== null) {
@@ -4509,7 +4511,7 @@ function entApiActualizarRutinaCompleta(): void {
 
                 $stIns->execute([
                     $rutinaId, $nombre, $series, $reps, $rirVal, $orden,
-                    $imp, $unidad, $desc, $grupo, $equip, $imgPath, $imgDemoPath
+                    $imp, $unidad, $desc, $grupo, $imgPath, $imgDemoPath
                 ]);
             }
             $orden++;
@@ -4522,7 +4524,7 @@ function entApiActualizarRutinaCompleta(): void {
             $db->rollBack();
         }
         error_log('[entApiActualizarRutinaCompleta] Error: ' . $e->getMessage());
-        jsonOut(false, 'Error al actualizar la rutina: ' . $e->getMessage(), [], 500);
+        jsonOut(false, 'Error interno al actualizar la rutina.', [], 500);
     }
     }
 

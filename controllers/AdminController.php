@@ -5,6 +5,7 @@ declare(strict_types=1);
 requireRole('admin');
 require_once BASE_DIR . '/models/UsuarioModel.php';
 require_once BASE_DIR . '/core/progreso.php';
+require_once BASE_DIR . '/core/CatalogoService.php';
 
 $action = $segment[1] ?? 'rutina';
 
@@ -148,7 +149,10 @@ function adminApiDiaDetalle(): void {
             $fecha = date('Y-m-d');
         }
 
-        $resultado = obtenerDetalleDia($db, $adminClienteId, $fecha, 'entrenador');
+        $soloProgramada = !empty($_GET['programada']);
+        $rutinaIdForzada = (int)($_GET['rutina_id'] ?? 0);
+
+        $resultado = obtenerDetalleDia($db, $adminClienteId, $fecha, 'entrenador', $soloProgramada, $rutinaIdForzada);
         $resultado['dias_programados'] = adminObtenerDiasProgramados($db, $adminClienteId);
         $resultado['cliente_id']       = $adminClienteId;
 
@@ -205,6 +209,7 @@ function adminApiCrearRutinaPropia(): void {
         jsonOut(false, 'Agrega al menos un ejercicio a la rutina.');
     }
 
+    CatalogoService::asegurarColumnasScope($db);
     try {
         $db->beginTransaction();
 
@@ -264,8 +269,8 @@ function adminApiCrearRutinaPropia(): void {
         ");
         $stInsEj = $db->prepare("
             INSERT INTO ejercicios
-            (rutina_id, nombre, series, repeticiones, rir, orden, tipo_implemento, unidad_carga, descripcion, grupo_muscular, equipamiento, imagen_path, imagen_demo_path)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            (rutina_id, nombre, series, repeticiones, rir, orden, tipo_implemento, unidad_carga, descripcion, grupo_muscular, imagen_path, imagen_demo_path)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ");
 
         $orden = 1;
@@ -289,7 +294,9 @@ function adminApiCrearRutinaPropia(): void {
                 $unidad = ($imp === 'sin_peso') ? 'ninguna' : 'kg';
             }
 
-            $descanso = isset($ej['descanso']) && is_numeric($ej['descanso']) ? (int)$ej['descanso'] : null;
+            $descanso = isset($ej['descanso_segundos']) && is_numeric($ej['descanso_segundos'])
+                ? (int)$ej['descanso_segundos']
+                : (isset($ej['descanso']) && is_numeric($ej['descanso']) ? (int)$ej['descanso'] : null);
             $stInsPlEj->execute([$plantillaId, $nombre, $orden, $descanso, $imp, $unidad]);
             $plEjId = (int)$db->lastInsertId();
 
@@ -301,9 +308,10 @@ function adminApiCrearRutinaPropia(): void {
                     if (!in_array($sTipo, ['normal', 'calentamiento', 'fallo', 'drop'], true)) {
                         $sTipo = 'normal';
                     }
-                    $sKg   = isset($sData['peso']) && $sData['peso'] !== '' && $sData['peso'] !== null && is_numeric($sData['peso']) ? (float)$sData['peso'] : null;
+                    $sKg   = isset($sData['peso']) && $sData['peso'] !== '' && $sData['peso'] !== null && is_numeric($sData['peso']) ? max(0.0, min(9999.0, (float)$sData['peso'])) : null;
                     if ($imp === 'sin_peso') $sKg = null;
-                    $sRep  = isset($sData['reps']) && is_numeric($sData['reps']) ? (int)$sData['reps'] : (int)$reps;
+                    $sRepRaw = isset($sData['reps']) && is_numeric($sData['reps']) ? (int)$sData['reps'] : ((int)preg_replace('/\D/', '', (string)($sData['reps'] ?? $reps)) ?: 10);
+                    $sRep  = max(1, min(250, $sRepRaw));
                     $sRir  = isset($sData['rir']) && $sData['rir'] !== '' && $sData['rir'] !== null && is_numeric($sData['rir']) ? max(0, min(5, (int)$sData['rir'])) : $rirVal;
                     $stInsPlS->execute([$plEjId, $sNum, $sTipo, $sKg, $sRep, $sRir]);
                     if ($sKg !== null) {
@@ -344,7 +352,7 @@ function adminApiCrearRutinaPropia(): void {
 
             $stInsEj->execute([
                 $rutinaId, $nombre, $seriesCount, $reps, $rirVal, $orden,
-                $imp, $unidad, $desc, $grupo, $equip, $imgPath, $imgDemoPath
+                $imp, $unidad, $desc, $grupo, $imgPath, $imgDemoPath
             ]);
             $orden++;
         }
@@ -412,6 +420,7 @@ function adminApiActualizarRutinaCompleta(): void {
     $ejercicios = $payload['ejercicios'] ?? [];
     if (!is_array($ejercicios)) $ejercicios = [];
 
+    CatalogoService::asegurarColumnasScope($db);
     try {
         $db->beginTransaction();
 
@@ -488,8 +497,8 @@ function adminApiActualizarRutinaCompleta(): void {
         ");
         $stIns = $db->prepare("
             INSERT INTO ejercicios
-            (rutina_id, nombre, series, repeticiones, rir, orden, tipo_implemento, unidad_carga, descripcion, grupo_muscular, equipamiento, imagen_path, imagen_demo_path)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            (rutina_id, nombre, series, repeticiones, rir, orden, tipo_implemento, unidad_carga, descripcion, grupo_muscular, imagen_path, imagen_demo_path)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ");
 
         $orden = 1;
@@ -514,7 +523,9 @@ function adminApiActualizarRutinaCompleta(): void {
                 $unidad = ($imp === 'sin_peso') ? 'ninguna' : 'kg';
             }
 
-            $descanso = isset($ej['descanso']) && is_numeric($ej['descanso']) ? (int)$ej['descanso'] : null;
+            $descanso = isset($ej['descanso_segundos']) && is_numeric($ej['descanso_segundos'])
+                ? (int)$ej['descanso_segundos']
+                : (isset($ej['descanso']) && is_numeric($ej['descanso']) ? (int)$ej['descanso'] : null);
             $stInsPlEj->execute([$plantillaId, $nombre, $orden, $descanso, $imp, $unidad]);
             $plEjId = (int)$db->lastInsertId();
 
@@ -526,9 +537,10 @@ function adminApiActualizarRutinaCompleta(): void {
                     if (!in_array($sTipo, ['normal', 'calentamiento', 'fallo', 'drop'], true)) {
                         $sTipo = 'normal';
                     }
-                    $sKg   = isset($sData['peso']) && $sData['peso'] !== '' && $sData['peso'] !== null && is_numeric($sData['peso']) ? (float)$sData['peso'] : null;
+                    $sKg   = isset($sData['peso']) && $sData['peso'] !== '' && $sData['peso'] !== null && is_numeric($sData['peso']) ? max(0.0, min(9999.0, (float)$sData['peso'])) : null;
                     if ($imp === 'sin_peso') $sKg = null;
-                    $sRep  = isset($sData['reps']) && is_numeric($sData['reps']) ? (int)$sData['reps'] : (int)$reps;
+                    $sRepRaw = isset($sData['reps']) && is_numeric($sData['reps']) ? (int)$sData['reps'] : ((int)preg_replace('/\D/', '', (string)($sData['reps'] ?? $reps)) ?: 10);
+                    $sRep  = max(1, min(250, $sRepRaw));
                     $sRir  = isset($sData['rir']) && $sData['rir'] !== '' && $sData['rir'] !== null && is_numeric($sData['rir']) ? max(0, min(5, (int)$sData['rir'])) : $rirVal;
                     $stInsPlS->execute([$plEjId, $sNum, $sTipo, $sKg, $sRep, $sRir]);
                     if ($sKg !== null) {
@@ -572,7 +584,7 @@ function adminApiActualizarRutinaCompleta(): void {
 
                 $stIns->execute([
                     $rutinaId, $nombre, $series, $reps, $rirVal, $orden,
-                    $imp, $unidad, $desc, $grupo, $equip, $imgPath, $imgDemoPath
+                    $imp, $unidad, $desc, $grupo, $imgPath, $imgDemoPath
                 ]);
             }
             $orden++;
@@ -610,6 +622,7 @@ function adminApiEliminarRutina(): void {
         jsonOut(false, 'Rutina no encontrada.');
     }
 
+    CatalogoService::asegurarColumnasScope($db);
     try {
         $db->beginTransaction();
         $db->prepare("DELETE FROM rutinas WHERE id = ?")->execute([$rutinaId]);
@@ -849,6 +862,7 @@ function adminApiGuardarRutinaComoPlantilla(): void {
         $titulo = trim((string)($rut['titulo'] ?: ($rut['descripcion'] ?: 'Plantilla Superadmin')));
     }
 
+    CatalogoService::asegurarColumnasScope($db);
     try {
         $db->beginTransaction();
 
@@ -1357,6 +1371,7 @@ function adminApiCrearEntrenador(): void {
         jsonOut(false, 'La fecha de pago debe tener formato YYYY-MM-DD.');
     }
 
+    CatalogoService::asegurarColumnasScope($db);
     try {
         $db->beginTransaction();
 
@@ -1666,6 +1681,7 @@ function adminApiReasignarAtleta(): void {
         jsonOut(false, 'El entrenador seleccionado no es válido o no está activo.');
     }
 
+    CatalogoService::asegurarColumnasScope($db);
     try {
         $db->beginTransaction();
         $db->prepare("UPDATE clientes SET entrenador_id = ? WHERE id = ?")
@@ -1720,6 +1736,7 @@ function adminApiRevocarEntrenador(): void {
         jsonOut(false, 'No hay otro entrenador activo disponible para reasignar los atletas.');
     }
 
+    CatalogoService::asegurarColumnasScope($db);
     try {
         $db->beginTransaction();
 
@@ -1761,6 +1778,7 @@ function adminApiAprobarEntrenador(): void {
         jsonOut(false, 'Parámetros inválidos para procesar la solicitud.', [], 400);
     }
 
+    CatalogoService::asegurarColumnasScope($db);
     try {
         $db->beginTransaction();
 
