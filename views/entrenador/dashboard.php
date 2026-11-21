@@ -2,8 +2,8 @@
 
 <div class="sys-top-header premium-header">
   <a href="<?= APP_URL ?>/entrenador/perfil-cliente?id=<?= (int)($miClienteIdEnt ?? 0) ?>" class="user-info-group" style="text-decoration:none; color:inherit; cursor:pointer;" title="Ver mi perfil de entrenamiento">
-    <div class="user-avatar" style="padding:5px;">
-       <img src="<?= APP_URL ?>/assets/img/logo-atlas-1080.png?v=<?= e(xpAssetVer('assets/img/logo-atlas-1080.png')) ?>" alt="Atlas Fit" style="width:100%;height:100%;object-fit:contain;display:block;pointer-events:none;" draggable="false">
+    <div class="user-avatar" style="background:transparent;border:none;box-shadow:none;padding:0;">
+       <img src="<?= APP_URL ?>/assets/img/logo-atlas-1080.png?v=<?= e(xpAssetVer('assets/img/logo-atlas-1080.png')) ?>" alt="Atlas Fit" style="width:100%;height:100%;object-fit:contain;display:block;pointer-events:none;filter:drop-shadow(0 2px 6px rgba(0,0,0,0.4));" draggable="false">
     </div>
     <div class="user-text-wrap">
       <p class="sys-top-greet-new">Bienvenido de vuelta</p>

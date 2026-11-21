@@ -666,21 +666,20 @@ $fraseDelDia = $frasesMotivadoras[$indiceFrase];
 .user-avatar {
   width: 38px !important;
   height: 38px !important;
-  border-radius: 12px !important;
-  font-size: 1.05rem !important;
-  font-weight: 800;
+  border-radius: 0 !important;
   flex-shrink: 0;
-  background: linear-gradient(135deg, rgba(138, 43, 226, 0.35), rgba(18, 18, 23, 0.95)) !important;
-  border: 1.5px solid rgba(138, 43, 226, 0.45) !important;
-  display: grid;
-  place-items: center;
-  color: #fff;
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  padding: 0 !important;
 }
 @media (min-width: 768px) {
   .user-avatar {
     width: 44px !important;
     height: 44px !important;
-    font-size: 1.25rem !important;
   }
 }
 .user-text-wrap {
@@ -790,8 +789,8 @@ $fraseDelDia = $frasesMotivadoras[$indiceFrase];
 <!-- ── HEADER DE BIENVENIDA (PREMIUM BENTO UI) ── -->
 <div class="sys-top-header premium-header bento-in">
   <div class="user-info-group">
-    <div class="user-avatar" style="padding:5px;">
-       <img src="<?= APP_URL ?>/assets/img/logo-atlas-1080.png?v=<?= e(xpAssetVer('assets/img/logo-atlas-1080.png')) ?>" alt="Atlas Fit" style="width:100%;height:100%;object-fit:contain;display:block;pointer-events:none;" draggable="false">
+    <div class="user-avatar" style="background:transparent;border:none;box-shadow:none;padding:0;">
+       <img src="<?= APP_URL ?>/assets/img/logo-atlas-1080.png?v=<?= e(xpAssetVer('assets/img/logo-atlas-1080.png')) ?>" alt="Atlas Fit" style="width:100%;height:100%;object-fit:contain;display:block;pointer-events:none;filter:drop-shadow(0 2px 6px rgba(0,0,0,0.4));" draggable="false">
     </div>
     <div class="user-text-wrap">
       <p class="sys-top-greet-new">Bienvenido de vuelta</p>
